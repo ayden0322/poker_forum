@@ -1,0 +1,136 @@
+name: betting-forum
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: betting-forum-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: betting_forum
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: betting-forum-redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: betting-forum-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9100:9000"
+      - "9101:9001"
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  # 初始化服務：安裝依賴 + 生成 Prisma Client（只執行一次）
+  installer:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: betting-forum-installer
+    command: >
+      sh -c "
+        echo '=== 安裝依賴 ===' &&
+        pnpm install &&
+        echo '=== 生成 Prisma Client ===' &&
+        pnpm --filter @betting-forum/database db:generate &&
+        echo '=== 初始化完成 ==='
+      "
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      - postgres
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: betting-forum-api
+    command: pnpm --filter @betting-forum/api dev
+    ports:
+      - "4010:4010"
+    env_file:
+      - .env
+    environment:
+      - PORT=4010
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/betting_forum?schema=public
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      installer:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: betting-forum-web
+    command: pnpm --filter @betting-forum/web dev
+    ports:
+      - "3010:3010"
+    env_file:
+      - .env
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4010/api
+      - API_URL=http://api:4010/api
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      installer:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: betting-forum-admin
+    command: pnpm --filter @betting-forum/admin dev
+    ports:
+      - "3011:3011"
+    env_file:
+      - .env
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:4010/api
+      - API_URL=http://api:4010/api
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      installer:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  node_modules:

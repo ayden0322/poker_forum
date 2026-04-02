@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "/opt/homebrew/bin/pnpm",
+      "runtimeArgs": ["--filter", "@betting-forum/api", "dev"],
+      "port": 4010,
+      "autoPort": false,
+      "env": {
+        "PORT": "4010"
+      }
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "/opt/homebrew/bin/pnpm",
+      "runtimeArgs": ["--filter", "@betting-forum/web", "dev"],
+      "port": 3010,
+      "autoPort": false,
+      "env": {
+        "NEXT_PUBLIC_API_URL": "http://localhost:4010/api"
+      }
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "/opt/homebrew/bin/pnpm",
+      "runtimeArgs": ["--filter", "@betting-forum/admin", "dev"],
+      "port": 3011,
+      "autoPort": false,
+      "env": {
+        "NEXT_PUBLIC_API_URL": "http://localhost:4010/api"
+      }
+    }
+  ]
+}

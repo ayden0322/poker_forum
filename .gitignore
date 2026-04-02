@@ -1,0 +1,48 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# next.js
+.next/
+out/
+
+# production
+build
+dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# local env files（所有層級）
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+
+# turbo
+.turbo
+
+# prisma
+packages/database/prisma/*.db
+
+# pnpm store
+.pnpm-store
+
+# ide
+.idea
+.vscode
+
+# claude
+.claude/settings.local.json
