@@ -1,7 +1,7 @@
 FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Install dependencies
+# 安裝依賴
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -10,7 +10,7 @@ COPY packages/database/package.json ./packages/database/
 COPY packages/types/package.json ./packages/types/
 RUN pnpm install --frozen-lockfile
 
-# Build
+# 建置
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -21,13 +21,16 @@ COPY . .
 RUN pnpm --filter @betting-forum/database db:generate
 RUN pnpm --filter @betting-forum/api build
 
-# Production
+# 生產環境
 FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/packages/database ./packages/database
-EXPOSE 4000
+
+# Zeabur 會自動注入 PORT 環境變數
+EXPOSE 8080
 CMD ["node", "dist/main.js"]
