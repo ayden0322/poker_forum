@@ -14,7 +14,6 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/admin/node_modules ./apps/admin/node_modules
-COPY --from=deps /app/packages/types/node_modules ./packages/types/node_modules
 COPY . .
 RUN pnpm --filter @betting-forum/admin build
 
