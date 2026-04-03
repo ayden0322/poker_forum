@@ -74,7 +74,7 @@ async function bootstrap() {
     logger.log('Swagger 文件已啟用：/api/docs');
   }
 
-  const port = process.env.PORT || 4010;
+  const port = process.env.PORT || 8080;
   await app.listen(port);
   logger.log(`API 伺服器運行於 http://localhost:${port}`);
 }
