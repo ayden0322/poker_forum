@@ -8,17 +8,15 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/
 COPY packages/types/package.json ./packages/types/
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --shamefully-hoist
 
 # 建置
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=deps /app/packages/database/node_modules ./packages/database/node_modules
 COPY . .
-RUN ./node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma
-RUN pnpm --filter @betting-forum/api build
+RUN node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma
+RUN cd apps/api && ../../node_modules/.bin/nest build
 
 # 生產環境
 FROM node:20-alpine AS runner
@@ -27,7 +25,6 @@ ENV NODE_ENV=production
 
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/packages/database ./packages/database
 
 # Zeabur 會自動注入 PORT 環境變數
