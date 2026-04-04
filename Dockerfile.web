@@ -1,23 +1,19 @@
 FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# 安裝依賴
+# 安裝依賴（強制安裝 devDependencies，避免 Zeabur 注入 NODE_ENV=production 導致跳過）
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/types/package.json ./packages/types/
-RUN pnpm install --frozen-lockfile
+RUN NODE_ENV=development pnpm install --frozen-lockfile
 
 # 建置
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app ./
 COPY . .
-
-# Next.js 需要在 build 時注入 NEXT_PUBLIC_ 變數
-# Zeabur 會在 build 時提供環境變數
 RUN pnpm --filter @betting-forum/web build
 
 # 生產環境

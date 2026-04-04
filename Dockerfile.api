@@ -1,19 +1,19 @@
 FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# 安裝依賴
+# 安裝依賴（shamefully-hoist 扁平化 + NODE_ENV=development 確保 devDependencies 安裝）
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/
 COPY packages/types/package.json ./packages/types/
-RUN pnpm install --shamefully-hoist
+RUN NODE_ENV=development pnpm install --shamefully-hoist
 
 # 建置
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 COPY . .
 RUN node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma
 RUN cd apps/api && ../../node_modules/.bin/nest build
@@ -27,6 +27,5 @@ COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/database ./packages/database
 
-# Zeabur 會自動注入 PORT 環境變數
 EXPOSE 8080
-CMD ["sh", "-c", "node node_modules/.bin/prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate --accept-data-loss && node dist/main.js"]
+CMD ["sh", "-c", "npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate --accept-data-loss && node dist/main.js"]
