@@ -16,6 +16,7 @@ WORKDIR /app
 COPY --from=deps /app ./
 COPY . .
 RUN node_modules/.bin/prisma generate --schema=packages/database/prisma/schema.prisma
+RUN cd packages/database && ../../node_modules/.bin/tsc
 RUN cd apps/api && ../../node_modules/.bin/nest build
 
 # 生產環境
