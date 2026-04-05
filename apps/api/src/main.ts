@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { execSync } from 'child_process';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 
@@ -13,6 +14,21 @@ const WEAK_SECRETS = [
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // 啟動前同步資料庫 schema（生產環境使用 prisma db push）
+  if (process.env.NODE_ENV === 'production') {
+    try {
+      logger.log('正在同步資料庫 schema...');
+      execSync(
+        'node ./node_modules/prisma/build/index.js db push --schema=packages/database/prisma/schema.prisma --skip-generate --accept-data-loss',
+        { stdio: 'inherit' },
+      );
+      logger.log('資料庫 schema 同步完成');
+    } catch (error) {
+      logger.error('資料庫 schema 同步失敗', error);
+      process.exit(1);
+    }
+  }
 
   // 啟動前檢查必要環境變數
   const jwtSecret = process.env.JWT_SECRET;
