@@ -107,7 +107,7 @@ export default function RegisterPage() {
               type="password"
               value={form.password}
               onChange={handleChange}
-              placeholder="六字以上英文或數字"
+              placeholder="8 字以上，需包含英文和數字"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               required
             />
