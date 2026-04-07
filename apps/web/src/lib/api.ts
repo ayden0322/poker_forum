@@ -1,8 +1,12 @@
 // SSR 用內部網路連 API，瀏覽器用公開 URL
+// 注意：NEXT_PUBLIC_* 是 build-time 寫死，正式環境 fallback 必須是公開 API URL
+const PROD_FALLBACK = 'https://api-poker-forum.zeabur.app/api';
+const DEV_FALLBACK = 'http://localhost:4010/api';
+const FALLBACK = process.env.NODE_ENV === 'production' ? PROD_FALLBACK : DEV_FALLBACK;
 const API_URL =
   typeof window === 'undefined'
-    ? (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api')
-    : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api');
+    ? (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || FALLBACK)
+    : (process.env.NEXT_PUBLIC_API_URL || FALLBACK);
 
 interface FetchOptions extends RequestInit {
   token?: string;
