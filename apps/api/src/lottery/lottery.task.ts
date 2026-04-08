@@ -12,10 +12,10 @@ export class LotteryTask {
     private readonly prisma: PrismaService,
   ) {}
 
-  /** 每日 21:30 自動抓取開獎結果 */
-  @Cron('30 21 * * *')
-  async handleDailySync() {
-    this.logger.log('開始每日開獎同步...');
+  /** 開獎時段（台灣時間 20:00–21:59）每 5 分鐘密集同步，抓到新資料後自動發文 */
+  @Cron('*/5 20-21 * * *', { timeZone: 'Asia/Taipei' })
+  async handleDrawTimeSync() {
+    this.logger.log('開始開獎時段同步...');
 
     for (const gameType of Object.keys(GAME_CONFIG) as GameType[]) {
       try {
@@ -28,12 +28,10 @@ export class LotteryTask {
         this.logger.error(`同步 ${GAME_CONFIG[gameType].name} 失敗：${err}`);
       }
     }
-
-    this.logger.log('每日開獎同步完成');
   }
 
-  /** 每 6 小時補抓（確保不漏接） */
-  @Cron('0 */6 * * *')
+  /** 每 6 小時補抓（台灣時間 00/06/12/18 點），確保開獎時段同步漏抓時可補救 */
+  @Cron('0 */6 * * *', { timeZone: 'Asia/Taipei' })
   async handlePeriodicSync() {
     for (const gameType of Object.keys(GAME_CONFIG) as GameType[]) {
       try {
