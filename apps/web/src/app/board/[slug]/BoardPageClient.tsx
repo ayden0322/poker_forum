@@ -55,63 +55,145 @@ const SORT_OPTIONS = [
   { value: 'popular', label: '最多推文' },
 ] as const;
 
+/** 相對時間格式化：剛剛 / N 分鐘前 / N 小時前 / N 天前 / 日期 */
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return '';
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diff = Math.max(0, now - then);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '剛剛';
+  if (min < 60) return `${min} 分鐘前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} 小時前`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} 天前`;
+  return new Date(iso).toLocaleDateString('zh-TW');
+}
+
+/** 數字縮寫：1234 → 1.2k */
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+  return `${Math.floor(n / 1000)}k`;
+}
+
 function PostRow({ post }: { post: PostItem }) {
+  const isHot = post.pushCount >= 10 || post._count.replies >= 20;
+  const roleBadge =
+    post.author.role === 'ADMIN'
+      ? { label: '管理員', cls: 'bg-red-100 text-red-600' }
+      : post.author.role === 'MOD'
+      ? { label: '板主', cls: 'bg-purple-100 text-purple-600' }
+      : null;
+
   return (
     <Link
       href={`/post/${post.id}`}
-      className="flex items-start gap-3 py-3 px-2 hover:bg-gray-50 rounded transition-colors"
+      className={`group relative block bg-white rounded-xl border border-gray-200 p-4 transition-all hover:shadow-md hover:border-blue-300 hover:-translate-y-0.5 ${
+        post.isPinned ? 'border-l-4 border-l-red-400' : isHot ? 'border-l-4 border-l-orange-400' : ''
+      }`}
     >
-      {/* 作者頭像 */}
-      <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm shrink-0 overflow-hidden">
-        {post.author.avatar ? (
-          <img src={post.author.avatar} alt="" className="w-full h-full object-cover" />
-        ) : (
-          post.author.nickname.charAt(0)
-        )}
-      </div>
+      <div className="flex items-start gap-3">
+        {/* 作者頭像 */}
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center text-blue-600 text-base font-semibold shrink-0 overflow-hidden ring-2 ring-white shadow-sm">
+          {post.author.avatar ? (
+            <img src={post.author.avatar} alt="" className="w-full h-full object-cover" />
+          ) : (
+            post.author.nickname.charAt(0)
+          )}
+        </div>
 
-      {/* 文章資訊 */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          {post.isPinned && (
-            <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-medium">
-              置頂
-            </span>
-          )}
-          {post.isAnnounce && (
-            <span className="text-xs bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-medium">
-              公告
-            </span>
-          )}
-          {post.isLocked && (
-            <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
-              🔒
-            </span>
-          )}
-          <span className="font-medium text-gray-900 truncate">{post.title}</span>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          <span>{post.author.nickname}</span>
-          <span>{new Date(post.createdAt).toLocaleDateString('zh-TW')}</span>
-          {post.tags.length > 0 && (
-            <div className="flex gap-1">
-              {post.tags.map((t) => (
-                <span key={t.tag.id} className="text-blue-500">#{t.tag.name}</span>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+        {/* 主要內容 */}
+        <div className="flex-1 min-w-0">
+          {/* 標籤列 */}
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            {post.isPinned && (
+              <span className="text-[11px] bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
+                📌 置頂
+              </span>
+            )}
+            {post.isAnnounce && (
+              <span className="text-[11px] bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-medium">
+                📣 公告
+              </span>
+            )}
+            {isHot && !post.isPinned && (
+              <span className="text-[11px] bg-gradient-to-r from-orange-400 to-red-500 text-white px-2 py-0.5 rounded-full font-medium">
+                🔥 熱門
+              </span>
+            )}
+            {post.isLocked && (
+              <span className="text-[11px] bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                🔒 鎖定
+              </span>
+            )}
+            {post.tags.slice(0, 3).map((t) => (
+              <span
+                key={t.tag.id}
+                className="text-[11px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full"
+              >
+                #{t.tag.name}
+              </span>
+            ))}
+          </div>
 
-      {/* 統計 */}
-      <div className="flex items-center gap-4 text-xs text-gray-400 shrink-0">
-        <div className="text-center">
-          <div className="font-medium text-gray-600">{post._count.replies}</div>
-          <div>回覆</div>
+          {/* 標題 */}
+          <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug mb-1.5">
+            {post.title}
+          </h3>
+
+          {/* 底部資訊列 */}
+          <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
+            <span className="font-medium text-gray-700">{post.author.nickname}</span>
+            {roleBadge && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${roleBadge.cls}`}>
+                {roleBadge.label}
+              </span>
+            )}
+            <span className="text-gray-300">·</span>
+            <span>發表於 {formatRelativeTime(post.createdAt)}</span>
+            {post.lastReplyAt && post.lastReplyAt !== post.createdAt && (
+              <>
+                <span className="text-gray-300">·</span>
+                <span className="text-blue-600">
+                  最後回覆 {formatRelativeTime(post.lastReplyAt)}
+                </span>
+              </>
+            )}
+          </div>
         </div>
-        <div className="text-center">
-          <div className="font-medium text-gray-600">{post.viewCount}</div>
-          <div>瀏覽</div>
+
+        {/* 右側統計 */}
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {/* 回覆數 pill（主要） */}
+          <div
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold ${
+              post._count.replies > 0
+                ? 'bg-blue-50 text-blue-600'
+                : 'bg-gray-50 text-gray-400'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span>{formatCount(post._count.replies)}</span>
+          </div>
+          {/* 瀏覽 / 推文（次要） */}
+          <div className="flex items-center gap-2 text-[11px] text-gray-400">
+            <span className="flex items-center gap-0.5">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              {formatCount(post.viewCount)}
+            </span>
+            {post.pushCount > 0 && (
+              <span className="flex items-center gap-0.5 text-orange-500">
+                ▲ {formatCount(post.pushCount)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </Link>
@@ -285,17 +367,15 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         <>
           {/* 置頂文章 */}
           {pinnedPosts.length > 0 && (
-            <div className="mb-2 bg-red-50/50 border border-red-100 rounded-lg overflow-hidden">
-              <div className="divide-y divide-red-100/50">
-                {pinnedPosts.map((post) => (
-                  <PostRow key={post.id} post={post} />
-                ))}
-              </div>
+            <div className="space-y-2 mb-3">
+              {pinnedPosts.map((post) => (
+                <PostRow key={post.id} post={post} />
+              ))}
             </div>
           )}
 
           {/* 一般文章 */}
-          <div className="divide-y divide-gray-100">
+          <div className="space-y-2">
             {normalPosts.map((post) => (
               <PostRow key={post.id} post={post} />
             ))}
