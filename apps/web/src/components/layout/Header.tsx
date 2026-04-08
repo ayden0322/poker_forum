@@ -8,14 +8,38 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 
-const navItems = [
+interface NavChild {
+  label: string;
+  href: string;
+}
+
+interface NavItem {
+  label: string;
+  /** 沒給 href 時，頂層只是 hover 觸發選單，不可點擊 */
+  href?: string;
+  children?: (NavChild | { divider: true })[];
+}
+
+const navItems: NavItem[] = [
   { label: '討論區', href: '/' },
-  { label: '體育賽事', href: '/board/baseball' },
+  {
+    label: '體育賽事',
+    children: [
+      { label: '棒球', href: '/board/baseball' },
+      { label: '籃球', href: '/board/basketball' },
+      { label: '足球', href: '/board/soccer' },
+      { label: '其他運動', href: '/board/other-sports' },
+    ],
+  },
   {
     label: '台灣彩票',
-    href: '/board/lotto649',
     children: [
-      { label: '彩券討論區', href: '/board/lotto649' },
+      { label: '大樂透', href: '/board/lotto649' },
+      { label: '威力彩', href: '/board/super-lotto' },
+      { label: '今彩 539', href: '/board/daily-cash' },
+      { label: '雙贏彩', href: '/board/lotto1224' },
+      { label: '3星彩 / 4星彩', href: '/board/star-lotto' },
+      { divider: true },
       { label: '號碼統計', href: '/lottery/stats' },
       { label: '線上對獎', href: '/lottery/check' },
     ],
@@ -90,30 +114,34 @@ export function Header() {
             <nav className="hidden md:flex items-center gap-6">
               {navItems.map((item) =>
                 item.children ? (
-                  <div key={item.href} className="relative group">
-                    <Link
-                      href={item.href}
-                      className="text-sm font-medium hover:text-blue-200 transition-colors flex items-center gap-1"
+                  <div key={item.label} className="relative group">
+                    <span
+                      className="text-sm font-medium hover:text-blue-200 transition-colors flex items-center gap-1 py-2 cursor-default select-none"
+                      aria-haspopup="true"
                     >
                       {item.label}
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                    </Link>
-                    <div className="absolute left-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
-                      {item.children.map((child) => (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 first:rounded-t-lg last:rounded-b-lg"
-                        >
-                          {child.label}
-                        </Link>
-                      ))}
+                    </span>
+                    <div className="absolute left-0 top-full w-40 bg-white rounded-lg shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 py-1">
+                      {item.children.map((child, idx) =>
+                        'divider' in child ? (
+                          <hr key={`d-${idx}`} className="my-1 border-gray-100" />
+                        ) : (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600"
+                          >
+                            {child.label}
+                          </Link>
+                        ),
+                      )}
                     </div>
                   </div>
                 ) : (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={item.href!}
                     className="text-sm font-medium hover:text-blue-200 transition-colors"
                   >
                     {item.label}
@@ -246,24 +274,34 @@ export function Header() {
           <div className="md:hidden border-t border-blue-600/50">
             <nav className="px-4 py-3 space-y-1">
               {navItems.map((item) => (
-                <div key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
-                    onClick={() => setShowMobileMenu(false)}
-                  >
-                    {item.label}
-                  </Link>
-                  {item.children?.map((child) => (
+                <div key={item.label}>
+                  {item.href ? (
                     <Link
-                      key={child.href}
-                      href={child.href}
-                      className="block px-6 py-1.5 text-xs text-blue-200 hover:text-white transition-colors"
+                      href={item.href}
+                      className="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
                       onClick={() => setShowMobileMenu(false)}
                     >
-                      {child.label}
+                      {item.label}
                     </Link>
-                  ))}
+                  ) : (
+                    <div className="block px-3 py-2 text-sm font-semibold text-blue-100/90">
+                      {item.label}
+                    </div>
+                  )}
+                  {item.children?.map((child, idx) =>
+                    'divider' in child ? (
+                      <hr key={`md-${idx}`} className="my-1 border-blue-600/40 mx-6" />
+                    ) : (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        className="block px-6 py-1.5 text-xs text-blue-200 hover:text-white transition-colors"
+                        onClick={() => setShowMobileMenu(false)}
+                      >
+                        {child.label}
+                      </Link>
+                    ),
+                  )}
                 </div>
               ))}
               <form onSubmit={handleSearch} className="px-3 pt-2">
