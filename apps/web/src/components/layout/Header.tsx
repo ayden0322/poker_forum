@@ -37,7 +37,6 @@ const navItems: NavItem[] = [
       { label: '大樂透', href: '/board/lotto649' },
       { label: '威力彩', href: '/board/super-lotto' },
       { label: '今彩 539', href: '/board/daily-cash' },
-      { label: '雙贏彩', href: '/board/lotto1224' },
       { label: '3星彩 / 4星彩', href: '/board/star-lotto' },
       { divider: true },
       { label: '號碼統計', href: '/lottery/stats' },

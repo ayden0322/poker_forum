@@ -85,6 +85,46 @@ export class LotteryController {
     return { data: result };
   }
 
+  @Post('backfill')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '補抓過去 N 個月的歷史開獎（需管理員權限）' })
+  async backfill(
+    @Query('gameType') gameType?: string,
+    @Query('months', new DefaultValuePipe(12), ParseIntPipe) months: number = 12,
+    @Query('endMonth') endMonth?: string,
+  ) {
+    if (months < 1 || months > 60) {
+      throw new BadRequestException('months 必須介於 1~60 之間');
+    }
+    if (endMonth && !/^\d{4}-\d{2}$/.test(endMonth)) {
+      throw new BadRequestException('endMonth 格式須為 YYYY-MM');
+    }
+
+    if (gameType) {
+      this.validateGameType(gameType);
+      const count = await this.lotteryService.backfillResults(
+        gameType as GameType,
+        months,
+        endMonth,
+      );
+      return { data: { [gameType]: count } };
+    }
+
+    // 全部彩種（已停售的跳過）
+    const result: Record<string, number> = {};
+    for (const gt of Object.keys(GAME_CONFIG) as GameType[]) {
+      const config = GAME_CONFIG[gt] as { discontinued?: boolean };
+      if (config.discontinued) {
+        result[gt] = 0;
+        continue;
+      }
+      result[gt] = await this.lotteryService.backfillResults(gt, months, endMonth);
+    }
+    return { data: result };
+  }
+
   private validateGameType(gameType: string) {
     if (!gameType || !(gameType in GAME_CONFIG)) {
       throw new BadRequestException(

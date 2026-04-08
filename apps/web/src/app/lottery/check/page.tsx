@@ -10,7 +10,6 @@ const GAME_OPTIONS = [
   { value: 'LOTTO649', label: '大樂透', count: 6, max: 49, min: 1, hasSpecial: true, specialLabel: '特別號' },
   { value: 'SUPER_LOTTO', label: '威力彩', count: 6, max: 38, min: 1, hasSpecial: true, specialLabel: '第二區' },
   { value: 'DAILY539', label: '今彩539', count: 5, max: 39, min: 1, hasSpecial: false, specialLabel: '' },
-  { value: 'LOTTO1224', label: '雙贏彩', count: 12, max: 24, min: 1, hasSpecial: false, specialLabel: '' },
   { value: 'LOTTO3D', label: '3星彩', count: 3, max: 9, min: 0, hasSpecial: false, specialLabel: '' },
   { value: 'LOTTO4D', label: '4星彩', count: 4, max: 9, min: 0, hasSpecial: false, specialLabel: '' },
 ];

@@ -10,19 +10,30 @@ const GAME_OPTIONS = [
   { value: 'LOTTO649', label: '大樂透', maxNum: 49 },
   { value: 'SUPER_LOTTO', label: '威力彩', maxNum: 38 },
   { value: 'DAILY539', label: '今彩539', maxNum: 39 },
-  { value: 'LOTTO1224', label: '雙贏彩', maxNum: 24 },
   { value: 'LOTTO3D', label: '3星彩', maxNum: 9 },
   { value: 'LOTTO4D', label: '4星彩', maxNum: 9 },
 ];
 
 const RANGE_OPTIONS = [30, 50, 100];
 
+interface NumCount {
+  number: number;
+  count: number;
+}
+
 interface StatsData {
   totalDraws: number;
-  frequency: { number: number; count: number }[];
-  hot: { number: number; count: number }[];
-  cold: { number: number; count: number }[];
+  requestedRange: number;
+  hasSpecial: boolean;
+  frequency: NumCount[];
+  hot: NumCount[];
+  cold: NumCount[];
+  notDrawn: number[];
   tailStats: { tail: number; count: number }[];
+  specialFrequency: NumCount[];
+  specialHot: NumCount[];
+  specialCold: NumCount[];
+  specialNotDrawn: number[];
 }
 
 interface StatsResponse {
@@ -98,9 +109,16 @@ export default function LotteryStatsPage() {
 
       {stats && stats.totalDraws > 0 && (
         <div className="space-y-6">
-          <p className="text-sm text-gray-500">
-            共分析 {stats.totalDraws} 期開獎結果
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-sm text-gray-500">
+              共分析 {stats.totalDraws} 期開獎結果
+            </p>
+            {stats.totalDraws < stats.requestedRange && (
+              <div className="text-xs px-3 py-1.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                ⚠️ 資料庫目前僅有 {stats.totalDraws} 期（不足 {stats.requestedRange} 期），統計結果僅供參考
+              </div>
+            )}
+          </div>
 
           {/* 熱門號碼 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -117,16 +135,80 @@ export default function LotteryStatsPage() {
 
           {/* 冷門號碼 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="font-bold text-lg mb-3 text-blue-600">❄️ 冷門號碼（出現最少）</h2>
-            <div className="flex flex-wrap gap-3">
-              {stats.cold.map((item) => (
-                <div key={item.number} className="flex flex-col items-center gap-1">
-                  <LotteryBall number={item.number} size="lg" />
-                  <span className="text-xs text-gray-500 font-medium">{item.count} 次</span>
-                </div>
-              ))}
-            </div>
+            <h2 className="font-bold text-lg mb-3 text-blue-600">❄️ 冷門號碼（出現最少，至少開出 1 次）</h2>
+            {stats.cold.length > 0 ? (
+              <div className="flex flex-wrap gap-3">
+                {stats.cold.map((item) => (
+                  <div key={item.number} className="flex flex-col items-center gap-1">
+                    <LotteryBall number={item.number} size="lg" />
+                    <span className="text-xs text-gray-500 font-medium">{item.count} 次</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">尚無資料</p>
+            )}
           </div>
+
+          {/* 從未開出的號碼 */}
+          {stats.notDrawn.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
+              <h2 className="font-bold text-lg mb-3 text-gray-600">
+                🚫 從未開出的號碼（共 {stats.notDrawn.length} 個）
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {stats.notDrawn.map((n) => (
+                  <LotteryBall key={n} number={n} size="sm" />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 特別號統計 */}
+          {stats.hasSpecial && stats.specialFrequency.length > 0 && (
+            <div className="bg-white rounded-xl border border-yellow-200 p-5">
+              <h2 className="font-bold text-lg mb-4 text-yellow-700">⭐ 特別號統計</h2>
+
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-red-600 mb-2">熱門特別號</h3>
+                <div className="flex flex-wrap gap-3">
+                  {stats.specialHot.map((item) => (
+                    <div key={item.number} className="flex flex-col items-center gap-1">
+                      <LotteryBall number={item.number} size="lg" />
+                      <span className="text-xs text-gray-500 font-medium">{item.count} 次</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {stats.specialCold.length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-blue-600 mb-2">冷門特別號（至少開出 1 次）</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {stats.specialCold.map((item) => (
+                      <div key={item.number} className="flex flex-col items-center gap-1">
+                        <LotteryBall number={item.number} size="lg" />
+                        <span className="text-xs text-gray-500 font-medium">{item.count} 次</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stats.specialNotDrawn.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-600 mb-2">
+                    從未開出的特別號（共 {stats.specialNotDrawn.length} 個）
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {stats.specialNotDrawn.map((n) => (
+                      <LotteryBall key={n} number={n} size="sm" />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 號碼頻率表 */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">

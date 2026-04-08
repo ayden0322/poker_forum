@@ -12,12 +12,19 @@ export class LotteryTask {
     private readonly prisma: PrismaService,
   ) {}
 
+  /** 取得仍在販售中的彩種（排除已停售） */
+  private activeGameTypes(): GameType[] {
+    return (Object.keys(GAME_CONFIG) as GameType[]).filter(
+      (gt) => !(GAME_CONFIG[gt] as { discontinued?: boolean }).discontinued,
+    );
+  }
+
   /** 開獎時段（台灣時間 20:00–21:59）每 5 分鐘密集同步，抓到新資料後自動發文 */
   @Cron('*/5 20-21 * * *', { timeZone: 'Asia/Taipei' })
   async handleDrawTimeSync() {
     this.logger.log('開始開獎時段同步...');
 
-    for (const gameType of Object.keys(GAME_CONFIG) as GameType[]) {
+    for (const gameType of this.activeGameTypes()) {
       try {
         const newCount = await this.lotteryService.syncResults(gameType);
         if (newCount > 0) {
@@ -33,7 +40,7 @@ export class LotteryTask {
   /** 每 6 小時補抓（台灣時間 00/06/12/18 點），確保開獎時段同步漏抓時可補救 */
   @Cron('0 */6 * * *', { timeZone: 'Asia/Taipei' })
   async handlePeriodicSync() {
-    for (const gameType of Object.keys(GAME_CONFIG) as GameType[]) {
+    for (const gameType of this.activeGameTypes()) {
       try {
         await this.lotteryService.syncResults(gameType);
       } catch (err) {

@@ -10,6 +10,7 @@ const GAME_CONFIG = {
     numberCount: 6,
     maxNumber: 49,
     hasSpecial: true,
+    specialMax: 49,
     numberField: 'drawNumberSize',
     drawSchedule: '每週二、五 20:30',
   },
@@ -20,6 +21,7 @@ const GAME_CONFIG = {
     numberCount: 6,
     maxNumber: 38,
     hasSpecial: true,
+    specialMax: 8,
     numberField: 'drawNumberSize',
     drawSchedule: '每週一、四 20:30',
   },
@@ -41,7 +43,8 @@ const GAME_CONFIG = {
     maxNumber: 24,
     hasSpecial: false,
     numberField: 'drawNumberSize',
-    drawSchedule: '每週一~六 20:30',
+    drawSchedule: '已於 2023/12/31 停售',
+    discontinued: true,
   },
   LOTTO3D: {
     name: '3星彩',
@@ -116,6 +119,45 @@ export class LotteryService {
       rawResults = await this.fetchFromExternal(gameType, prevMonthStr);
     }
 
+    return this.persistRawResults(gameType, rawResults);
+  }
+
+  /** 補抓過去 N 個月的歷史開獎資料；可指定 endMonth (YYYY-MM) 為起算月份 */
+  async backfillResults(
+    gameType: GameType,
+    months: number = 12,
+    endMonth?: string,
+  ): Promise<number> {
+    const config = GAME_CONFIG[gameType];
+    const anchor = endMonth
+      ? new Date(`${endMonth}-01T00:00:00`)
+      : new Date();
+    let total = 0;
+
+    for (let i = 0; i < months; i++) {
+      const target = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
+      const monthStr = `${target.getFullYear()}-${String(target.getMonth() + 1).padStart(2, '0')}`;
+      try {
+        const raw = await this.fetchFromExternal(gameType, monthStr);
+        const added = await this.persistRawResults(gameType, raw);
+        total += added;
+        this.logger.log(`${config.name} 補抓 ${monthStr}：新增 ${added} 筆`);
+      } catch (err) {
+        this.logger.error(`${config.name} 補抓 ${monthStr} 失敗：${err}`);
+      }
+      // 避免短時間內打爆官方 API
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
+    return total;
+  }
+
+  /** 將原始 API 結果寫入資料庫（共用於 sync 與 backfill） */
+  private async persistRawResults(
+    gameType: GameType,
+    rawResults: Record<string, unknown>[],
+  ): Promise<number> {
+    const config = GAME_CONFIG[gameType];
     let newCount = 0;
 
     for (const raw of rawResults) {
@@ -202,9 +244,11 @@ export class LotteryService {
     return newCount;
   }
 
-  /** 取得各彩種最新一期（含開獎時間與連槓資訊） */
+  /** 取得各彩種最新一期（含開獎時間與連槓資訊；自動排除已停售彩種） */
   async getLatest() {
-    const gameTypes = Object.keys(GAME_CONFIG) as GameType[];
+    const gameTypes = (Object.keys(GAME_CONFIG) as GameType[]).filter(
+      (gt) => !(GAME_CONFIG[gt] as { discontinued?: boolean }).discontinued,
+    );
     const results: Record<string, unknown>[] = [];
 
     for (const gt of gameTypes) {
@@ -243,6 +287,7 @@ export class LotteryService {
         gameName: config.name,
         drawSchedule: config.drawSchedule,
         noWinnerStreak,
+        discontinued: (config as { discontinued?: boolean }).discontinued ?? false,
       });
     }
 
@@ -285,7 +330,22 @@ export class LotteryService {
       select: { numbers: true, specialNum: true, period: true, drawDate: true },
     });
 
-    if (results.length === 0) return { totalDraws: 0, frequency: [], hot: [], cold: [], tailStats: [] };
+    if (results.length === 0) {
+      return {
+        totalDraws: 0,
+        requestedRange: range,
+        hasSpecial: config.hasSpecial,
+        frequency: [],
+        hot: [],
+        cold: [],
+        notDrawn: [],
+        tailStats: [],
+        specialFrequency: [],
+        specialHot: [],
+        specialCold: [],
+        specialNotDrawn: [],
+      };
+    }
 
     // 號碼出現頻率（3星彩/4星彩從 0 開始）
     const freq: Record<number, number> = {};
@@ -303,9 +363,16 @@ export class LotteryService {
       .map(([num, count]) => ({ number: Number(num), count }))
       .sort((a, b) => a.number - b.number);
 
-    const sorted = [...frequency].sort((a, b) => b.count - a.count);
-    const hot = sorted.slice(0, 10);
-    const cold = sorted.slice(-10).reverse();
+    // 熱門：出現次數最多的前 10 名
+    const sortedDesc = [...frequency].sort((a, b) => b.count - a.count);
+    const hot = sortedDesc.slice(0, 10);
+
+    // 冷門：只挑「曾經開出過」（count >= 1）的最後 10 名，並依次數由少到多排序
+    const drawn = frequency.filter((f) => f.count > 0);
+    const cold = [...drawn].sort((a, b) => a.count - b.count).slice(0, 10);
+
+    // 從未開出的號碼（單獨列出，避免污染冷門統計）
+    const notDrawn = frequency.filter((f) => f.count === 0).map((f) => f.number);
 
     // 尾數分布
     const tailFreq: Record<number, number> = {};
@@ -320,12 +387,51 @@ export class LotteryService {
       .map(([tail, count]) => ({ tail: Number(tail), count }))
       .sort((a, b) => a.tail - b.tail);
 
+    // 特別號統計（僅大樂透、威力彩有）
+    let specialFrequency: { number: number; count: number }[] = [];
+    let specialHot: { number: number; count: number }[] = [];
+    let specialCold: { number: number; count: number }[] = [];
+    let specialNotDrawn: number[] = [];
+
+    if (config.hasSpecial && 'specialMax' in config) {
+      const specialMax = (config as { specialMax: number }).specialMax;
+      const sFreq: Record<number, number> = {};
+      for (let i = 1; i <= specialMax; i++) sFreq[i] = 0;
+
+      for (const r of results) {
+        const sNums = (r.specialNum as number[] | null) ?? [];
+        for (const n of sNums) {
+          if (n >= 1 && n <= specialMax) {
+            sFreq[n] = (sFreq[n] ?? 0) + 1;
+          }
+        }
+      }
+
+      specialFrequency = Object.entries(sFreq)
+        .map(([num, count]) => ({ number: Number(num), count }))
+        .sort((a, b) => a.number - b.number);
+
+      const sSortedDesc = [...specialFrequency].sort((a, b) => b.count - a.count);
+      specialHot = sSortedDesc.slice(0, Math.min(5, specialFrequency.length));
+
+      const sDrawn = specialFrequency.filter((f) => f.count > 0);
+      specialCold = [...sDrawn].sort((a, b) => a.count - b.count).slice(0, 5);
+      specialNotDrawn = specialFrequency.filter((f) => f.count === 0).map((f) => f.number);
+    }
+
     return {
       totalDraws: results.length,
+      requestedRange: range,
+      hasSpecial: config.hasSpecial,
       frequency,
       hot,
       cold,
+      notDrawn,
       tailStats,
+      specialFrequency,
+      specialHot,
+      specialCold,
+      specialNotDrawn,
     };
   }
 
