@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
 import { AuthService } from '../auth.service';
 
 interface LineProfile {
@@ -25,6 +26,18 @@ export class LineStrategy extends PassportStrategy(Strategy, 'line') {
       callbackURL: configService.get<string>('LINE_CALLBACK_URL', 'http://localhost:4010/api/auth/line/callback'),
       scope: ['profile', 'openid', 'email'],
     });
+  }
+
+  /**
+   * LINE OAuth 2.1 強制要求帶 state 參數（CSRF 防護）。
+   * passport-oauth2 預設不會自動產生 state（除非啟用 session-based state store），
+   * 因此手動覆寫 authorizationParams 注入隨機 state。
+   *
+   * 備註：此處 state 僅作為向 LINE 送出的形式參數，未做 callback 驗證；
+   * 未來若要補強 CSRF 保護，可整合 express-session + state: true。
+   */
+  authorizationParams(): Record<string, string> {
+    return { state: randomBytes(16).toString('hex') };
   }
 
   async validate(accessToken: string): Promise<unknown> {
