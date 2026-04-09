@@ -1,6 +1,6 @@
 // SSR 用內部網路連 API，瀏覽器用公開 URL
 // 注意：NEXT_PUBLIC_* 是 build-time 寫死，正式環境 fallback 必須是公開 API URL
-const PROD_FALLBACK = 'https://api-poker-forum.zeabur.app/api';
+const PROD_FALLBACK = 'https://api.goboka.net/api';
 const DEV_FALLBACK = 'http://localhost:4010/api';
 const FALLBACK = process.env.NODE_ENV === 'production' ? PROD_FALLBACK : DEV_FALLBACK;
 const API_URL =

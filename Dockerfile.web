@@ -14,8 +14,8 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app ./
 COPY . .
-ARG NEXT_PUBLIC_API_URL=https://api-poker-forum.zeabur.app/api
-ARG NEXT_PUBLIC_SITE_URL=https://web-poker-forum.zeabur.app
+ARG NEXT_PUBLIC_API_URL=https://api.goboka.net/api
+ARG NEXT_PUBLIC_SITE_URL=https://goboka.net
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 RUN pnpm --filter @betting-forum/web build
