@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsArray, MaxLength } from 'class-validator';
-import { SanitizeHtml } from '../../common/sanitize';
+import { SanitizeHtml, SanitizeRichHtml } from '../../common/sanitize';
 
 export class UpdatePostDto {
   @IsOptional()
@@ -10,7 +10,7 @@ export class UpdatePostDto {
 
   @IsOptional()
   @IsString()
-  @SanitizeHtml()
+  @SanitizeRichHtml()
   content?: string;
 
   @IsOptional()

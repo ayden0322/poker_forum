@@ -3,10 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/auth';
 import { apiFetch } from '@/lib/api';
 import { ReportModal } from '@/components/post/ReportModal';
+import RichTextContent from '@/components/editor/RichTextContent';
+
+const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), { ssr: false });
 
 interface PostData {
   id: string;
@@ -135,9 +139,11 @@ export default function PostDetailClient({ post }: { post: PostData }) {
     },
   });
 
+  const isReplyEmpty = !replyContent || replyContent === '<p></p>' || replyContent.replace(/<[^>]*>/g, '').trim() === '';
+
   const handleReply = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!replyContent.trim()) return;
+    if (isReplyEmpty) return;
     replyMutation.mutate({
       content: replyContent,
       ...(quotedReplyId ? { quotedReplyId } : {}),
@@ -172,7 +178,11 @@ export default function PostDetailClient({ post }: { post: PostData }) {
     });
   };
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
   const formatDate = (d: string) => {
+    if (!mounted) return '';
     const date = new Date(d);
     return `${date.toLocaleDateString('zh-TW')} ${date.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`;
   };
@@ -254,8 +264,8 @@ export default function PostDetailClient({ post }: { post: PostData }) {
               <span className="text-xs text-gray-400">Lv.{post.author.level}</span>
             </div>
 
-            <div className="text-gray-800 whitespace-pre-wrap leading-relaxed min-h-[100px]">
-              {post.content}
+            <div className="text-gray-800 min-h-[100px]">
+              <RichTextContent content={post.content} />
             </div>
 
             {/* 底部操作列 */}
@@ -435,8 +445,8 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                       </div>
                     )}
 
-                    <div className="text-gray-800 whitespace-pre-wrap text-sm leading-relaxed">
-                      {reply.content}
+                    <div className="text-gray-800 text-sm">
+                      <RichTextContent content={reply.content} />
                     </div>
                   </div>
                 </div>
@@ -489,17 +499,18 @@ export default function PostDetailClient({ post }: { post: PostData }) {
             </div>
           )}
 
-          <textarea
-            value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
-            rows={5}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y mb-3"
-            placeholder="輸入你的回覆..."
-          />
+          <div className="mb-3">
+            <RichTextEditor
+              content={replyContent}
+              onChange={setReplyContent}
+              placeholder="輸入你的回覆..."
+              compact
+              minHeight="120px"
+            />
+          </div>
           <button
             type="submit"
-            disabled={replyMutation.isPending || !replyContent.trim()}
+            disabled={replyMutation.isPending || isReplyEmpty}
             className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
           >
             {replyMutation.isPending ? '送出中...' : '送出回覆'}

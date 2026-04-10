@@ -3,8 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useAuth } from '@/context/auth';
 import { apiFetch } from '@/lib/api';
+
+const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), { ssr: false });
 
 interface Tag {
   id: string;
@@ -47,6 +50,9 @@ export default function NewPostPage() {
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId],
     );
   };
+
+  // 檢查內容是否為空（移除 HTML 標籤後）
+  const isContentEmpty = !content || content === '<p></p>' || content.replace(/<[^>]*>/g, '').trim() === '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,20 +147,18 @@ export default function NewPostPage() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">內容</label>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            required
-            rows={15}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-y"
+          <RichTextEditor
+            content={content}
+            onChange={setContent}
             placeholder="請輸入文章內容..."
+            minHeight="300px"
           />
         </div>
 
         <div className="flex items-center gap-3 pt-2">
           <button
             type="submit"
-            disabled={loading || !title.trim() || !content.trim()}
+            disabled={loading || !title.trim() || isContentEmpty}
             className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? '發表中...' : '發表文章'}

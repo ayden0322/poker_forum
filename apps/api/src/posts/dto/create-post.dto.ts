@@ -1,5 +1,5 @@
 import { IsString, IsNotEmpty, IsOptional, IsArray, MaxLength } from 'class-validator';
-import { SanitizeHtml } from '../../common/sanitize';
+import { SanitizeHtml, SanitizeRichHtml } from '../../common/sanitize';
 
 export class CreatePostDto {
   @IsString()
@@ -14,7 +14,7 @@ export class CreatePostDto {
 
   @IsString()
   @IsNotEmpty({ message: '請輸入內容' })
-  @SanitizeHtml()
+  @SanitizeRichHtml()
   content!: string;
 
   @IsOptional()

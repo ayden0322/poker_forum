@@ -23,6 +23,7 @@ export class UploadService implements OnModuleInit {
   private endpoint: string;
   private port: number;
   private useSSL: boolean;
+  private publicUrl: string;
 
   constructor(private configService: ConfigService) {
     this.endpoint = this.configService.get<string>('MINIO_ENDPOINT', 'localhost');
@@ -31,6 +32,12 @@ export class UploadService implements OnModuleInit {
     this.bucket = this.configService.get<string>('MINIO_BUCKET', 'avatars');
 
     const protocol = this.useSSL ? 'https' : 'http';
+
+    // 公開存取 URL（給瀏覽器用），預設用內部連線位址
+    this.publicUrl = this.configService.get<string>(
+      'MINIO_PUBLIC_URL',
+      `${protocol}://${this.endpoint}:${this.port}`,
+    );
 
     this.s3 = new S3Client({
       endpoint: `${protocol}://${this.endpoint}:${this.port}`,
@@ -104,8 +111,33 @@ export class UploadService implements OnModuleInit {
     );
 
     // 5. 回傳公開存取 URL
-    const protocol = this.useSSL ? 'https' : 'http';
-    return `${protocol}://${this.endpoint}:${this.port}/${this.bucket}/${key}`;
+    return `${this.publicUrl}/${this.bucket}/${key}`;
+  }
+
+  /** 驗證並上傳文章/回覆圖片 */
+  async uploadImage(file: Express.Multer.File): Promise<string> {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `不支援的圖片格式，僅允許：${ALLOWED_MIME_TYPES.map((m) => m.split('/')[1]).join(', ')}`,
+      );
+    }
+
+    this.validateMagicNumber(file.buffer, file.mimetype);
+
+    const ext = extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
+    const safeExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(ext) ? ext : '.jpg';
+    const key = `images/${randomUUID()}${safeExt}`;
+
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+      }),
+    );
+
+    return `${this.publicUrl}/${this.bucket}/${key}`;
   }
 
   /** 驗證 Magic Number（檔案前幾個 byte） */

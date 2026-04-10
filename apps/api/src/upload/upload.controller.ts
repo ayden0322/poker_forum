@@ -17,7 +17,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UploadService } from './upload.service';
 import { PrismaService } from '../common/prisma.service';
 
-const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
 
 @ApiTags('上傳')
 @Controller('upload')
@@ -33,13 +34,13 @@ export class UploadController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '上傳頭像' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_AVATAR_SIZE } }))
   async uploadAvatar(
     @CurrentUser() user: { id: string },
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new MaxFileSizeValidator({ maxSize: MAX_FILE_SIZE, message: '圖片大小不能超過 2MB' }),
+          new MaxFileSizeValidator({ maxSize: MAX_AVATAR_SIZE, message: '圖片大小不能超過 2MB' }),
           new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp|gif)$/ }),
         ],
       }),
@@ -57,6 +58,31 @@ export class UploadController {
       data: { avatar: url },
     });
 
+    return { data: { url } };
+  }
+
+  @Post('image')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '上傳文章/回覆圖片' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_IMAGE_SIZE } }))
+  async uploadImage(
+    @CurrentUser() _user: { id: string },
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: MAX_IMAGE_SIZE, message: '圖片大小不能超過 5MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp|gif)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('請選擇要上傳的圖片');
+
+    const url = await this.uploadService.uploadImage(file);
     return { data: { url } };
   }
 }
