@@ -26,17 +26,18 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchMe = useCallback(async () => {
+  const fetchMe = useCallback(async (throwOnError = false) => {
     try {
       const res = await adminApiFetch<{ data: AdminUser }>('/auth/me');
       if (res.data.role !== 'ADMIN') {
-        throw new Error('非管理員帳號');
+        throw new Error('此帳號不具有管理員權限');
       }
       setUser(res.data);
-    } catch {
+    } catch (err) {
       setUser(null);
       localStorage.removeItem('admin_accessToken');
       localStorage.removeItem('admin_refreshToken');
+      if (throwOnError) throw err;
     }
   }, []);
 
@@ -70,7 +71,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const setTokens = async (accessToken: string, refreshToken: string) => {
     localStorage.setItem('admin_accessToken', accessToken);
     localStorage.setItem('admin_refreshToken', refreshToken);
-    await fetchMe();
+    await fetchMe(true);
   };
 
   const logout = () => {
