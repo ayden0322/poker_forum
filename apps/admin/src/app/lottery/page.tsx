@@ -164,6 +164,7 @@ export default function LotteryAdminPage() {
         }}
         size="middle"
         locale={{ emptyText: '尚無開獎資料，請點擊「同步」抓取' }}
+        scroll={{ x: 800 }}
       />
     </div>
   );

@@ -146,6 +146,7 @@ export default function BannedIpsPage() {
         pagination={{ pageSize: 20, showTotal: (total) => `共 ${total} 個` }}
         size="middle"
         locale={{ emptyText: '目前沒有封鎖的 IP' }}
+        scroll={{ x: 600 }}
       />
 
       <Modal

@@ -75,7 +75,7 @@ export default function MarqueePage() {
         <h2 style={{ fontSize: 20, fontWeight: 'bold' }}>跑馬燈管理</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增</Button>
       </div>
-      <Table columns={columns} dataSource={data?.data} rowKey="id" loading={isLoading} pagination={false} size="middle" />
+      <Table columns={columns} dataSource={data?.data} rowKey="id" loading={isLoading} pagination={false} size="middle" scroll={{ x: 600 }} />
       <Modal
         title={editing ? '編輯跑馬燈' : '新增跑馬燈'}
         open={modalOpen}

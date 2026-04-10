@@ -141,6 +141,7 @@ export default function BoardsPage() {
         loading={isLoading}
         pagination={false}
         size="middle"
+        scroll={{ x: 600 }}
       />
 
       <Modal
@@ -152,6 +153,7 @@ export default function BoardsPage() {
         okText="儲存"
         cancelText="取消"
         width={520}
+        styles={{ wrapper: { maxWidth: '100vw' } }}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item label="分類" name="categoryId" rules={[{ required: true, message: '請選擇分類' }]}>

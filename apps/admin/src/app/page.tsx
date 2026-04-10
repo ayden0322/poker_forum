@@ -26,8 +26,8 @@ export default function DashboardPage() {
   return (
     <div>
       <h1 style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 24 }}>儀表板</h1>
-      <Row gutter={16}>
-        <Col span={6}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
               title="今日新文章"
@@ -37,7 +37,7 @@ export default function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
               title="今日新會員"
@@ -47,7 +47,7 @@ export default function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
               title="累計文章數"
@@ -56,7 +56,7 @@ export default function DashboardPage() {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
               title="累計會員數"

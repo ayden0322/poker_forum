@@ -67,7 +67,7 @@ export default function TagsPage() {
         <h2 style={{ fontSize: 20, fontWeight: 'bold' }}>標籤管理</h2>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增標籤</Button>
       </div>
-      <Table columns={columns} dataSource={data?.data} rowKey="id" loading={isLoading} pagination={false} size="middle" />
+      <Table columns={columns} dataSource={data?.data} rowKey="id" loading={isLoading} pagination={false} size="middle" scroll={{ x: 400 }} />
       <Modal
         title={editing ? '編輯標籤' : '新增標籤'}
         open={modalOpen}

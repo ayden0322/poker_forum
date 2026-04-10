@@ -142,7 +142,7 @@ export default function SettingsPage() {
           {/* 頭像上傳 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">頭像</label>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-4">
               {/* 頭像預覽 */}
               <div
                 className="w-20 h-20 rounded-full bg-gray-100 border-2 border-gray-200 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-blue-400 transition-colors"

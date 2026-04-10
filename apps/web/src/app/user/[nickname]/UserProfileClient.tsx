@@ -101,7 +101,7 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
     <div className="max-w-4xl mx-auto">
       {/* 個人資料卡片 */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
-        <div className="flex items-start gap-6">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
           <div className="flex-shrink-0">
             {profile.avatar ? (
               <Image src={profile.avatar} alt={profile.nickname} width={80} height={80} className="rounded-full" />
@@ -124,7 +124,7 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
                 <span className="px-2.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">版主</span>
               )}
             </div>
-            <div className="flex gap-6 mt-3 text-sm text-gray-500">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm text-gray-500">
               <span><strong className="text-gray-900">{profile.postCount}</strong> 篇文章</span>
               <span><strong className="text-gray-900">{profile.followerCount}</strong> 位追蹤者</span>
               <span>追蹤 <strong className="text-gray-900">{profile.followingCount}</strong> 人</span>

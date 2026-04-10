@@ -121,7 +121,7 @@ export default function PostsPage() {
         <h2 style={{ fontSize: 20, fontWeight: 'bold' }}>文章管理</h2>
         <Input.Search
           placeholder="搜尋標題 / 作者"
-          style={{ width: 250 }}
+          style={{ width: 250, maxWidth: '100%' }}
           onSearch={(v) => { setSearch(v); setPage(1); }}
           allowClear
           enterButton
@@ -141,6 +141,7 @@ export default function PostsPage() {
           showTotal: (total) => `共 ${total} 篇文章`,
         }}
         size="middle"
+        scroll={{ x: 900 }}
       />
 
       {/* 文章內容預覽 Drawer */}
@@ -149,6 +150,7 @@ export default function PostsPage() {
         open={!!previewPost}
         onClose={() => setPreviewPost(null)}
         width={520}
+        styles={{ wrapper: { maxWidth: '100vw' } }}
       >
         {previewPost && (
           <div>

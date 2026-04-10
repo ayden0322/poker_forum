@@ -126,6 +126,7 @@ export default function AnnouncementsPage() {
           showTotal: (total) => `共 ${total} 篇公告`,
         }}
         size="middle"
+        scroll={{ x: 800 }}
       />
     </div>
   );

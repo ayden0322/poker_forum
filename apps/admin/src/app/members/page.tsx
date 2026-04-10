@@ -247,14 +247,14 @@ export default function MembersPage() {
       <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Input.Search
           placeholder="搜尋暱稱 / 帳號"
-          style={{ width: 220 }}
+          style={{ width: 220, maxWidth: '100%' }}
           onSearch={(v) => { setSearch(v); setPage(1); }}
           allowClear
           enterButton
         />
         <Select
           placeholder="狀態篩選"
-          style={{ width: 130 }}
+          style={{ width: 130, maxWidth: '100%' }}
           value={statusFilter || undefined}
           onChange={(v) => { setStatusFilter(v ?? ''); setPage(1); }}
           allowClear
@@ -262,13 +262,13 @@ export default function MembersPage() {
         />
         <Select
           placeholder="角色篩選"
-          style={{ width: 130 }}
+          style={{ width: 130, maxWidth: '100%' }}
           value={roleFilter || undefined}
           onChange={(v) => { setRoleFilter(v ?? ''); setPage(1); }}
           allowClear
           options={ROLE_OPTIONS}
         />
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Tag icon={<CheckCircleOutlined />} color="success">正常</Tag>
           <Tag icon={<StopOutlined />} color="warning">停權</Tag>
           <Tag icon={<StopOutlined />} color="error">封禁</Tag>
@@ -288,6 +288,7 @@ export default function MembersPage() {
           showTotal: (total) => `共 ${total} 位會員`,
         }}
         size="middle"
+        scroll={{ x: 800 }}
       />
 
       {/* 編輯 Modal */}
@@ -316,6 +317,7 @@ export default function MembersPage() {
         open={!!detailMember}
         onClose={() => setDetailMember(null)}
         width={440}
+        styles={{ wrapper: { maxWidth: '100vw' } }}
       >
         {detailMember && (
           <div>

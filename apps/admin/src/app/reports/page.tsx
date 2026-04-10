@@ -111,6 +111,7 @@ export default function ReportsPage() {
         loading={isLoading}
         pagination={{ current: page, pageSize: 20, total: data?.data.total ?? 0, onChange: setPage, showTotal: (t) => `共 ${t} 筆` }}
         size="middle"
+        scroll={{ x: 700 }}
       />
 
       {/* 內容預覽 Modal */}
@@ -119,6 +120,7 @@ export default function ReportsPage() {
         open={!!previewReport}
         onCancel={() => setPreviewReport(null)}
         width={640}
+        styles={{ wrapper: { maxWidth: '100vw' } }}
         footer={previewReport?.status === 'PENDING' ? (
           <Space>
             <Popconfirm
