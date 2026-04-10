@@ -219,6 +219,7 @@ export default function RichTextEditor({
   minHeight = '200px',
 }: RichTextEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const gifBtnRef = useRef<HTMLDivElement>(null);
   const [uploading, setUploading] = useState(false);
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
   const savedSelectionRef = useRef<number | null>(null);
@@ -564,7 +565,7 @@ export default function RichTextEditor({
         </ToolbarButton>
 
         {/* GIF 選擇器 */}
-        <div className="relative">
+        <div ref={gifBtnRef}>
           <ToolbarButton
             onClick={() => setGifPickerOpen(!gifPickerOpen)}
             title="插入 GIF"
@@ -575,6 +576,7 @@ export default function RichTextEditor({
             <GifPicker
               onSelect={handleGifSelect}
               onClose={() => setGifPickerOpen(false)}
+              anchorRef={gifBtnRef}
             />
           )}
         </div>

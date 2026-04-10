@@ -1,15 +1,17 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { searchGifs, getFeaturedGifs, type TenorGif } from '@/lib/tenor';
 import { GIF_CATEGORIES } from '@/data/defaultGifs';
 
 interface GifPickerProps {
   onSelect: (gifUrl: string) => void;
   onClose: () => void;
+  anchorRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
+export default function GifPicker({ onSelect, onClose, anchorRef }: GifPickerProps) {
   const ref = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -20,6 +22,26 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
   const [loading, setLoading] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+
+  // 根據按鈕位置計算彈窗定位
+  useEffect(() => {
+    const updatePos = () => {
+      if (!anchorRef.current) return;
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPos({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+      });
+    };
+    updatePos();
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+    };
+  }, [anchorRef]);
 
   // 點擊外部關閉
   useEffect(() => {
@@ -91,11 +113,11 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
     loadGifs(searchTerm, true, offset);
   };
 
-  return (
+  return createPortal(
     <div
       ref={ref}
-      className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 flex flex-col"
-      style={{ width: '360px', maxHeight: '480px' }}
+      className="bg-white border border-gray-200 rounded-xl shadow-xl z-50 flex flex-col"
+      style={{ position: 'absolute', top: pos.top, left: pos.left, width: '360px', maxHeight: '480px' }}
     >
       {/* 搜尋框 */}
       <div className="p-3 border-b border-gray-100">
@@ -182,6 +204,7 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
       <div className="px-3 py-1.5 border-t border-gray-100 text-center">
         <span className="text-[10px] text-gray-400">Powered by Tenor</span>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
