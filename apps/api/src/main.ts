@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { execSync } from 'child_process';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
@@ -49,6 +50,9 @@ async function bootstrap() {
 
   // 全域前綴
   app.setGlobalPrefix('api');
+
+  // Cookie 解析（OAuth admin 來源判斷用）
+  app.use(cookieParser());
 
   // 安全 Header
   app.use(helmet());

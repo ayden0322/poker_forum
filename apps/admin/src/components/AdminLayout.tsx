@@ -14,6 +14,7 @@ import {
   StopOutlined,
   ThunderboltOutlined,
   LogoutOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAdminAuth } from '@/context/auth';
@@ -32,6 +33,7 @@ const menuItems = [
   { key: '/reports', icon: <FlagOutlined />, label: '檢舉管理' },
   { key: '/banned-ips', icon: <StopOutlined />, label: '封鎖 IP' },
   { key: '/lottery', icon: <ThunderboltOutlined />, label: '彩券管理' },
+  { key: '/feedbacks', icon: <MessageOutlined />, label: '意見回報' },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -40,14 +42,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, isLoading, isAuthenticated, logout } = useAdminAuth();
 
+  const isPublicPage = pathname === '/login' || pathname === '/auth/callback';
+
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && pathname !== '/login') {
+    if (!isLoading && !isAuthenticated && !isPublicPage) {
       router.replace('/login');
     }
-  }, [isLoading, isAuthenticated, pathname, router]);
+  }, [isLoading, isAuthenticated, isPublicPage, pathname, router]);
 
-  // 登入頁不套用後台 layout
-  if (pathname === '/login') {
+  // 登入頁 / OAuth callback 不套用後台 layout
+  if (isPublicPage) {
     return <>{children}</>;
   }
 
@@ -76,7 +80,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
+        breakpoint="lg"
+        collapsedWidth={0}
         theme="dark"
+        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}
       >
         <div style={{
           height: 64,
@@ -99,11 +106,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       <Layout>
         <Header style={{
           background: '#fff',
-          padding: '0 24px',
+          padding: '0 16px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
           boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+          height: 'auto',
+          minHeight: 64,
+          flexWrap: 'wrap',
         }}>
           <Space size="middle">
             <Space>
@@ -120,7 +130,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </Button>
           </Space>
         </Header>
-        <Content style={{ margin: 24, padding: 24, background: '#fff', borderRadius: 8 }}>
+        <Content style={{ margin: '16px 8px', padding: '16px 12px', background: '#fff', borderRadius: 8, overflow: 'auto' }}>
           {children}
         </Content>
       </Layout>

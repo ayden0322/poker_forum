@@ -16,6 +16,7 @@ interface AdminAuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (account: string, password: string) => Promise<void>;
+  setTokens: (accessToken: string, refreshToken: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -66,6 +67,12 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.data.user);
   };
 
+  const setTokens = async (accessToken: string, refreshToken: string) => {
+    localStorage.setItem('admin_accessToken', accessToken);
+    localStorage.setItem('admin_refreshToken', refreshToken);
+    await fetchMe();
+  };
+
   const logout = () => {
     localStorage.removeItem('admin_accessToken');
     localStorage.removeItem('admin_refreshToken');
@@ -79,6 +86,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!user,
         login,
+        setTokens,
         logout,
       }}
     >
