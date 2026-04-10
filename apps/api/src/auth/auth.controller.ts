@@ -8,7 +8,6 @@ import {
   Res,
   HttpCode,
   HttpStatus,
-  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -102,18 +101,11 @@ export class AuthController {
   }
 
   // ===== Google OAuth =====
-  @Get('google/admin')
-  @ApiOperation({ summary: 'Google OAuth 登入（管理後台）' })
-  googleAdminInit(@Res() res: Response) {
-    res.cookie('oauth_from', 'admin', { maxAge: 300000, httpOnly: true, sameSite: 'lax' });
-    res.redirect('/api/auth/google');
-  }
-
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth 登入導向' })
+  @ApiOperation({ summary: 'Google OAuth 登入導向（?from=admin 可從後台發起）' })
   googleAuth() {
-    // Passport 自動處理導向
+    // Passport 自動處理導向；middleware 已根據 ?from=admin 設定 cookie
   }
 
   @Get('google/callback')
@@ -141,17 +133,12 @@ export class AuthController {
   }
 
   // ===== LINE OAuth =====
-  @Get('line/admin')
-  @ApiOperation({ summary: 'LINE OAuth 登入（管理後台）' })
-  lineAdminInit(@Res() res: Response) {
-    res.cookie('oauth_from', 'admin', { maxAge: 300000, httpOnly: true, sameSite: 'lax' });
-    res.redirect('/api/auth/line');
-  }
-
   @Get('line')
   @UseGuards(AuthGuard('line'))
-  @ApiOperation({ summary: 'LINE OAuth 登入導向' })
-  lineAuth() {}
+  @ApiOperation({ summary: 'LINE OAuth 登入導向（?from=admin 可從後台發起）' })
+  lineAuth() {
+    // Passport 自動處理導向；middleware 已根據 ?from=admin 設定 cookie
+  }
 
   @Get('line/callback')
   @UseGuards(AuthGuard('line'))

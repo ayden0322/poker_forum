@@ -54,6 +54,20 @@ async function bootstrap() {
   // Cookie 解析（OAuth admin 來源判斷用）
   app.use(cookieParser());
 
+  // OAuth 來源追蹤：每次 OAuth 發起時根據 ?from=admin 明確設定或清除 cookie
+  // 避免殘留 cookie 導致前台 OAuth 被錯誤導向後台
+  app.use((req: any, res: any, next: any) => {
+    const oauthInitPaths = ['/api/auth/google', '/api/auth/line', '/api/auth/facebook'];
+    if (oauthInitPaths.includes(req.path)) {
+      if (req.query.from === 'admin') {
+        res.cookie('oauth_from', 'admin', { maxAge: 300000, httpOnly: true, sameSite: 'lax' });
+      } else {
+        res.clearCookie('oauth_from');
+      }
+    }
+    next();
+  });
+
   // 安全 Header
   app.use(helmet());
 
