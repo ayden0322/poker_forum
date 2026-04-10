@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
-import { Role, UserStatus } from '@betting-forum/database';
+import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
 
 @Injectable()
 export class AdminService {
@@ -336,5 +336,104 @@ export class AdminService {
     const record = await this.prisma.bannedIp.findUnique({ where: { id } });
     if (!record) throw new NotFoundException('找不到此封鎖記錄');
     return this.prisma.bannedIp.delete({ where: { id } });
+  }
+
+  // ===== 意見回報管理 =====
+  async getFeedbacks(params: {
+    page: number;
+    limit: number;
+    type?: FeedbackType;
+    status?: FeedbackStatus;
+  }) {
+    const { page, limit, type, status } = params;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      ...(type && { type }),
+      ...(status && { status }),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.feedback.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          author: { select: { id: true, nickname: true, avatar: true } },
+          _count: { select: { replies: true } },
+        },
+      }),
+      this.prisma.feedback.count({ where }),
+    ]);
+
+    return {
+      items: items.map(({ _count, ...f }) => ({
+        ...f,
+        replyCount: _count.replies,
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getFeedbackById(id: string) {
+    const feedback = await this.prisma.feedback.findUnique({
+      where: { id },
+      include: {
+        author: { select: { id: true, nickname: true, avatar: true } },
+        replies: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            author: { select: { id: true, nickname: true, avatar: true } },
+          },
+        },
+      },
+    });
+    if (!feedback) throw new NotFoundException('找不到此回報');
+    return feedback;
+  }
+
+  async createFeedback(authorId: string, data: { type: FeedbackType; title: string; content: string }) {
+    return this.prisma.feedback.create({
+      data: { ...data, authorId },
+      include: {
+        author: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
+  }
+
+  async updateFeedbackStatus(id: string, status: FeedbackStatus) {
+    const feedback = await this.prisma.feedback.findUnique({ where: { id } });
+    if (!feedback) throw new NotFoundException('找不到此回報');
+    return this.prisma.feedback.update({
+      where: { id },
+      data: { status },
+    });
+  }
+
+  async deleteFeedback(id: string) {
+    const feedback = await this.prisma.feedback.findUnique({ where: { id } });
+    if (!feedback) throw new NotFoundException('找不到此回報');
+    await this.prisma.feedback.delete({ where: { id } });
+    return { success: true };
+  }
+
+  async createFeedbackReply(feedbackId: string, authorId: string, content: string) {
+    const feedback = await this.prisma.feedback.findUnique({ where: { id: feedbackId } });
+    if (!feedback) throw new NotFoundException('找不到此回報');
+    return this.prisma.feedbackReply.create({
+      data: { feedbackId, authorId, content },
+      include: {
+        author: { select: { id: true, nickname: true, avatar: true } },
+      },
+    });
   }
 }

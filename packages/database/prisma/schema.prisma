@@ -24,16 +24,18 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  oauthProviders OAuthProvider[]
-  posts          Post[]
-  replies        Reply[]
-  pushes         Push[]
-  followers      Follow[]       @relation("following")
-  following      Follow[]       @relation("follower")
-  bookmarks      Bookmark[]
-  notifications  Notification[]
-  reports        Report[]       @relation("reporter")
-  passwordResets PasswordReset[]
+  oauthProviders  OAuthProvider[]
+  posts           Post[]
+  replies         Reply[]
+  pushes          Push[]
+  followers       Follow[]         @relation("following")
+  following       Follow[]         @relation("follower")
+  bookmarks       Bookmark[]
+  notifications   Notification[]
+  reports         Report[]         @relation("reporter")
+  passwordResets  PasswordReset[]
+  feedbacks       Feedback[]       @relation("FeedbackAuthor")
+  feedbackReplies FeedbackReply[]  @relation("FeedbackReplyAuthor")
 
   @@map("users")
 }
@@ -289,6 +291,51 @@ model Marquee {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("marquees")
+}
+
+// ===== 意見回報 =====
+model Feedback {
+  id        String         @id @default(cuid())
+  authorId  String         @map("author_id")
+  author    User           @relation("FeedbackAuthor", fields: [authorId], references: [id])
+  type      FeedbackType
+  title     String
+  content   String         @db.Text
+  status    FeedbackStatus @default(PENDING)
+  replies   FeedbackReply[]
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@index([authorId])
+  @@index([status])
+  @@index([type])
+  @@map("feedbacks")
+}
+
+model FeedbackReply {
+  id         String   @id @default(cuid())
+  feedbackId String   @map("feedback_id")
+  feedback   Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorId   String   @map("author_id")
+  author     User     @relation("FeedbackReplyAuthor", fields: [authorId], references: [id])
+  content    String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([feedbackId])
+  @@map("feedback_replies")
+}
+
+enum FeedbackType {
+  BUG
+  SUGGESTION
+}
+
+enum FeedbackStatus {
+  PENDING
+  REVIEWING
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
 }
 
 // ===== 密碼重設 =====

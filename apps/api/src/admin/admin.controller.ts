@@ -16,7 +16,8 @@ import { AdminService } from './admin.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role, UserStatus } from '@betting-forum/database';
+import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -251,5 +252,57 @@ export class AdminController {
   async removeBannedIp(@Param('id') id: string) {
     await this.adminService.removeBannedIp(id);
     return { data: { success: true } };
+  }
+
+  // ===== 意見回報管理 =====
+  @Get('feedbacks')
+  async getFeedbacks(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('type') type?: FeedbackType,
+    @Query('status') status?: FeedbackStatus,
+  ) {
+    const data = await this.adminService.getFeedbacks({ page, limit, type, status });
+    return { data };
+  }
+
+  @Get('feedbacks/:id')
+  async getFeedbackById(@Param('id') id: string) {
+    const data = await this.adminService.getFeedbackById(id);
+    return { data };
+  }
+
+  @Post('feedbacks')
+  async createFeedback(
+    @CurrentUser('id') userId: string,
+    @Body() body: { type: FeedbackType; title: string; content: string },
+  ) {
+    const data = await this.adminService.createFeedback(userId, body);
+    return { data };
+  }
+
+  @Patch('feedbacks/:id/status')
+  async updateFeedbackStatus(
+    @Param('id') id: string,
+    @Body('status') status: FeedbackStatus,
+  ) {
+    const data = await this.adminService.updateFeedbackStatus(id, status);
+    return { data };
+  }
+
+  @Delete('feedbacks/:id')
+  async deleteFeedback(@Param('id') id: string) {
+    await this.adminService.deleteFeedback(id);
+    return { data: { success: true } };
+  }
+
+  @Post('feedbacks/:id/replies')
+  async createFeedbackReply(
+    @Param('id') id: string,
+    @CurrentUser('id') userId: string,
+    @Body('content') content: string,
+  ) {
+    const data = await this.adminService.createFeedbackReply(id, userId, content);
+    return { data };
   }
 }
