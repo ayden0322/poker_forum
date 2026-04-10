@@ -73,6 +73,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
+      - MINIO_PUBLIC_URL=http://localhost:9100
     volumes:
       - .:/app
       - node_modules:/app/node_modules
