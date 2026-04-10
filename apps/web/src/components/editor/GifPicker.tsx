@@ -18,7 +18,7 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
   const [activeCategory, setActiveCategory] = useState('trending');
   const [gifs, setGifs] = useState<TenorGif[]>([]);
   const [loading, setLoading] = useState(false);
-  const [nextPos, setNextPos] = useState<string>('');
+  const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
   // 點擊外部關閉
@@ -40,16 +40,17 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
   }, [onClose]);
 
   // 載入 GIF
-  const loadGifs = useCallback(async (searchQuery: string, append = false, pos?: string) => {
+  const loadGifs = useCallback(async (searchQuery: string, append = false, currentOffset = 0) => {
     setLoading(true);
     try {
       const res = searchQuery
-        ? await searchGifs(searchQuery, 20, pos)
-        : await getFeaturedGifs(20, pos);
+        ? await searchGifs(searchQuery, 20, String(currentOffset))
+        : await getFeaturedGifs(20, String(currentOffset));
 
       setGifs((prev) => append ? [...prev, ...res.results] : res.results);
-      setNextPos(res.next || '');
-      setHasMore(!!res.next && res.results.length >= 20);
+      const newOffset = currentOffset + res.results.length;
+      setOffset(newOffset);
+      setHasMore(res.results.length >= 20);
     } catch {
       // API 失敗時靜默處理
     } finally {
@@ -62,7 +63,8 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
     const category = GIF_CATEGORIES.find((c) => c.id === activeCategory);
     const searchTerm = category?.searchTerm || '';
     setQuery('');
-    loadGifs(searchTerm);
+    setOffset(0);
+    loadGifs(searchTerm, false, 0);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [activeCategory, loadGifs]);
 
@@ -73,7 +75,8 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
     debounceRef.current = setTimeout(() => {
       if (value.trim()) {
         setActiveCategory('');
-        loadGifs(value.trim());
+        setOffset(0);
+        loadGifs(value.trim(), false, 0);
       } else {
         setActiveCategory('trending');
       }
@@ -82,10 +85,10 @@ export default function GifPicker({ onSelect, onClose }: GifPickerProps) {
 
   // 載入更多
   const loadMore = () => {
-    if (loading || !nextPos) return;
+    if (loading) return;
     const category = GIF_CATEGORIES.find((c) => c.id === activeCategory);
     const searchTerm = query.trim() || category?.searchTerm || '';
-    loadGifs(searchTerm, true, nextPos);
+    loadGifs(searchTerm, true, offset);
   };
 
   return (

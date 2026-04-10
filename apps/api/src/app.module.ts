@@ -14,6 +14,7 @@ import { TagsModule } from './tags/tags.module';
 import { AdminModule } from './admin/admin.module';
 import { LotteryModule } from './lottery/lottery.module';
 import { UploadModule } from './upload/upload.module';
+import { GifsModule } from './gifs/gifs.module';
 import { PrismaModule } from './common/prisma.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
@@ -41,6 +42,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     AdminModule,
     LotteryModule,
     UploadModule,
+    GifsModule,
     ScheduleModule.forRoot(),
   ],
   providers: [
