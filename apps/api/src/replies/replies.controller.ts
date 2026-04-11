@@ -7,6 +7,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RepliesService } from './replies.service';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PhoneVerifiedGuard } from '../common/guards/phone-verified.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('replies')
@@ -27,7 +28,7 @@ export class RepliesController {
 
   /** 新增回覆 */
   @Post('posts/:postId/replies')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PhoneVerifiedGuard)
   @ApiBearerAuth()
   async create(
     @Param('postId') postId: string,
@@ -40,7 +41,7 @@ export class RepliesController {
 
   /** 編輯回覆 */
   @Patch('replies/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PhoneVerifiedGuard)
   @ApiBearerAuth()
   async update(
     @Param('id') id: string,

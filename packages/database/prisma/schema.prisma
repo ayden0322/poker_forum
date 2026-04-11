@@ -11,31 +11,38 @@ datasource db {
 
 // ===== 會員 =====
 model User {
-  id           String     @id @default(cuid())
-  nickname     String     @unique
-  account      String?    @unique
-  passwordHash String?    @map("password_hash")
-  email        String?    @unique
-  avatar       String?
-  level        Int        @default(1)
-  role         Role       @default(USER)
-  status       UserStatus @default(ACTIVE)
-  lastLoginIp  String?    @map("last_login_ip")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  id              String     @id @default(cuid())
+  nickname        String     @unique
+  account         String?    @unique
+  passwordHash    String?    @map("password_hash")
+  email           String?    @unique
+  avatar          String?
+  level           Int        @default(1)
+  role            Role       @default(USER)
+  status          UserStatus @default(ACTIVE)
+  lastLoginIp     String?    @map("last_login_ip")
+  lastLoginAt     DateTime?  @map("last_login_at")
+  phone           String?    @unique
+  phoneVerified   Boolean    @default(false) @map("phone_verified")
+  phoneVerifiedAt DateTime?  @map("phone_verified_at")
+  phoneChangedAt  DateTime?  @map("phone_changed_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
 
-  oauthProviders  OAuthProvider[]
-  posts           Post[]
-  replies         Reply[]
-  pushes          Push[]
-  followers       Follow[]         @relation("following")
-  following       Follow[]         @relation("follower")
-  bookmarks       Bookmark[]
-  notifications   Notification[]
-  reports         Report[]         @relation("reporter")
-  passwordResets  PasswordReset[]
-  feedbacks       Feedback[]       @relation("FeedbackAuthor")
-  feedbackReplies FeedbackReply[]  @relation("FeedbackReplyAuthor")
+  oauthProviders     OAuthProvider[]
+  posts              Post[]
+  replies            Reply[]
+  pushes             Push[]
+  followers          Follow[]            @relation("following")
+  following          Follow[]            @relation("follower")
+  bookmarks          Bookmark[]
+  notifications      Notification[]
+  reports            Report[]            @relation("reporter")
+  passwordResets     PasswordReset[]
+  feedbacks          Feedback[]          @relation("FeedbackAuthor")
+  feedbackReplies    FeedbackReply[]     @relation("FeedbackReplyAuthor")
+  phoneVerifications PhoneVerification[]
+  emailVerifications EmailVerification[]
 
   @@map("users")
 }
@@ -350,4 +357,66 @@ model PasswordReset {
 
   @@index([userId])
   @@map("password_resets")
+}
+
+// ===== 手機驗證 =====
+model PhoneVerification {
+  id         String        @id @default(cuid())
+  userId     String        @map("user_id")
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone      String
+  codeHash   String        @map("code_hash")
+  purpose    VerifyPurpose
+  attempts   Int           @default(0)
+  expiresAt  DateTime      @map("expires_at")
+  consumedAt DateTime?     @map("consumed_at")
+  ip         String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  @@index([userId, purpose])
+  @@index([phone])
+  @@map("phone_verifications")
+}
+
+enum VerifyPurpose {
+  BIND
+  CHANGE
+}
+
+// ===== Email 驗證（用於換綁手機等情境） =====
+model EmailVerification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String           @unique
+  purpose   EmailVerifyPurpose
+  expiresAt DateTime         @map("expires_at")
+  usedAt    DateTime?        @map("used_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  @@index([userId, purpose])
+  @@map("email_verifications")
+}
+
+enum EmailVerifyPurpose {
+  PHONE_CHANGE
+}
+
+// ===== 簡訊服務商設定（後台可編輯） =====
+model SmsProviderConfig {
+  id           String   @id @default(cuid())
+  providerCode String   @unique @map("provider_code")
+  displayName  String   @map("display_name")
+  enabled      Boolean  @default(false)
+  apiEndpoint  String   @map("api_endpoint")
+  apiKeyEnc    String   @map("api_key_enc")
+  apiSecretEnc String?  @map("api_secret_enc")
+  senderId     String?  @map("sender_id")
+  templateId   String?  @map("template_id")
+  extraConfig  Json?    @map("extra_config")
+  updatedBy    String?  @map("updated_by")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("sms_provider_configs")
 }

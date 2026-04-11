@@ -15,6 +15,8 @@ import { AdminModule } from './admin/admin.module';
 import { LotteryModule } from './lottery/lottery.module';
 import { UploadModule } from './upload/upload.module';
 import { GifsModule } from './gifs/gifs.module';
+import { MailModule } from './mail/mail.module';
+import { VerificationModule } from './verification/verification.module';
 import { PrismaModule } from './common/prisma.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
@@ -43,6 +45,8 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     LotteryModule,
     UploadModule,
     GifsModule,
+    MailModule,
+    VerificationModule,
     ScheduleModule.forRoot(),
   ],
   providers: [

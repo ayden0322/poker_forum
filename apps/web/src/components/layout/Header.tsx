@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/auth';
 import { LoginModal } from '@/components/auth/LoginModal';
+import { PhoneVerifyModal } from '@/components/auth/PhoneVerifyModal';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 
@@ -47,7 +48,7 @@ const navItems: NavItem[] = [
 ];
 
 export function Header() {
-  const { user, accessToken, logout, showLoginModal, closeLoginModal } = useAuth();
+  const { user, accessToken, logout, showLoginModal, closeLoginModal, showPhoneVerifyModal, closePhoneVerifyModal } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
   // 合併 context 與 local 的登入 Modal 狀態
   const isLoginVisible = showLogin || showLoginModal;
@@ -328,6 +329,11 @@ export function Header() {
           onClose={handleCloseLogin}
           onSwitchToRegister={() => { handleCloseLogin(); router.push('/register'); }}
         />
+      )}
+
+      {/* 手機驗證 Modal — 由 requirePhoneVerified() 或 403 攔截觸發 */}
+      {showPhoneVerifyModal && (
+        <PhoneVerifyModal onClose={closePhoneVerifyModal} />
       )}
 
       {/* 點擊外部關閉用戶選單 */}

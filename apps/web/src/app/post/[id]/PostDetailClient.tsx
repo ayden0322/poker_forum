@@ -52,7 +52,7 @@ const ROLE_BADGES: Record<string, { label: string; color: string }> = {
 };
 
 export default function PostDetailClient({ post }: { post: PostData }) {
-  const { user, accessToken: token, requireLogin } = useAuth();
+  const { user, accessToken: token, requireLogin, requirePhoneVerified } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
   const [replyContent, setReplyContent] = useState('');
@@ -144,6 +144,8 @@ export default function PostDetailClient({ post }: { post: PostData }) {
   const handleReply = (e: React.FormEvent) => {
     e.preventDefault();
     if (isReplyEmpty) return;
+    if (!requireLogin()) return;
+    if (!requirePhoneVerified()) return;
     replyMutation.mutate({
       content: replyContent,
       ...(quotedReplyId ? { quotedReplyId } : {}),

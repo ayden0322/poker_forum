@@ -72,8 +72,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
       });
 
       if (!retryRes.ok) {
-        const errorBody = await retryRes.json().catch(() => ({ message: '請求失敗' })) as { message?: string };
-        throw new Error(errorBody.message || `HTTP ${retryRes.status}`);
+        throw await parseApiError(retryRes);
       }
 
       return retryRes.json() as Promise<T>;
@@ -86,9 +85,42 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
   }
 
   if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({ message: '請求失敗' })) as { message?: string };
-    throw new Error(errorBody.message || `HTTP ${res.status}`);
+    throw await parseApiError(res);
   }
 
   return res.json() as Promise<T>;
+}
+
+export class ApiError extends Error {
+  code?: string;
+  status: number;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+async function parseApiError(res: Response): Promise<ApiError> {
+  const body = (await res.json().catch(() => ({}))) as {
+    message?: string | { code?: string; message?: string };
+    code?: string;
+  };
+  // NestJS ForbiddenException 傳 object 會包在 message 裡
+  let code: string | undefined = body.code;
+  let message = '請求失敗';
+  if (typeof body.message === 'string') {
+    message = body.message;
+  } else if (body.message && typeof body.message === 'object') {
+    code = body.message.code || code;
+    message = body.message.message || message;
+  }
+  const err = new ApiError(message || `HTTP ${res.status}`, res.status, code);
+
+  // 全域廣播手機驗證要求事件，讓 UI 攔截
+  if (typeof window !== 'undefined' && code === 'PHONE_VERIFICATION_REQUIRED') {
+    window.dispatchEvent(new CustomEvent('auth:phone-verification-required'));
+  }
+  return err;
 }

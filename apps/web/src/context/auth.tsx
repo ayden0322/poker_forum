@@ -9,6 +9,8 @@ interface AuthUser {
   role: string;
   avatar: string | null;
   level: number;
+  phone?: string | null;
+  phoneVerified?: boolean;
 }
 
 interface AuthContextValue {
@@ -22,6 +24,13 @@ interface AuthContextValue {
   requireLogin: () => boolean;
   showLoginModal: boolean;
   closeLoginModal: () => void;
+  /** 需要完成手機驗證才能動作。回傳 false 並彈出驗證 Modal */
+  requirePhoneVerified: () => boolean;
+  showPhoneVerifyModal: boolean;
+  openPhoneVerifyModal: () => void;
+  closePhoneVerifyModal: () => void;
+  /** 驗證成功後由 Modal 呼叫，重新載入使用者狀態 */
+  refreshMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -31,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showPhoneVerifyModal, setShowPhoneVerifyModal] = useState(false);
 
   const fetchMe = useCallback(async (token: string) => {
     try {
@@ -59,7 +69,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAccessToken(null);
     };
     window.addEventListener('auth:logout', handleLogout);
-    return () => window.removeEventListener('auth:logout', handleLogout);
+
+    // 監聽後端 403 PHONE_VERIFICATION_REQUIRED 自動開 Modal
+    const handlePhoneVerifyRequired = () => setShowPhoneVerifyModal(true);
+    window.addEventListener('auth:phone-verification-required', handlePhoneVerifyRequired);
+
+    return () => {
+      window.removeEventListener('auth:logout', handleLogout);
+      window.removeEventListener('auth:phone-verification-required', handlePhoneVerifyRequired);
+    };
   }, [fetchMe]);
 
   const login = async (account: string, password: string) => {
@@ -98,8 +116,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setShowLoginModal(false);
   }, []);
 
+  const requirePhoneVerified = useCallback(() => {
+    if (!user) {
+      setShowLoginModal(true);
+      return false;
+    }
+    if (user.phoneVerified) return true;
+    setShowPhoneVerifyModal(true);
+    return false;
+  }, [user]);
+
+  const openPhoneVerifyModal = useCallback(() => setShowPhoneVerifyModal(true), []);
+  const closePhoneVerifyModal = useCallback(() => setShowPhoneVerifyModal(false), []);
+
+  const refreshMe = useCallback(async () => {
+    const token = localStorage.getItem('accessToken');
+    if (token) await fetchMe(token);
+  }, [fetchMe]);
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, isLoading, login, logout, setTokens, requireLogin, showLoginModal, closeLoginModal }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        accessToken,
+        isLoading,
+        login,
+        logout,
+        setTokens,
+        requireLogin,
+        showLoginModal,
+        closeLoginModal,
+        requirePhoneVerified,
+        showPhoneVerifyModal,
+        openPhoneVerifyModal,
+        closePhoneVerifyModal,
+        refreshMe,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

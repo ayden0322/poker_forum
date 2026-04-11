@@ -26,7 +26,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, nickname: true, role: true, status: true },
+      select: {
+        id: true,
+        nickname: true,
+        role: true,
+        status: true,
+        phoneVerified: true,
+        phone: true,
+      },
     });
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('帳號已停用或不存在');

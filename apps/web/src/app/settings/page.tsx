@@ -9,8 +9,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api';
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
+function maskPhone(phone?: string | null): string {
+  if (!phone) return '—';
+  return phone.replace(/(\+886)(\d{1})(\d{4})(\d{3})/, '$1$2****$4');
+}
+
 export default function SettingsPage() {
-  const { user, accessToken, isLoading: authLoading, logout } = useAuth();
+  const { user, accessToken, isLoading: authLoading, logout, openPhoneVerifyModal } = useAuth();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -134,6 +139,33 @@ export default function SettingsPage() {
             <div className="flex">
               <span className="w-20 text-gray-500">等級</span>
               <span className="font-medium text-gray-900">Lv.{user.level}</span>
+            </div>
+            <div className="flex items-center">
+              <span className="w-20 text-gray-500">手機驗證</span>
+              {user.phoneVerified ? (
+                <>
+                  <span className="font-medium text-gray-900">{maskPhone(user.phone)}</span>
+                  <span className="ml-2 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded">已驗證</span>
+                  <button
+                    type="button"
+                    onClick={() => router.push('/settings/phone/change')}
+                    className="ml-auto text-xs text-blue-600 hover:underline"
+                  >
+                    更換手機
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded">尚未驗證</span>
+                  <button
+                    type="button"
+                    onClick={openPhoneVerifyModal}
+                    className="ml-auto text-xs text-blue-600 hover:underline"
+                  >
+                    立即驗證
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

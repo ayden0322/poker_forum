@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { execSync } from 'child_process';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { assertEncryptionKey } from './common/crypto.util';
 
 const WEAK_SECRETS = [
   'fallback-secret', 'fallback-refresh-secret',
@@ -46,7 +47,19 @@ async function bootstrap() {
     process.exit(1);
   }
 
+  // 檢查加密金鑰（用於加密 SMS 廠商 API Key 等敏感資訊）
+  try {
+    assertEncryptionKey();
+  } catch (error) {
+    logger.error((error as Error).message);
+    process.exit(1);
+  }
+
   const app = await NestFactory.create(AppModule);
+
+  // 信任反向代理，讓 req.ip 能從 X-Forwarded-For 取得真正的客戶端 IP
+  // （Zeabur / Cloudflare 後面的部署必須）
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
 
   // 全域前綴
   app.setGlobalPrefix('api');

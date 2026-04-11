@@ -201,7 +201,7 @@ function PostRow({ post }: { post: PostItem }) {
 }
 
 export default function BoardPageClient({ board }: { board: BoardData }) {
-  const { user, requireLogin } = useAuth();
+  const { user, requireLogin, requirePhoneVerified } = useAuth();
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<'latest' | 'lastReply' | 'popular'>('latest');
@@ -275,7 +275,9 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         </div>
         <button
           onClick={() => {
-            if (requireLogin()) router.push(`/board/${board.slug}/new`);
+            if (!requireLogin()) return;
+            if (!requirePhoneVerified()) return;
+            router.push(`/board/${board.slug}/new`);
           }}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
         >

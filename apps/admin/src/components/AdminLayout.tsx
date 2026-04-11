@@ -15,6 +15,7 @@ import {
   ThunderboltOutlined,
   LogoutOutlined,
   MessageOutlined,
+  MobileOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAdminAuth } from '@/context/auth';
@@ -34,6 +35,7 @@ const menuItems = [
   { key: '/banned-ips', icon: <StopOutlined />, label: '封鎖 IP' },
   { key: '/lottery', icon: <ThunderboltOutlined />, label: '彩券管理' },
   { key: '/feedbacks', icon: <MessageOutlined />, label: '意見回報' },
+  { key: '/sms-provider', icon: <MobileOutlined />, label: '簡訊服務商' },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {

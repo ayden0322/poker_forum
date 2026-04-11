@@ -9,6 +9,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateReportDto } from './dto/report.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { PhoneVerifiedGuard } from '../common/guards/phone-verified.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../common/prisma.service';
 
@@ -41,7 +42,7 @@ export class PostsController {
 
   /** 發表文章 */
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PhoneVerifiedGuard)
   @ApiBearerAuth()
   async create(
     @CurrentUser() user: { id: string },
@@ -53,7 +54,7 @@ export class PostsController {
 
   /** 編輯文章 */
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PhoneVerifiedGuard)
   @ApiBearerAuth()
   async update(
     @Param('id') id: string,
