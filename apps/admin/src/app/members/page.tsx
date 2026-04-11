@@ -30,6 +30,8 @@ import { adminApiFetch } from '@/lib/api';
 
 const { Text } = Typography;
 
+type LoginMethod = 'ACCOUNT' | 'GOOGLE' | 'LINE' | 'FACEBOOK';
+
 interface Member {
   id: string;
   nickname: string;
@@ -40,12 +42,32 @@ interface Member {
   role: 'USER' | 'MODERATOR' | 'ADMIN';
   status: 'ACTIVE' | 'BANNED' | 'SUSPENDED';
   lastLoginIp: string | null;
+  lastLoginAt: string | null;
+  loginMethods: LoginMethod[];
   postCount: number;
   replyCount: number;
   followerCount: number;
   followingCount: number;
   createdAt: string;
 }
+
+const LOGIN_METHOD_LABEL: Record<LoginMethod, { label: string; color: string }> = {
+  ACCOUNT: { label: '帳號', color: 'default' },
+  GOOGLE: { label: 'Google', color: 'red' },
+  LINE: { label: 'LINE', color: 'green' },
+  FACEBOOK: { label: 'Facebook', color: 'blue' },
+};
+
+const formatDateTime = (value: string | null) => {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 interface MembersResponse {
   data: {
@@ -200,11 +222,37 @@ export default function MembersPage() {
       render: (status) => statusTag(status),
     },
     {
+      title: '登入方式',
+      dataIndex: 'loginMethods',
+      key: 'loginMethods',
+      width: 160,
+      render: (methods: LoginMethod[]) => {
+        if (!methods || methods.length === 0) return '—';
+        return (
+          <Space size={4} wrap>
+            {methods.map((m) => {
+              const info = LOGIN_METHOD_LABEL[m];
+              return <Tag key={m} color={info?.color ?? 'default'}>{info?.label ?? m}</Tag>;
+            })}
+          </Space>
+        );
+      },
+    },
+    {
       title: '加入時間',
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 120,
       render: (date) => new Date(date).toLocaleDateString('zh-TW'),
+    },
+    {
+      title: '最後登入時間',
+      dataIndex: 'lastLoginAt',
+      key: 'lastLoginAt',
+      width: 160,
+      render: (date: string | null) => (
+        <Text style={{ fontSize: 12 }}>{formatDateTime(date)}</Text>
+      ),
     },
     {
       title: '最後登入 IP',
@@ -338,6 +386,19 @@ export default function MembersPage() {
               <Descriptions.Item label="回覆數">{detailMember.replyCount}</Descriptions.Item>
               <Descriptions.Item label="追蹤者">{detailMember.followerCount}</Descriptions.Item>
               <Descriptions.Item label="追蹤中">{detailMember.followingCount}</Descriptions.Item>
+              <Descriptions.Item label="登入方式">
+                {detailMember.loginMethods && detailMember.loginMethods.length > 0 ? (
+                  <Space size={4} wrap>
+                    {detailMember.loginMethods.map((m) => {
+                      const info = LOGIN_METHOD_LABEL[m];
+                      return <Tag key={m} color={info?.color ?? 'default'}>{info?.label ?? m}</Tag>;
+                    })}
+                  </Space>
+                ) : '—'}
+              </Descriptions.Item>
+              <Descriptions.Item label="最後登入時間">
+                {formatDateTime(detailMember.lastLoginAt)}
+              </Descriptions.Item>
               <Descriptions.Item label="最後登入 IP">
                 {detailMember.lastLoginIp ?? '—'}
               </Descriptions.Item>

@@ -3,7 +3,9 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-oauth2';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
+import { Request } from 'express';
 import { AuthService } from '../auth.service';
+import { getClientIp } from '../../common/get-client-ip.util';
 
 interface LineProfile {
   userId: string;
@@ -25,6 +27,7 @@ export class LineStrategy extends PassportStrategy(Strategy, 'line') {
       clientSecret: configService.get<string>('LINE_CHANNEL_SECRET', 'not-configured'),
       callbackURL: configService.get<string>('LINE_CALLBACK_URL', 'http://localhost:4010/api/auth/line/callback'),
       scope: ['profile', 'openid', 'email'],
+      passReqToCallback: true,
     });
   }
 
@@ -40,18 +43,23 @@ export class LineStrategy extends PassportStrategy(Strategy, 'line') {
     return { state: randomBytes(16).toString('hex') };
   }
 
-  async validate(accessToken: string): Promise<unknown> {
+  async validate(req: Request, accessToken: string): Promise<unknown> {
     // 呼叫 LINE Profile API
     const response = await fetch('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const profile = (await response.json()) as LineProfile;
 
-    const result = await this.authService.oauthLogin('line', profile.userId, {
-      nickname: (profile.displayName || 'User').substring(0, 8),
-      avatar: profile.pictureUrl,
-      email: profile.email,
-    });
+    const result = await this.authService.oauthLogin(
+      'line',
+      profile.userId,
+      {
+        nickname: (profile.displayName || 'User').substring(0, 8),
+        avatar: profile.pictureUrl,
+        email: profile.email,
+      },
+      getClientIp(req),
+    );
     return result;
   }
 }

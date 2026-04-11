@@ -44,7 +44,10 @@ export class AdminService {
           role: true,
           status: true,
           lastLoginIp: true,
+          lastLoginAt: true,
+          passwordHash: true,
           createdAt: true,
+          oauthProviders: { select: { provider: true } },
           _count: { select: { posts: true, replies: true, followers: true, following: true } },
         },
       }),
@@ -52,13 +55,21 @@ export class AdminService {
     ]);
 
     return {
-      items: items.map(({ _count, ...u }) => ({
-        ...u,
-        postCount: _count.posts,
-        replyCount: _count.replies,
-        followerCount: _count.followers,
-        followingCount: _count.following,
-      })),
+      items: items.map(({ _count, passwordHash, oauthProviders, ...u }) => {
+        const loginMethods: string[] = [];
+        if (passwordHash) loginMethods.push('ACCOUNT');
+        for (const p of oauthProviders) {
+          loginMethods.push(p.provider.toUpperCase());
+        }
+        return {
+          ...u,
+          loginMethods,
+          postCount: _count.posts,
+          replyCount: _count.replies,
+          followerCount: _count.followers,
+          followingCount: _count.following,
+        };
+      }),
       total,
       page,
       limit,

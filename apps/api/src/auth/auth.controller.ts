@@ -22,6 +22,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
+import { getClientIp } from '../common/get-client-ip.util';
 
 @ApiTags('認證')
 @Controller('auth')
@@ -45,7 +46,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '帳密登入' })
   async login(@Body() dto: LoginDto, @Req() req: Request) {
-    const ip = (req as any).ip ?? (req as any).socket?.remoteAddress;
+    const ip = getClientIp(req);
     const result = await this.authService.login(dto, ip);
     return { success: true, data: result };
   }

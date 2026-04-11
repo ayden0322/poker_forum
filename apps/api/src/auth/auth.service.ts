@@ -83,25 +83,23 @@ export class AuthService {
       throw new UnauthorizedException('帳號或密碼錯誤');
     }
 
-    // 記錄最後登入 IP
-    if (ip) {
-      const cleanIp = ip.replace('::ffff:', '');
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginIp: cleanIp },
-      });
-    }
+    await this.recordLoginMeta(user.id, ip);
 
     const { passwordHash: _, ...safeUser } = user;
     const tokens = await this.generateTokens(user.id, user.nickname, user.role);
     return { user: safeUser, ...tokens };
   }
 
-  async oauthLogin(provider: string, providerId: string, profile: {
-    nickname: string;
-    email?: string;
-    avatar?: string;
-  }) {
+  async oauthLogin(
+    provider: string,
+    providerId: string,
+    profile: {
+      nickname: string;
+      email?: string;
+      avatar?: string;
+    },
+    ip?: string,
+  ) {
     // 找是否已有此 OAuth 綁定
     const existing = await this.prisma.oAuthProvider.findUnique({
       where: { provider_providerId: { provider, providerId } },
@@ -112,6 +110,7 @@ export class AuthService {
       if (existing.user.status !== 'ACTIVE') {
         throw new UnauthorizedException('帳號已被停用');
       }
+      await this.recordLoginMeta(existing.user.id, ip);
       const tokens = await this.generateTokens(existing.user.id, existing.user.nickname, existing.user.role);
       return { user: existing.user, ...tokens };
     }
@@ -123,6 +122,7 @@ export class AuthService {
         await this.prisma.oAuthProvider.create({
           data: { provider, providerId, userId: userByEmail.id },
         });
+        await this.recordLoginMeta(userByEmail.id, ip);
         const tokens = await this.generateTokens(userByEmail.id, userByEmail.nickname, userByEmail.role);
         return {
           user: { id: userByEmail.id, nickname: userByEmail.nickname, role: userByEmail.role, avatar: userByEmail.avatar, level: userByEmail.level, status: userByEmail.status },
@@ -148,8 +148,20 @@ export class AuthService {
       select: { id: true, nickname: true, role: true, avatar: true, level: true, status: true },
     });
 
+    await this.recordLoginMeta(newUser.id, ip);
     const tokens = await this.generateTokens(newUser.id, newUser.nickname, newUser.role);
     return { user: newUser, ...tokens };
+  }
+
+  /** 記錄最後登入 IP 與時間（反向代理後需經由 getClientIp 取值） */
+  private async recordLoginMeta(userId: string, ip?: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastLoginAt: new Date(),
+        ...(ip ? { lastLoginIp: ip.replace(/^::ffff:/, '') } : {}),
+      },
+    });
   }
 
   async refreshTokens(userId: string, nickname: string, role: string) {
