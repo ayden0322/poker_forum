@@ -30,7 +30,7 @@ export default function SmsProviderPage() {
     queryFn: () => adminApiFetch<{ data: SmsProviderConfig[] }>('/admin/sms-provider'),
   });
 
-  const current = data?.data?.find((c) => c.providerCode === 'custom-tw') || data?.data?.[0];
+  const current = data?.data?.find((c) => c.providerCode === 'ta-sms') || data?.data?.[0];
 
   useEffect(() => {
     if (current) {
@@ -47,8 +47,8 @@ export default function SmsProviderPage() {
       });
     } else {
       form.setFieldsValue({
-        providerCode: 'custom-tw',
-        displayName: '通用台灣簡訊商',
+        providerCode: 'ta-sms',
+        displayName: 'TA 國際簡訊平台',
         enabled: false,
       });
     }
@@ -96,7 +96,7 @@ export default function SmsProviderPage() {
     <Card loading={isLoading} title={<Title level={4} style={{ margin: 0 }}>簡訊服務商設定</Title>}>
       <Paragraph>
         <Text type="secondary">
-          填入你跟簡訊廠商申請到的 API 資訊。API Key / Secret 會以 AES-256 加密儲存，儲存後只會顯示遮罩，
+          填入 TA 國際簡訊平台的 API 資訊。API Key / Username 會以 AES-256 加密儲存，儲存後只會顯示遮罩，
           若不需更動請留空。
         </Text>
       </Paragraph>
@@ -113,7 +113,7 @@ export default function SmsProviderPage() {
 
       <Form form={form} layout="vertical" onFinish={(v) => saveMutation.mutate(v)}>
         <Form.Item label="服務商代號" name="providerCode" rules={[{ required: true }]}>
-          <Input placeholder="custom-tw" />
+          <Input placeholder="ta-sms" />
         </Form.Item>
 
         <Form.Item label="顯示名稱" name="displayName" rules={[{ required: true }]}>
@@ -124,14 +124,14 @@ export default function SmsProviderPage() {
           <Switch />
         </Form.Item>
 
-        <Form.Item label="API Endpoint" name="apiEndpoint" rules={[{ required: true }]}>
-          <Input placeholder="https://sms-provider.example.com/api/send" />
+        <Form.Item label="API Endpoint（發送簡訊）" name="apiEndpoint" rules={[{ required: true }]}>
+          <Input placeholder="https://域名/ta-sms/openapi/submittal" />
         </Form.Item>
 
         <Form.Item
           label={
             <span>
-              API Key{' '}
+              API Key（簽名金鑰）{' '}
               {current?.apiKeyMasked && <Text type="secondary">（目前：{current.apiKeyMasked}）</Text>}
             </span>
           }
@@ -143,29 +143,29 @@ export default function SmsProviderPage() {
         <Form.Item
           label={
             <span>
-              API Secret{' '}
+              Username（通道編號）{' '}
               {current?.apiSecretMasked && <Text type="secondary">（目前：{current.apiSecretMasked}）</Text>}
             </span>
           }
           name="apiSecret"
         >
-          <Input.Password placeholder="選填，留空代表不更動" />
+          <Input.Password placeholder="留空代表不更動" />
         </Form.Item>
 
-        <Form.Item label="簡訊署名 / Sender ID" name="senderId">
-          <Input placeholder="選填，例：BoKeBang" />
+        <Form.Item label="發送 ID（spNumber）" name="senderId">
+          <Input placeholder="選填，預設隨機 6 位數字" />
         </Form.Item>
 
         <Form.Item label="樣板 ID" name="templateId">
-          <Input placeholder="選填，若廠商採樣板制才需填" />
+          <Input placeholder="選填" />
         </Form.Item>
 
         <Form.Item
           label="額外參數（JSON 格式）"
           name="extraConfigJson"
-          tooltip="如廠商需要的額外參數，以 JSON 格式輸入"
+          tooltip="如簽名類型等額外參數"
         >
-          <Input.TextArea rows={5} placeholder='{"region": "tw"}' />
+          <Input.TextArea rows={5} placeholder='{"signType": "MD5"}' />
         </Form.Item>
 
         <Space>

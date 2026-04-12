@@ -2,7 +2,7 @@ import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common
 import { PrismaService } from '../common/prisma.service';
 import { decrypt } from '../common/crypto.util';
 import { SmsProvider, SmsSendParams, SmsSendResult } from './sms-provider.interface';
-import { CustomTwSmsProvider } from './providers/custom-tw.provider';
+import { TaSmsProvider } from './providers/ta-sms.provider';
 
 @Injectable()
 export class SmsService {
@@ -42,9 +42,9 @@ export class SmsService {
     };
 
     switch (config.providerCode) {
-      case 'custom-tw':
+      case 'ta-sms':
       default:
-        return new CustomTwSmsProvider(runtimeConfig);
+        return new TaSmsProvider(runtimeConfig);
     }
   }
 }
