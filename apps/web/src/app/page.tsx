@@ -47,7 +47,7 @@ export default async function HomePage() {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: '博客邦',
-    description: '體育賽事與台灣彩票討論社群 - 博客邦',
+    description: '亞洲最大賽事論壇 - 博客邦',
     url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://forum.example.com',
   };
 
@@ -59,7 +59,7 @@ export default async function HomePage() {
       />
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold mb-2">博客邦</h1>
-        <p className="text-gray-500">體育賽事與台灣彩票討論社群</p>
+        <p className="text-gray-500">亞洲最大賽事論壇</p>
       </div>
 
       {marquees.length > 0 && (

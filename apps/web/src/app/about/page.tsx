@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '關於我們',
-  description: '博客邦 — 台灣最大的體育賽事與台灣彩票討論社群。',
+  description: '博客邦 — 亞洲最大賽事論壇。',
   robots: { index: true, follow: true },
 };
 
@@ -10,7 +10,7 @@ export default function AboutPage() {
   return (
     <article className="bg-white rounded-lg shadow-sm p-6 sm:p-10 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold text-gray-900 mb-2">關於博客邦</h1>
-      <p className="text-sm text-gray-500 mb-8">台灣最大的體育賽事與台灣彩票討論社群</p>
+      <p className="text-sm text-gray-500 mb-8">亞洲最大賽事論壇</p>
 
       <div className="space-y-6 text-gray-700">
         <section>
