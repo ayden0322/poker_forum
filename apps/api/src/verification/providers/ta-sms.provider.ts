@@ -27,7 +27,7 @@ export class TaSmsProvider implements SmsProvider {
     const nonceStr = this.generateNonceStr(20);
 
     // 使用變量簡訊：content 帶佔位符 {}，variables 帶驗證碼
-    const content = '【博客邦】您的驗證碼為 {}，5 分鐘內有效，請勿轉告他人。';
+    const content = '博客邦手機認證-您的驗證碼為【{}】，5 分鐘內有效，請勿轉告他人。';
     const phones = [{ phone, variables: [params.code] }];
 
     // 組簽名字串：按 ASCII 排序所有參數

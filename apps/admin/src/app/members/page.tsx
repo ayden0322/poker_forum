@@ -43,6 +43,8 @@ interface Member {
   status: 'ACTIVE' | 'BANNED' | 'SUSPENDED';
   lastLoginIp: string | null;
   lastLoginAt: string | null;
+  phone: string | null;
+  phoneVerified: boolean;
   loginMethods: LoginMethod[];
   postCount: number;
   replyCount: number;
@@ -239,6 +241,19 @@ export default function MembersPage() {
       },
     },
     {
+      title: '手機驗證',
+      key: 'phoneVerified',
+      width: 150,
+      render: (_, record) => record.phoneVerified ? (
+        <Space size={4}>
+          <Tag color="success">已驗證</Tag>
+          <Text style={{ fontSize: 12 }}>{record.phone}</Text>
+        </Space>
+      ) : (
+        <Tag>未驗證</Tag>
+      ),
+    },
+    {
       title: '加入時間',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -386,6 +401,16 @@ export default function MembersPage() {
               <Descriptions.Item label="回覆數">{detailMember.replyCount}</Descriptions.Item>
               <Descriptions.Item label="追蹤者">{detailMember.followerCount}</Descriptions.Item>
               <Descriptions.Item label="追蹤中">{detailMember.followingCount}</Descriptions.Item>
+              <Descriptions.Item label="手機驗證">
+                {detailMember.phoneVerified ? (
+                  <Space size={4}>
+                    <Tag color="success">已驗證</Tag>
+                    <Text>{detailMember.phone}</Text>
+                  </Space>
+                ) : (
+                  <Tag>未驗證</Tag>
+                )}
+              </Descriptions.Item>
               <Descriptions.Item label="登入方式">
                 {detailMember.loginMethods && detailMember.loginMethods.length > 0 ? (
                   <Space size={4} wrap>

@@ -45,6 +45,8 @@ export class AdminService {
           status: true,
           lastLoginIp: true,
           lastLoginAt: true,
+          phone: true,
+          phoneVerified: true,
           passwordHash: true,
           createdAt: true,
           oauthProviders: { select: { provider: true } },
