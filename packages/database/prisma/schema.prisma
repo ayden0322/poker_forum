@@ -421,20 +421,38 @@ model SmsProviderConfig {
   @@map("sms_provider_configs")
 }
 
+// ===== 隊伍名稱翻譯（台灣用語） =====
+model TeamTranslation {
+  id        String   @id @default(cuid())
+  apiTeamId Int      @unique @map("api_team_id")
+  sport     String                              // football, basketball, baseball
+  nameEn    String   @map("name_en")            // API 原始英文名
+  nameZhTw  String   @map("name_zh_tw")         // 台灣繁體中文名
+  shortName String?  @map("short_name")         // 簡稱（如：湖人、曼聯）
+  logo      String?                             // 快取隊徽 URL
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([sport])
+  @@map("team_translations")
+}
+
 // ===== 體育賽事 API 設定（後台可編輯） =====
 model SportsConfig {
   id          String   @id @default(cuid())
-  sportType   String   @unique @map("sport_type")    // baseball, basketball, soccer
-  displayName String   @map("display_name")           // 棒球, 籃球, 足球
+  boardSlug   String   @unique @map("board_slug")      // 對應 Board.slug（如 nba, cba, epl）
+  sportType   String   @map("sport_type")              // football, basketball, baseball
+  displayName String   @map("display_name")            // NBA, CBA, 英超
   enabled     Boolean  @default(true)
-  apiHost     String   @map("api_host")               // API-Sports base host
+  apiHost     String   @map("api_host")                // API-Sports base host
   leagueId    Int      @map("league_id")
-  season      String                                   // 賽季（如 2026, 2025-2026）
+  season      String                                    // 賽季（如 2026, 2025-2026）
   cacheTtl    Json     @default("{}") @map("cache_ttl") // { live: 60, schedule: 300, ... }
-  extraConfig Json?    @map("extra_config")            // 額外設定（多聯賽等）
+  extraConfig Json?    @map("extra_config")             // 額外設定
   updatedBy   String?  @map("updated_by")
   updatedAt   DateTime @updatedAt @map("updated_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
+  @@index([sportType])
   @@map("sports_configs")
 }

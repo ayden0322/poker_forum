@@ -4,11 +4,34 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 
-/** 看板 slug → API sport type 對應 */
-const BOARD_SPORT_MAP: Record<string, { type: string; label: string }> = {
-  baseball: { type: 'baseball', label: '棒球' },
-  basketball: { type: 'basketball', label: '籃球' },
-  soccer: { type: 'soccer', label: '足球' },
+/**
+ * Board slug → 運動資訊對應
+ * 有在這裡的 slug 才會顯示 ScoreWidget
+ */
+const BOARD_SPORT_MAP: Record<string, { sportType: string; label: string; icon: string }> = {
+  // 籃球
+  nba:                { sportType: 'basketball', label: 'NBA',      icon: '🏀' },
+  cba:                { sportType: 'basketball', label: 'CBA',      icon: '🏀' },
+  't1-league':        { sportType: 'basketball', label: 'T1 聯盟',  icon: '🏀' },
+  tpbl:               { sportType: 'basketball', label: 'TPBL',     icon: '🏀' },
+  'b-league':         { sportType: 'basketball', label: 'B.League', icon: '🏀' },
+  kbl:                { sportType: 'basketball', label: 'KBL',      icon: '🏀' },
+  euroleague:         { sportType: 'basketball', label: '歐洲籃球',  icon: '🏀' },
+  // 足球
+  epl:                { sportType: 'football',   label: '英超',  icon: '⚽' },
+  'la-liga':          { sportType: 'football',   label: '西甲',  icon: '⚽' },
+  'serie-a':          { sportType: 'football',   label: '義甲',  icon: '⚽' },
+  bundesliga:         { sportType: 'football',   label: '德甲',  icon: '⚽' },
+  'ligue-1':          { sportType: 'football',   label: '法甲',  icon: '⚽' },
+  ucl:                { sportType: 'football',   label: '歐冠',  icon: '⚽' },
+  'j-league':         { sportType: 'football',   label: 'J 聯賽', icon: '⚽' },
+  csl:                { sportType: 'football',   label: '中超',  icon: '⚽' },
+  'world-cup':        { sportType: 'football',   label: '世界盃', icon: '⚽' },
+  // 棒球
+  mlb:                { sportType: 'baseball',   label: 'MLB',      icon: '⚾' },
+  cpbl:               { sportType: 'baseball',   label: '中華職棒',  icon: '⚾' },
+  npb:                { sportType: 'baseball',   label: '日本職棒',  icon: '⚾' },
+  kbo:                { sportType: 'baseball',   label: '韓國職棒',  icon: '⚾' },
 };
 
 interface GameTeam {
@@ -27,7 +50,6 @@ interface GameStatus {
   long: string;
 }
 
-/** 統一的賽事資料格式（前端正規化後） */
 interface NormalizedGame {
   id: number;
   date: string;
@@ -47,13 +69,13 @@ export function ScoreWidget({ boardSlug }: ScoreWidgetProps) {
   const sportInfo = BOARD_SPORT_MAP[boardSlug];
   if (!sportInfo) return null;
 
-  return <ScoreWidgetInner sportType={sportInfo.type} label={sportInfo.label} />;
+  return <ScoreWidgetInner boardSlug={boardSlug} sportType={sportInfo.sportType} label={sportInfo.label} icon={sportInfo.icon} />;
 }
 
-function ScoreWidgetInner({ sportType, label }: { sportType: string; label: string }) {
+function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: string; sportType: string; label: string; icon: string }) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['sports-live', sportType],
-    queryFn: () => apiFetch<{ data: unknown[] }>(`/sports/${sportType}/live`),
+    queryKey: ['sports-live', boardSlug],
+    queryFn: () => apiFetch<{ data: unknown[] }>(`/sports/${boardSlug}/live`),
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   });
@@ -77,7 +99,7 @@ function ScoreWidgetInner({ sportType, label }: { sportType: string; label: stri
     return (
       <div className="mb-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-lg">⚾🏀⚽</span>
+          <span className="text-lg">{icon}</span>
           <h3 className="font-bold text-gray-800">今日{label}賽事</h3>
         </div>
         <p className="text-sm text-gray-400">今日暫無賽事</p>
@@ -85,18 +107,16 @@ function ScoreWidgetInner({ sportType, label }: { sportType: string; label: stri
     );
   }
 
-  const sportIcon = sportType === 'baseball' ? '⚾' : sportType === 'basketball' ? '🏀' : '⚽';
-
   return (
     <div className="mb-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-lg">{sportIcon}</span>
+          <span className="text-lg">{icon}</span>
           <h3 className="font-bold text-gray-800">今日{label}賽事</h3>
           <span className="text-xs text-gray-400">{games.length} 場</span>
         </div>
         <Link
-          href={`/sports/${sportType}/stats`}
+          href={`/sports/${boardSlug}/stats`}
           className="text-xs text-blue-500 hover:text-blue-700"
         >
           更多數據 →
@@ -119,7 +139,6 @@ function GameCard({ game }: { game: NormalizedGame }) {
 
   return (
     <div className="shrink-0 w-52 rounded-lg border border-gray-200 bg-white p-3 shadow-sm hover:shadow-md transition-shadow">
-      {/* 狀態標籤 */}
       <div className="flex items-center justify-between mb-2">
         {isLive && (
           <span className="text-xs font-bold text-red-500 flex items-center gap-1">
@@ -135,17 +154,14 @@ function GameCard({ game }: { game: NormalizedGame }) {
         {game.league && <span className="text-xs text-gray-300">{game.league}</span>}
       </div>
 
-      {/* 客隊 */}
       <TeamRow
         team={game.away}
         score={game.score.away}
         isWinner={isFinished && game.score.away !== null && game.score.home !== null && game.score.away > game.score.home}
       />
 
-      {/* 分隔線 */}
       <div className="border-t border-gray-100 my-1.5" />
 
-      {/* 主隊 */}
       <TeamRow
         team={game.home}
         score={game.score.home}
@@ -174,21 +190,17 @@ function TeamRow({ team, score, isWinner }: { team: GameTeam; score: number | nu
 }
 
 /**
- * NBA status.short 是數字，需要對照表
- * 1=未開始, 2=進行中, 3=已結束
+ * 通用籃球 API (v1.basketball) 的 status 對照
+ * 與 NBA API (v2) 不同，通用 API status.short 是字串
  */
-const NBA_STATUS_MAP: Record<number, { short: string; long: string }> = {
-  1: { short: 'NS', long: 'Not Started' },
-  2: { short: 'LIVE', long: 'In Play' },
-  3: { short: 'FT', long: 'Finished' },
-};
+const BASKETBALL_LIVE_STATUSES = ['Q1', 'Q2', 'Q3', 'Q4', 'OT', 'BT', 'HT'];
 
 /** 將 API-Sports 不同運動的回傳格式正規化 */
 function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
   if (!Array.isArray(raw)) return [];
 
   return raw.map((item: any) => {
-    if (sportType === 'soccer') {
+    if (sportType === 'football') {
       return {
         id: item.fixture?.id ?? 0,
         date: item.fixture?.date?.slice(0, 10) ?? '',
@@ -216,35 +228,34 @@ function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
     }
 
     if (sportType === 'basketball') {
-      // NBA API (v2): 客隊是 visitors，分數在 scores.visitors.points / scores.home.points
-      // status.short 是數字（1=未開始, 2=進行中, 3=已結束）
-      const statusNum = item.status?.short;
-      const mappedStatus = NBA_STATUS_MAP[statusNum] ?? { short: String(statusNum ?? 'NS'), long: item.status?.long ?? '' };
-
+      // 通用籃球 API (v1.basketball)：teams.home / teams.away，scores 結構
       return {
         id: item.id ?? 0,
-        date: item.date?.start?.slice(0, 10) ?? '',
-        time: formatTime(item.date?.start),
+        date: item.date?.slice(0, 10) ?? '',
+        time: formatTime(item.date),
         home: {
           id: item.teams?.home?.id ?? 0,
           name: item.teams?.home?.name ?? '未知',
           logo: item.teams?.home?.logo ?? '',
         },
         away: {
-          id: item.teams?.visitors?.id ?? 0,
-          name: item.teams?.visitors?.name ?? '未知',
-          logo: item.teams?.visitors?.logo ?? '',
+          id: item.teams?.away?.id ?? 0,
+          name: item.teams?.away?.name ?? '未知',
+          logo: item.teams?.away?.logo ?? '',
         },
         score: {
-          home: item.scores?.home?.points ?? null,
-          away: item.scores?.visitors?.points ?? null,
+          home: item.scores?.home?.total ?? null,
+          away: item.scores?.away?.total ?? null,
         },
-        status: mappedStatus,
-        league: item.league === 'standard' ? 'NBA' : item.league,
+        status: {
+          short: String(item.status?.short ?? 'NS'),
+          long: item.status?.long ?? '',
+        },
+        league: item.league?.name,
       };
     }
 
-    // Baseball: 格式較標準
+    // Baseball
     return {
       id: item.id ?? 0,
       date: item.date?.slice(0, 10) ?? '',

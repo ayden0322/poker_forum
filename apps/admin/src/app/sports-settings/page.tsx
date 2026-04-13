@@ -29,6 +29,7 @@ const { Title, Text } = Typography;
 
 interface SportsConfig {
   id: string;
+  boardSlug: string;
   sportType: string;
   displayName: string;
   enabled: boolean;
@@ -68,8 +69,8 @@ export default function SportsSettingsPage() {
 
   // 更新設定
   const updateMutation = useMutation({
-    mutationFn: ({ sportType, values }: { sportType: string; values: Record<string, unknown> }) =>
-      adminApiFetch(`/admin/sports-config/${sportType}`, {
+    mutationFn: ({ boardSlug, values }: { boardSlug: string; values: Record<string, unknown> }) =>
+      adminApiFetch(`/admin/sports-config/${boardSlug}`, {
         method: 'PUT',
         body: JSON.stringify(values),
       }),
@@ -83,8 +84,8 @@ export default function SportsSettingsPage() {
 
   // 啟用/停用切換
   const toggleMutation = useMutation({
-    mutationFn: ({ sportType, enabled }: { sportType: string; enabled: boolean }) =>
-      adminApiFetch(`/admin/sports-config/${sportType}`, {
+    mutationFn: ({ boardSlug, enabled }: { boardSlug: string; enabled: boolean }) =>
+      adminApiFetch(`/admin/sports-config/${boardSlug}`, {
         method: 'PUT',
         body: JSON.stringify({ enabled }),
       }),
@@ -138,7 +139,7 @@ export default function SportsSettingsPage() {
           odds: values.cacheOdds,
         },
       };
-      updateMutation.mutate({ sportType: editModal.sportType, values: payload });
+      updateMutation.mutate({ boardSlug: editModal.boardSlug, values: payload });
     });
   };
 
@@ -150,6 +151,7 @@ export default function SportsSettingsPage() {
       render: (name: string, record: SportsConfig) => (
         <Space>
           <Text strong>{name}</Text>
+          <Tag color="blue">{record.boardSlug}</Tag>
           <Tag>{record.sportType}</Tag>
         </Space>
       ),
@@ -162,7 +164,7 @@ export default function SportsSettingsPage() {
       render: (enabled: boolean, record: SportsConfig) => (
         <Switch
           checked={enabled}
-          onChange={(checked) => toggleMutation.mutate({ sportType: record.sportType, enabled: checked })}
+          onChange={(checked) => toggleMutation.mutate({ boardSlug: record.boardSlug, enabled: checked })}
           loading={toggleMutation.isPending}
         />
       ),
@@ -190,7 +192,7 @@ export default function SportsSettingsPage() {
       key: 'usage',
       width: 120,
       render: (_: unknown, record: SportsConfig) => {
-        const info = usage[record.sportType] as ApiUsageInfo | undefined;
+        const info = usage[record.boardSlug] as ApiUsageInfo | undefined;
         if (!info?.requests) return <Text type="secondary">-</Text>;
         const pct = Math.round((info.requests.current / info.requests.limit_day) * 100);
         const color = pct > 80 ? 'red' : pct > 50 ? 'orange' : 'green';
@@ -251,9 +253,9 @@ export default function SportsSettingsPage() {
           <>
             <Row gutter={16} style={{ marginBottom: 24 }}>
               {configs.filter((c) => c.enabled).map((c) => {
-                const info = usage[c.sportType] as ApiUsageInfo | undefined;
+                const info = usage[c.boardSlug] as ApiUsageInfo | undefined;
                 return (
-                  <Col key={c.sportType} span={8}>
+                  <Col key={c.boardSlug} span={8}>
                     <Card size="small">
                       <Statistic
                         title={c.displayName}

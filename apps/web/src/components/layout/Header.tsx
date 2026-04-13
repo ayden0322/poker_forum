@@ -16,20 +16,66 @@ interface NavChild {
 
 interface NavItem {
   label: string;
-  /** 沒給 href 時，頂層只是 hover 觸發選單，不可點擊 */
   href?: string;
   children?: (NavChild | { divider: true })[];
+  /** mega menu：分欄顯示 */
+  megaMenu?: { title: string; icon: string; items: NavChild[] }[];
 }
 
 const navItems: NavItem[] = [
   { label: '討論區', href: '/' },
   {
     label: '體育賽事',
-    children: [
-      { label: '棒球', href: '/board/baseball' },
-      { label: '籃球', href: '/board/basketball' },
-      { label: '足球', href: '/board/soccer' },
-      { label: '其他運動', href: '/board/other-sports' },
+    megaMenu: [
+      {
+        title: '籃球',
+        icon: '🏀',
+        items: [
+          { label: 'NBA', href: '/board/nba' },
+          { label: 'CBA', href: '/board/cba' },
+          { label: 'T1 聯盟', href: '/board/t1-league' },
+          { label: 'B.League', href: '/board/b-league' },
+          { label: 'KBL', href: '/board/kbl' },
+          { label: '其他籃球', href: '/board/other-basketball' },
+        ],
+      },
+      {
+        title: '足球',
+        icon: '⚽',
+        items: [
+          { label: '英超', href: '/board/epl' },
+          { label: '西甲', href: '/board/la-liga' },
+          { label: '義甲', href: '/board/serie-a' },
+          { label: '德甲', href: '/board/bundesliga' },
+          { label: '法甲', href: '/board/ligue-1' },
+          { label: '歐冠', href: '/board/ucl' },
+          { label: 'J 聯賽', href: '/board/j-league' },
+          { label: '中超', href: '/board/csl' },
+          { label: '其他足球', href: '/board/other-soccer' },
+        ],
+      },
+      {
+        title: '棒球',
+        icon: '⚾',
+        items: [
+          { label: 'MLB', href: '/board/mlb' },
+          { label: '中華職棒', href: '/board/cpbl' },
+          { label: '日本職棒', href: '/board/npb' },
+          { label: '韓國職棒', href: '/board/kbo' },
+          { label: '其他棒球', href: '/board/other-baseball' },
+        ],
+      },
+      {
+        title: '其他',
+        icon: '🏆',
+        items: [
+          { label: '網球', href: '/board/tennis' },
+          { label: '冰球', href: '/board/hockey' },
+          { label: '電競', href: '/board/esports' },
+          { label: '格鬥', href: '/board/mma' },
+          { label: '賽馬', href: '/board/horse-racing' },
+        ],
+      },
     ],
   },
   {
@@ -50,11 +96,11 @@ const navItems: NavItem[] = [
 export function Header() {
   const { user, accessToken, logout, showLoginModal, closeLoginModal, showPhoneVerifyModal, closePhoneVerifyModal } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
-  // 合併 context 與 local 的登入 Modal 狀態
   const isLoginVisible = showLogin || showLoginModal;
   const handleCloseLogin = () => { setShowLogin(false); closeLoginModal(); };
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const router = useRouter();
@@ -68,7 +114,6 @@ export function Header() {
     setShowMobileMenu(false);
   };
 
-  // 輪詢未讀通知數
   const fetchUnread = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -81,9 +126,13 @@ export function Header() {
 
   useEffect(() => {
     fetchUnread();
-    const interval = setInterval(fetchUnread, 30000); // 每 30 秒
+    const interval = setInterval(fetchUnread, 30000);
     return () => clearInterval(interval);
   }, [fetchUnread]);
+
+  const toggleMobileSection = (label: string) => {
+    setExpandedMobile((prev) => (prev === label ? null : label));
+  };
 
   return (
     <>
@@ -113,7 +162,40 @@ export function Header() {
             {/* 桌面版 Nav */}
             <nav className="hidden md:flex items-center gap-6">
               {navItems.map((item) =>
-                item.children ? (
+                item.megaMenu ? (
+                  // Mega Menu（體育賽事）
+                  <div key={item.label} className="relative group">
+                    <span
+                      className="text-sm font-medium hover:text-blue-200 transition-colors flex items-center gap-1 py-2 cursor-default select-none"
+                      aria-haspopup="true"
+                    >
+                      {item.label}
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </span>
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-[520px] bg-white rounded-xl shadow-2xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
+                      <div className="grid grid-cols-4 gap-4">
+                        {item.megaMenu.map((col) => (
+                          <div key={col.title}>
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                              <span>{col.icon}</span>
+                              <span>{col.title}</span>
+                            </div>
+                            {col.items.map((child) => (
+                              <Link
+                                key={child.href}
+                                href={child.href}
+                                className="block px-2 py-1.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded transition-colors"
+                              >
+                                {child.label}
+                              </Link>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : item.children ? (
+                  // 普通 Dropdown（台灣彩票）
                   <div key={item.label} className="relative group">
                     <span
                       className="text-sm font-medium hover:text-blue-200 transition-colors flex items-center gap-1 py-2 cursor-default select-none"
@@ -139,6 +221,7 @@ export function Header() {
                     </div>
                   </div>
                 ) : (
+                  // 直接連結
                   <Link
                     key={item.href}
                     href={item.href!}
@@ -170,7 +253,6 @@ export function Header() {
             <div className="flex items-center gap-2 sm:gap-3">
               {user ? (
                 <>
-                  {/* 通知鈴鐺 */}
                   <Link
                     href="/notifications"
                     className="relative p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -186,7 +268,6 @@ export function Header() {
                     )}
                   </Link>
 
-                  {/* 使用者選單 */}
                   <div className="relative">
                     <button
                       onClick={() => setShowUserMenu((v) => !v)}
@@ -271,7 +352,7 @@ export function Header() {
 
         {/* 手機版展開選單 */}
         {showMobileMenu && (
-          <div className="md:hidden border-t border-blue-600/50">
+          <div className="md:hidden border-t border-blue-600/50 max-h-[70vh] overflow-y-auto">
             <nav className="px-4 py-3 space-y-1">
               {navItems.map((item) => (
                 <div key={item.label}>
@@ -283,24 +364,74 @@ export function Header() {
                     >
                       {item.label}
                     </Link>
-                  ) : (
-                    <div className="block px-3 py-2 text-sm font-semibold text-blue-100/90">
-                      {item.label}
-                    </div>
-                  )}
-                  {item.children?.map((child, idx) =>
-                    'divider' in child ? (
-                      <hr key={`md-${idx}`} className="my-1 border-blue-600/40 mx-6" />
-                    ) : (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className="block px-6 py-1.5 text-xs text-blue-200 hover:text-white transition-colors"
-                        onClick={() => setShowMobileMenu(false)}
+                  ) : item.megaMenu ? (
+                    // 手機版 Mega Menu → Accordion
+                    <>
+                      <button
+                        onClick={() => toggleMobileSection(item.label)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
                       >
-                        {child.label}
-                      </Link>
-                    ),
+                        <span>{item.label}</span>
+                        <svg
+                          className={`w-4 h-4 transition-transform ${expandedMobile === item.label ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {expandedMobile === item.label && (
+                        <div className="mt-1 space-y-3 pb-2">
+                          {item.megaMenu.map((col) => (
+                            <div key={col.title}>
+                              <div className="px-6 py-1 text-xs font-bold text-blue-300/70 uppercase tracking-wider flex items-center gap-1">
+                                <span>{col.icon}</span>
+                                <span>{col.title}</span>
+                              </div>
+                              {col.items.map((child) => (
+                                <Link
+                                  key={child.href}
+                                  href={child.href}
+                                  className="block px-8 py-1.5 text-xs text-blue-200 hover:text-white transition-colors"
+                                  onClick={() => setShowMobileMenu(false)}
+                                >
+                                  {child.label}
+                                </Link>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    // 手機版普通 Dropdown → Accordion
+                    <>
+                      <button
+                        onClick={() => toggleMobileSection(item.label)}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
+                      >
+                        <span>{item.label}</span>
+                        <svg
+                          className={`w-4 h-4 transition-transform ${expandedMobile === item.label ? 'rotate-180' : ''}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {expandedMobile === item.label && item.children?.map((child, idx) =>
+                        'divider' in child ? (
+                          <hr key={`md-${idx}`} className="my-1 border-blue-600/40 mx-6" />
+                        ) : (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className="block px-6 py-1.5 text-xs text-blue-200 hover:text-white transition-colors"
+                            onClick={() => setShowMobileMenu(false)}
+                          >
+                            {child.label}
+                          </Link>
+                        ),
+                      )}
+                    </>
                   )}
                 </div>
               ))}
@@ -323,7 +454,6 @@ export function Header() {
         )}
       </header>
 
-      {/* Login Modal — 由 Header 自身或任何元件透過 requireLogin() 觸發 */}
       {isLoginVisible && (
         <LoginModal
           onClose={handleCloseLogin}
@@ -331,12 +461,10 @@ export function Header() {
         />
       )}
 
-      {/* 手機驗證 Modal — 由 requirePhoneVerified() 或 403 攔截觸發 */}
       {showPhoneVerifyModal && (
         <PhoneVerifyModal onClose={closePhoneVerifyModal} />
       )}
 
-      {/* 點擊外部關閉用戶選單 */}
       {showUserMenu && (
         <div className="fixed inset-0 z-30" onClick={() => setShowUserMenu(false)} />
       )}

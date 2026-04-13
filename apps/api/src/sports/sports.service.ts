@@ -2,10 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis.service';
 import { PrismaService } from '../common/prisma.service';
-import { SPORT_CONFIG, SportType, CACHE_TTL } from './sports.config';
+import { LEAGUE_CONFIG, SportType, CACHE_TTL } from './sports.config';
 
-interface SportDbConfig {
-  sportType: string;
+interface LeagueDbConfig {
+  boardSlug: string;
+  sportType: SportType;
+  displayName: string;
   enabled: boolean;
   apiHost: string;
   leagueId: number;
@@ -30,15 +32,17 @@ export class SportsService {
   }
 
   /** 從資料庫取得設定，fallback 到程式碼預設值 */
-  private async getConfig(sport: SportType): Promise<SportDbConfig | null> {
+  private async getConfig(boardSlug: string): Promise<LeagueDbConfig | null> {
     const dbConfig = await this.prisma.sportsConfig.findUnique({
-      where: { sportType: sport },
+      where: { boardSlug },
     });
 
     if (dbConfig) {
       if (!dbConfig.enabled) return null;
       return {
-        sportType: dbConfig.sportType,
+        boardSlug: dbConfig.boardSlug,
+        sportType: dbConfig.sportType as SportType,
+        displayName: dbConfig.displayName,
         enabled: dbConfig.enabled,
         apiHost: dbConfig.apiHost,
         leagueId: dbConfig.leagueId,
@@ -47,10 +51,12 @@ export class SportsService {
       };
     }
 
-    const fallback = SPORT_CONFIG[sport];
+    const fallback = LEAGUE_CONFIG[boardSlug];
     if (!fallback) return null;
     return {
-      sportType: sport,
+      boardSlug,
+      sportType: fallback.sportType,
+      displayName: fallback.displayName,
       enabled: true,
       apiHost: fallback.apiHost,
       leagueId: fallback.leagueId,
@@ -59,7 +65,7 @@ export class SportsService {
     };
   }
 
-  private getTtl(cfg: SportDbConfig, key: keyof typeof CACHE_TTL): number {
+  private getTtl(cfg: LeagueDbConfig, key: keyof typeof CACHE_TTL): number {
     return cfg.cacheTtl[key.toLowerCase()] ?? CACHE_TTL[key];
   }
 
@@ -88,7 +94,6 @@ export class SportsService {
 
       const data = await res.json() as { response: T; errors: Record<string, string> };
 
-      // API-Sports 免費方案 season 限制會在 errors 中回傳
       if (data.errors && Object.keys(data.errors).length > 0) {
         this.logger.warn(`API-Sports 警告：${JSON.stringify(data.errors)}`);
       }
@@ -115,53 +120,109 @@ export class SportsService {
     return data;
   }
 
-  // ============ 即時比分 / 今日賽程 ============
-  // 免費方案：只帶 date，不帶 league/season（會被拒絕）
+  /** 以 apiTeamId 查詢隊伍中文名稱 */
+  private async getTeamTranslations(teamIds: number[]): Promise<Map<number, { nameZhTw: string; shortName: string | null }>> {
+    if (teamIds.length === 0) return new Map();
 
-  async getLiveGames(sport: SportType) {
-    const cfg = await this.getConfig(sport);
+    const translations = await this.prisma.teamTranslation.findMany({
+      where: { apiTeamId: { in: teamIds } },
+      select: { apiTeamId: true, nameZhTw: true, shortName: true },
+    });
+
+    return new Map(translations.map((t) => [t.apiTeamId, { nameZhTw: t.nameZhTw, shortName: t.shortName }]));
+  }
+
+  /** 替換 API 回傳的隊伍名稱為中文 */
+  private async translateTeamNames(games: any[], sportType: SportType): Promise<any[]> {
+    const teamIds = new Set<number>();
+
+    for (const game of games) {
+      if (sportType === 'football') {
+        if (game.teams?.home?.id) teamIds.add(game.teams.home.id);
+        if (game.teams?.away?.id) teamIds.add(game.teams.away.id);
+      } else if (sportType === 'basketball') {
+        if (game.teams?.home?.id) teamIds.add(game.teams.home.id);
+        if (game.teams?.away?.id) teamIds.add(game.teams.away.id);
+      } else {
+        if (game.teams?.home?.id) teamIds.add(game.teams.home.id);
+        if (game.teams?.away?.id) teamIds.add(game.teams.away.id);
+      }
+    }
+
+    const translations = await this.getTeamTranslations(Array.from(teamIds));
+    if (translations.size === 0) return games;
+
+    return games.map((game) => {
+      const translated = { ...game };
+
+      const applyTranslation = (teamObj: any) => {
+        if (!teamObj?.id) return teamObj;
+        const t = translations.get(teamObj.id);
+        if (t) {
+          return { ...teamObj, name: t.shortName ?? t.nameZhTw };
+        }
+        return teamObj;
+      };
+
+      if (translated.teams) {
+        translated.teams = {
+          ...translated.teams,
+          home: applyTranslation(translated.teams.home),
+          away: applyTranslation(translated.teams.away),
+        };
+      }
+
+      return translated;
+    });
+  }
+
+  // ============ 即時比分 / 今日賽程 ============
+
+  async getLiveGames(boardSlug: string) {
+    const cfg = await this.getConfig(boardSlug);
     if (!cfg) return [];
 
     const today = this.getDateString();
-    const cacheKey = `sports:${sport}:games:${today}`;
+    const cacheKey = `sports:${boardSlug}:games:${today}`;
 
-    return this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
-      if (sport === 'soccer') {
-        // 足球不帶 league 會回傳全球賽事，需要帶 league 但不帶 season
-        return this.callApi(cfg.apiHost, '/fixtures', { date: today });
+    const rawGames = await this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
+      if (cfg.sportType === 'football') {
+        return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      // NBA / Baseball：只帶 date
-      return this.callApi(cfg.apiHost, '/games', { date: today });
+      // 通用 basketball / baseball API：帶 league + date
+      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, date: today });
     });
+
+    if (!rawGames || !Array.isArray(rawGames)) return [];
+    return this.translateTeamNames(rawGames, cfg.sportType);
   }
 
   // ============ 賽程 ============
 
-  async getSchedule(sport: SportType) {
-    const cfg = await this.getConfig(sport);
+  async getSchedule(boardSlug: string) {
+    const cfg = await this.getConfig(boardSlug);
     if (!cfg) return [];
 
     const today = this.getDateString();
-    const cacheKey = `sports:${sport}:schedule:${today}`;
+    const cacheKey = `sports:${boardSlug}:schedule:${today}`;
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
-      if (sport === 'soccer') {
-        return this.callApi(cfg.apiHost, '/fixtures', { date: today });
+      if (cfg.sportType === 'football') {
+        return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      return this.callApi(cfg.apiHost, '/games', { date: today });
+      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, date: today });
     });
   }
 
   // ============ 排名 ============
 
-  async getStandings(sport: SportType) {
-    const cfg = await this.getConfig(sport);
+  async getStandings(boardSlug: string) {
+    const cfg = await this.getConfig(boardSlug);
     if (!cfg) return [];
 
-    const cacheKey = `sports:${sport}:standings:${cfg.season}`;
+    const cacheKey = `sports:${boardSlug}:standings:${cfg.season}`;
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'STANDINGS'), async () => {
-      // 排名需要 league + season，免費方案可能不支援當前賽季
       return this.callApi(cfg.apiHost, '/standings', {
         league: cfg.leagueId,
         season: cfg.season,
@@ -171,11 +232,11 @@ export class SportsService {
 
   // ============ 球員數據 ============
 
-  async getPlayers(sport: SportType, teamId?: number) {
-    const cfg = await this.getConfig(sport);
+  async getPlayers(boardSlug: string, teamId?: number) {
+    const cfg = await this.getConfig(boardSlug);
     if (!cfg) return [];
 
-    const cacheKey = `sports:${sport}:players:${teamId ?? 'all'}`;
+    const cacheKey = `sports:${boardSlug}:players:${teamId ?? 'all'}`;
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'PLAYERS'), async () => {
       const params: Record<string, string | number> = {
@@ -189,13 +250,11 @@ export class SportsService {
 
   // ============ 賠率（僅足球有） ============
 
-  async getOdds(sport: SportType, fixtureId?: number) {
-    if (sport !== 'soccer') return null;
+  async getOdds(boardSlug: string, fixtureId?: number) {
+    const cfg = await this.getConfig(boardSlug);
+    if (!cfg || cfg.sportType !== 'football') return null;
 
-    const cfg = await this.getConfig(sport);
-    if (!cfg) return null;
-
-    const cacheKey = `sports:${sport}:odds:${fixtureId ?? 'latest'}`;
+    const cacheKey = `sports:${boardSlug}:odds:${fixtureId ?? 'latest'}`;
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'ODDS'), async () => {
       const params: Record<string, string | number> = {

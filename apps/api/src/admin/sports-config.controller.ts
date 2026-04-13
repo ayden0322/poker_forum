@@ -17,9 +17,10 @@ import { Role } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../common/prisma.service';
 import { ConfigService } from '@nestjs/config';
-import { SPORT_CONFIG } from '../sports/sports.config';
+import { LEAGUE_CONFIG } from '../sports/sports.config';
 
 class UpdateSportsConfigDto {
+  @IsOptional() @IsString() displayName?: string;
   @IsOptional() @IsBoolean() enabled?: boolean;
   @IsOptional() @IsString() apiHost?: string;
   @IsOptional() @IsNumber() leagueId?: number;
@@ -28,33 +29,18 @@ class UpdateSportsConfigDto {
   @IsOptional() @IsObject() extraConfig?: Record<string, any>;
 }
 
-/** 預設設定：首次載入時寫入資料庫 */
-const DEFAULT_CONFIGS = [
-  {
-    sportType: 'baseball',
-    displayName: '棒球（MLB）',
-    apiHost: 'v1.baseball.api-sports.io',
-    leagueId: 1,
-    season: String(new Date().getFullYear()),
-    cacheTtl: { live: 60, schedule: 300, standings: 600, players: 3600 },
-  },
-  {
-    sportType: 'basketball',
-    displayName: '籃球（NBA）',
-    apiHost: 'v2.nba.api-sports.io',
-    leagueId: 12,
-    season: `${new Date().getFullYear() - 1}-${new Date().getFullYear()}`,
-    cacheTtl: { live: 60, schedule: 300, standings: 600, players: 3600 },
-  },
-  {
-    sportType: 'soccer',
-    displayName: '足球（英超）',
-    apiHost: 'v3.football.api-sports.io',
-    leagueId: 39,
-    season: String(new Date().getFullYear()),
+/** 從 LEAGUE_CONFIG 產生預設設定 */
+function buildDefaultConfigs() {
+  return Object.entries(LEAGUE_CONFIG).map(([slug, cfg]) => ({
+    boardSlug: slug,
+    sportType: cfg.sportType,
+    displayName: cfg.displayName,
+    apiHost: cfg.apiHost,
+    leagueId: cfg.leagueId,
+    season: String(cfg.season),
     cacheTtl: { live: 60, schedule: 300, standings: 600, players: 3600, odds: 120 },
-  },
-];
+  }));
+}
 
 @ApiTags('admin:sports-config')
 @ApiBearerAuth()
@@ -72,11 +58,10 @@ export class AdminSportsConfigController {
   @Get()
   @ApiOperation({ summary: '取得所有運動 API 設定' })
   async getAll(): Promise<{ data: unknown[] }> {
-    // 確保預設設定存在
     await this.ensureDefaults();
 
     const configs = await this.prisma.sportsConfig.findMany({
-      orderBy: { sportType: 'asc' },
+      orderBy: [{ sportType: 'asc' }, { boardSlug: 'asc' }],
     });
 
     return { data: configs };
@@ -90,10 +75,25 @@ export class AdminSportsConfigController {
       return { data: { error: 'API_SPORTS_KEY 未設定' } };
     }
 
+    // API-Sports 的使用量是按 API host 計算，不是按聯賽
+    // 所以只需要查詢每個唯一的 host 一次
     const configs = await this.prisma.sportsConfig.findMany({ where: { enabled: true } });
+    const hostSet = new Set<string>();
     const usage: Record<string, unknown> = {};
 
     for (const cfg of configs) {
+      if (hostSet.has(cfg.apiHost)) {
+        // 同一個 host 的使用量一樣，直接複製
+        const existing = Object.entries(usage).find(
+          ([, v]: [string, any]) => v && !v.error && configs.find((c) => c.boardSlug === Object.keys(usage).find((k) => usage[k] === v))?.apiHost === cfg.apiHost
+        );
+        if (existing) {
+          usage[cfg.boardSlug] = existing[1];
+        }
+        continue;
+      }
+
+      hostSet.add(cfg.apiHost);
       try {
         const res = await fetch(`https://${cfg.apiHost}/status`, {
           headers: { 'x-apisports-key': apiKey },
@@ -101,36 +101,37 @@ export class AdminSportsConfigController {
         });
         if (res.ok) {
           const data = await res.json() as { response: unknown };
-          usage[cfg.sportType] = data.response;
+          usage[cfg.boardSlug] = data.response;
         } else {
-          usage[cfg.sportType] = { error: `HTTP ${res.status}` };
+          usage[cfg.boardSlug] = { error: `HTTP ${res.status}` };
         }
       } catch (err) {
-        usage[cfg.sportType] = { error: String(err) };
+        usage[cfg.boardSlug] = { error: String(err) };
       }
     }
 
     return { data: usage };
   }
 
-  @Put(':sportType')
-  @ApiOperation({ summary: '更新指定運動的 API 設定' })
+  @Put(':boardSlug')
+  @ApiOperation({ summary: '更新指定看板的 API 設定' })
   async update(
-    @Param('sportType') sportType: string,
+    @Param('boardSlug') boardSlug: string,
     @Body() dto: UpdateSportsConfigDto,
     @CurrentUser() user: { id: string },
   ): Promise<{ data?: unknown; error?: string }> {
     const existing = await this.prisma.sportsConfig.findUnique({
-      where: { sportType },
+      where: { boardSlug },
     });
 
     if (!existing) {
-      return { error: `找不到 ${sportType} 的設定` };
+      return { error: `找不到 ${boardSlug} 的設定` };
     }
 
     const updated = await this.prisma.sportsConfig.update({
-      where: { sportType },
+      where: { boardSlug },
       data: {
+        ...(dto.displayName && { displayName: dto.displayName }),
         ...(dto.enabled !== undefined && { enabled: dto.enabled }),
         ...(dto.apiHost && { apiHost: dto.apiHost }),
         ...(dto.leagueId !== undefined && { leagueId: dto.leagueId }),
@@ -141,16 +142,17 @@ export class AdminSportsConfigController {
       },
     });
 
-    this.logger.log(`管理員 ${user.id} 更新了 ${sportType} 的設定`);
+    this.logger.log(`管理員 ${user.id} 更新了 ${boardSlug} 的設定`);
     return { data: updated };
   }
 
   @Post('seed')
   @ApiOperation({ summary: '重置為預設設定' })
   async seed(@CurrentUser() user: { id: string }): Promise<{ data: unknown[] }> {
-    for (const cfg of DEFAULT_CONFIGS) {
+    const defaults = buildDefaultConfigs();
+    for (const cfg of defaults) {
       await this.prisma.sportsConfig.upsert({
-        where: { sportType: cfg.sportType },
+        where: { boardSlug: cfg.boardSlug },
         create: { ...cfg, updatedBy: user.id },
         update: { ...cfg, updatedBy: user.id },
       });
@@ -158,7 +160,7 @@ export class AdminSportsConfigController {
     this.logger.log(`管理員 ${user.id} 重置了所有運動 API 設定`);
 
     const configs = await this.prisma.sportsConfig.findMany({
-      orderBy: { sportType: 'asc' },
+      orderBy: [{ sportType: 'asc' }, { boardSlug: 'asc' }],
     });
     return { data: configs };
   }
@@ -169,7 +171,8 @@ export class AdminSportsConfigController {
     if (count > 0) return;
 
     this.logger.log('首次載入，寫入預設運動 API 設定');
-    for (const cfg of DEFAULT_CONFIGS) {
+    const defaults = buildDefaultConfigs();
+    for (const cfg of defaults) {
       await this.prisma.sportsConfig.create({ data: cfg });
     }
   }

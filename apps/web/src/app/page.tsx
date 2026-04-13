@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { CategorySection } from '@/components/home/CategorySection';
 
 interface MarqueeItem {
   id: string;
@@ -86,36 +87,7 @@ export default async function HomePage() {
       )}
 
       {categories.map((category) => (
-        <section key={category.id} className="mb-8">
-          <h2 className="text-lg font-bold bg-gray-800 text-white px-4 py-2.5 rounded-t-lg">
-            {category.name}
-          </h2>
-          <div className="border border-t-0 border-gray-200 rounded-b-lg divide-y divide-gray-100">
-            {category.boards.map((board) => (
-              <Link
-                key={board.id}
-                href={`/board/${board.slug}`}
-                className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 transition-colors"
-              >
-                <span className="text-2xl w-10 text-center">{board.icon ?? '💬'}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900">{board.name}</div>
-                  {board.description && (
-                    <div className="text-sm text-gray-500 truncate">{board.description}</div>
-                  )}
-                </div>
-                <div className="text-sm text-gray-400 shrink-0">
-                  {board._count.posts} 篇文章
-                </div>
-              </Link>
-            ))}
-            {category.boards.length === 0 && (
-              <div className="px-4 py-6 text-center text-gray-400 text-sm">
-                此分類尚無看板
-              </div>
-            )}
-          </div>
-        </section>
+        <CategorySection key={category.id} category={category} />
       ))}
     </div>
   );

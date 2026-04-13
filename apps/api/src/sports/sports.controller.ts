@@ -9,69 +9,69 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SportsService } from './sports.service';
-import { VALID_SPORT_TYPES, SportType } from './sports.config';
+import { VALID_BOARD_SLUGS } from './sports.config';
 
 @ApiTags('體育賽事')
 @Controller('sports')
 export class SportsController {
   constructor(private readonly sportsService: SportsService) {}
 
-  @Get(':type/live')
+  @Get(':boardSlug/live')
   @ApiOperation({ summary: '取得今日賽事與即時比分' })
-  async getLive(@Param('type') type: string) {
-    this.validateType(type);
-    const data = await this.sportsService.getLiveGames(type as SportType);
+  async getLive(@Param('boardSlug') boardSlug: string) {
+    this.validateBoardSlug(boardSlug);
+    const data = await this.sportsService.getLiveGames(boardSlug);
     return { data: data ?? [] };
   }
 
-  @Get(':type/schedule')
+  @Get(':boardSlug/schedule')
   @ApiOperation({ summary: '取得近期賽程' })
-  async getSchedule(@Param('type') type: string) {
-    this.validateType(type);
-    const data = await this.sportsService.getSchedule(type as SportType);
+  async getSchedule(@Param('boardSlug') boardSlug: string) {
+    this.validateBoardSlug(boardSlug);
+    const data = await this.sportsService.getSchedule(boardSlug);
     return { data: data ?? [] };
   }
 
-  @Get(':type/standings')
+  @Get(':boardSlug/standings')
   @ApiOperation({ summary: '取得聯盟排名' })
-  async getStandings(@Param('type') type: string) {
-    this.validateType(type);
-    const data = await this.sportsService.getStandings(type as SportType);
+  async getStandings(@Param('boardSlug') boardSlug: string) {
+    this.validateBoardSlug(boardSlug);
+    const data = await this.sportsService.getStandings(boardSlug);
     return { data: data ?? [] };
   }
 
-  @Get(':type/players')
+  @Get(':boardSlug/players')
   @ApiOperation({ summary: '取得球員數據' })
   async getPlayers(
-    @Param('type') type: string,
+    @Param('boardSlug') boardSlug: string,
     @Query('teamId', new DefaultValuePipe(0), ParseIntPipe) teamId: number,
   ) {
-    this.validateType(type);
+    this.validateBoardSlug(boardSlug);
     const data = await this.sportsService.getPlayers(
-      type as SportType,
+      boardSlug,
       teamId || undefined,
     );
     return { data: data ?? [] };
   }
 
-  @Get(':type/odds')
+  @Get(':boardSlug/odds')
   @ApiOperation({ summary: '取得賠率資訊（僅足球）' })
   async getOdds(
-    @Param('type') type: string,
+    @Param('boardSlug') boardSlug: string,
     @Query('fixtureId', new DefaultValuePipe(0), ParseIntPipe) fixtureId: number,
   ) {
-    this.validateType(type);
+    this.validateBoardSlug(boardSlug);
     const data = await this.sportsService.getOdds(
-      type as SportType,
+      boardSlug,
       fixtureId || undefined,
     );
     return { data: data ?? [] };
   }
 
-  private validateType(type: string) {
-    if (!VALID_SPORT_TYPES.includes(type as SportType)) {
+  private validateBoardSlug(slug: string) {
+    if (!VALID_BOARD_SLUGS.includes(slug)) {
       throw new BadRequestException(
-        `無效的運動類型，請使用：${VALID_SPORT_TYPES.join(', ')}`,
+        `無效的看板代碼，支援的看板：${VALID_BOARD_SLUGS.join(', ')}`,
       );
     }
   }
