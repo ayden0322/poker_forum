@@ -189,8 +189,8 @@ export class SportsService {
       if (cfg.sportType === 'football') {
         return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      // 通用 basketball / baseball API：帶 league + date
-      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, date: today });
+      // 通用 basketball / baseball API：需要帶 league + season + date
+      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, season: cfg.season, date: today });
     });
 
     if (!rawGames || !Array.isArray(rawGames)) return [];
@@ -210,7 +210,7 @@ export class SportsService {
       if (cfg.sportType === 'football') {
         return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, date: today });
+      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, season: cfg.season, date: today });
     });
   }
 
