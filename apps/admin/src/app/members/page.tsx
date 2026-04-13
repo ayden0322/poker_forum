@@ -254,31 +254,6 @@ export default function MembersPage() {
       ),
     },
     {
-      title: '加入時間',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 120,
-      render: (date) => new Date(date).toLocaleDateString('zh-TW'),
-    },
-    {
-      title: '最後登入時間',
-      dataIndex: 'lastLoginAt',
-      key: 'lastLoginAt',
-      width: 160,
-      render: (date: string | null) => (
-        <Text style={{ fontSize: 12 }}>{formatDateTime(date)}</Text>
-      ),
-    },
-    {
-      title: '最後登入 IP',
-      dataIndex: 'lastLoginIp',
-      key: 'lastLoginIp',
-      width: 130,
-      render: (ip: string | null) => ip ? (
-        <Text code style={{ fontSize: 12 }}>{ip}</Text>
-      ) : '—',
-    },
-    {
       title: '操作',
       key: 'actions',
       width: 180,
@@ -351,7 +326,7 @@ export default function MembersPage() {
           showTotal: (total) => `共 ${total} 位會員`,
         }}
         size="middle"
-        scroll={{ x: 800 }}
+        scroll={{ x: 1000 }}
       />
 
       {/* 編輯 Modal */}
