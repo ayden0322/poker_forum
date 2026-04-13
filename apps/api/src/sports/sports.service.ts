@@ -1,7 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis.service';
+import { PrismaService } from '../common/prisma.service';
 import { SPORT_CONFIG, SportType, CACHE_TTL } from './sports.config';
+
+interface SportDbConfig {
+  sportType: string;
+  enabled: boolean;
+  apiHost: string;
+  leagueId: number;
+  season: string;
+  cacheTtl: Record<string, number>;
+}
 
 @Injectable()
 export class SportsService {
@@ -11,11 +21,47 @@ export class SportsService {
   constructor(
     private config: ConfigService,
     private redis: RedisService,
+    private prisma: PrismaService,
   ) {
     this.apiKey = this.config.get<string>('API_SPORTS_KEY', '');
     if (!this.apiKey) {
       this.logger.warn('API_SPORTS_KEY 未設定，體育賽事 API 將無法使用');
     }
+  }
+
+  /** 從資料庫取得設定，fallback 到程式碼預設值 */
+  private async getConfig(sport: SportType): Promise<SportDbConfig | null> {
+    const dbConfig = await this.prisma.sportsConfig.findUnique({
+      where: { sportType: sport },
+    });
+
+    if (dbConfig) {
+      if (!dbConfig.enabled) return null;
+      return {
+        sportType: dbConfig.sportType,
+        enabled: dbConfig.enabled,
+        apiHost: dbConfig.apiHost,
+        leagueId: dbConfig.leagueId,
+        season: dbConfig.season,
+        cacheTtl: (dbConfig.cacheTtl as Record<string, number>) ?? {},
+      };
+    }
+
+    // Fallback 到程式碼預設值
+    const fallback = SPORT_CONFIG[sport];
+    if (!fallback) return null;
+    return {
+      sportType: sport,
+      enabled: true,
+      apiHost: fallback.apiHost,
+      leagueId: fallback.leagueId,
+      season: String(fallback.season),
+      cacheTtl: {},
+    };
+  }
+
+  private getTtl(cfg: SportDbConfig, key: keyof typeof CACHE_TTL): number {
+    return cfg.cacheTtl[key.toLowerCase()] ?? CACHE_TTL[key];
   }
 
   /** 呼叫 API-Sports */
@@ -66,13 +112,14 @@ export class SportsService {
 
   // ============ 即時比分 / 今日賽程 ============
 
-  /** 取得今日賽事（含即時比分） */
   async getLiveGames(sport: SportType) {
-    const cfg = SPORT_CONFIG[sport];
+    const cfg = await this.getConfig(sport);
+    if (!cfg) return [];
+
     const today = this.getDateString();
     const cacheKey = `sports:${sport}:games:${today}`;
 
-    return this.cachedCall(cacheKey, CACHE_TTL.LIVE, async () => {
+    return this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
       if (sport === 'soccer') {
         return this.callApi(cfg.apiHost, '/fixtures', {
           league: cfg.leagueId,
@@ -80,7 +127,6 @@ export class SportsService {
           date: today,
         });
       }
-      // basketball & baseball 使用 /games endpoint
       return this.callApi(cfg.apiHost, '/games', {
         league: cfg.leagueId,
         season: cfg.season,
@@ -91,14 +137,15 @@ export class SportsService {
 
   // ============ 賽程 ============
 
-  /** 取得近期賽程（未來 7 天） */
   async getSchedule(sport: SportType) {
-    const cfg = SPORT_CONFIG[sport];
+    const cfg = await this.getConfig(sport);
+    if (!cfg) return [];
+
     const today = this.getDateString();
     const nextWeek = this.getDateString(7);
     const cacheKey = `sports:${sport}:schedule:${today}`;
 
-    return this.cachedCall(cacheKey, CACHE_TTL.SCHEDULE, async () => {
+    return this.cachedCall(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
       if (sport === 'soccer') {
         return this.callApi(cfg.apiHost, '/fixtures', {
           league: cfg.leagueId,
@@ -107,11 +154,10 @@ export class SportsService {
           to: nextWeek,
         });
       }
-      // basketball & baseball
       return this.callApi(cfg.apiHost, '/games', {
         league: cfg.leagueId,
         season: cfg.season,
-        date: today, // API-Sports basketball/baseball 用 date 查單日
+        date: today,
       });
     });
   }
@@ -119,16 +165,12 @@ export class SportsService {
   // ============ 排名 ============
 
   async getStandings(sport: SportType) {
-    const cfg = SPORT_CONFIG[sport];
+    const cfg = await this.getConfig(sport);
+    if (!cfg) return [];
+
     const cacheKey = `sports:${sport}:standings:${cfg.season}`;
 
-    return this.cachedCall(cacheKey, CACHE_TTL.STANDINGS, async () => {
-      if (sport === 'soccer') {
-        return this.callApi(cfg.apiHost, '/standings', {
-          league: cfg.leagueId,
-          season: cfg.season,
-        });
-      }
+    return this.cachedCall(cacheKey, this.getTtl(cfg, 'STANDINGS'), async () => {
       return this.callApi(cfg.apiHost, '/standings', {
         league: cfg.leagueId,
         season: cfg.season,
@@ -139,20 +181,18 @@ export class SportsService {
   // ============ 球員數據 ============
 
   async getPlayers(sport: SportType, teamId?: number) {
-    const cfg = SPORT_CONFIG[sport];
+    const cfg = await this.getConfig(sport);
+    if (!cfg) return [];
+
     const cacheKey = `sports:${sport}:players:${teamId ?? 'all'}`;
 
-    return this.cachedCall(cacheKey, CACHE_TTL.PLAYERS, async () => {
+    return this.cachedCall(cacheKey, this.getTtl(cfg, 'PLAYERS'), async () => {
       const params: Record<string, string | number> = {
         league: cfg.leagueId,
         season: cfg.season,
       };
       if (teamId) params.team = teamId;
 
-      if (sport === 'soccer') {
-        return this.callApi(cfg.apiHost, '/players', params);
-      }
-      // basketball / baseball 的 players endpoint 略有不同
       return this.callApi(cfg.apiHost, '/players', params);
     });
   }
@@ -162,10 +202,12 @@ export class SportsService {
   async getOdds(sport: SportType, fixtureId?: number) {
     if (sport !== 'soccer') return null;
 
-    const cfg = SPORT_CONFIG[sport];
+    const cfg = await this.getConfig(sport);
+    if (!cfg) return null;
+
     const cacheKey = `sports:${sport}:odds:${fixtureId ?? 'latest'}`;
 
-    return this.cachedCall(cacheKey, CACHE_TTL.ODDS, async () => {
+    return this.cachedCall(cacheKey, this.getTtl(cfg, 'ODDS'), async () => {
       const params: Record<string, string | number> = {
         league: cfg.leagueId,
         season: cfg.season,
@@ -181,6 +223,6 @@ export class SportsService {
   private getDateString(offsetDays: number = 0): string {
     const d = new Date();
     d.setDate(d.getDate() + offsetDays);
-    return d.toISOString().slice(0, 10); // YYYY-MM-DD
+    return d.toISOString().slice(0, 10);
   }
 }

@@ -420,3 +420,21 @@ model SmsProviderConfig {
 
   @@map("sms_provider_configs")
 }
+
+// ===== 體育賽事 API 設定（後台可編輯） =====
+model SportsConfig {
+  id          String   @id @default(cuid())
+  sportType   String   @unique @map("sport_type")    // baseball, basketball, soccer
+  displayName String   @map("display_name")           // 棒球, 籃球, 足球
+  enabled     Boolean  @default(true)
+  apiHost     String   @map("api_host")               // API-Sports base host
+  leagueId    Int      @map("league_id")
+  season      String                                   // 賽季（如 2026, 2025-2026）
+  cacheTtl    Json     @default("{}") @map("cache_ttl") // { live: 60, schedule: 300, ... }
+  extraConfig Json?    @map("extra_config")            // 額外設定（多聯賽等）
+  updatedBy   String?  @map("updated_by")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("sports_configs")
+}
