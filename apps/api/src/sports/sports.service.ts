@@ -47,7 +47,6 @@ export class SportsService {
       };
     }
 
-    // Fallback 到程式碼預設值
     const fallback = SPORT_CONFIG[sport];
     if (!fallback) return null;
     return {
@@ -87,7 +86,13 @@ export class SportsService {
         return null;
       }
 
-      const data = await res.json() as { response: T };
+      const data = await res.json() as { response: T; errors: Record<string, string> };
+
+      // API-Sports 免費方案 season 限制會在 errors 中回傳
+      if (data.errors && Object.keys(data.errors).length > 0) {
+        this.logger.warn(`API-Sports 警告：${JSON.stringify(data.errors)}`);
+      }
+
       return data.response;
     } catch (err) {
       this.logger.error(`API-Sports 呼叫失敗：${err}`);
@@ -111,6 +116,7 @@ export class SportsService {
   }
 
   // ============ 即時比分 / 今日賽程 ============
+  // 免費方案：只帶 date，不帶 league/season（會被拒絕）
 
   async getLiveGames(sport: SportType) {
     const cfg = await this.getConfig(sport);
@@ -121,17 +127,11 @@ export class SportsService {
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
       if (sport === 'soccer') {
-        return this.callApi(cfg.apiHost, '/fixtures', {
-          league: cfg.leagueId,
-          season: cfg.season,
-          date: today,
-        });
+        // 足球不帶 league 會回傳全球賽事，需要帶 league 但不帶 season
+        return this.callApi(cfg.apiHost, '/fixtures', { date: today });
       }
-      return this.callApi(cfg.apiHost, '/games', {
-        league: cfg.leagueId,
-        season: cfg.season,
-        date: today,
-      });
+      // NBA / Baseball：只帶 date
+      return this.callApi(cfg.apiHost, '/games', { date: today });
     });
   }
 
@@ -142,23 +142,13 @@ export class SportsService {
     if (!cfg) return [];
 
     const today = this.getDateString();
-    const nextWeek = this.getDateString(7);
     const cacheKey = `sports:${sport}:schedule:${today}`;
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
       if (sport === 'soccer') {
-        return this.callApi(cfg.apiHost, '/fixtures', {
-          league: cfg.leagueId,
-          season: cfg.season,
-          from: today,
-          to: nextWeek,
-        });
+        return this.callApi(cfg.apiHost, '/fixtures', { date: today });
       }
-      return this.callApi(cfg.apiHost, '/games', {
-        league: cfg.leagueId,
-        season: cfg.season,
-        date: today,
-      });
+      return this.callApi(cfg.apiHost, '/games', { date: today });
     });
   }
 
@@ -171,6 +161,7 @@ export class SportsService {
     const cacheKey = `sports:${sport}:standings:${cfg.season}`;
 
     return this.cachedCall(cacheKey, this.getTtl(cfg, 'STANDINGS'), async () => {
+      // 排名需要 league + season，免費方案可能不支援當前賽季
       return this.callApi(cfg.apiHost, '/standings', {
         league: cfg.leagueId,
         season: cfg.season,
@@ -192,7 +183,6 @@ export class SportsService {
         season: cfg.season,
       };
       if (teamId) params.team = teamId;
-
       return this.callApi(cfg.apiHost, '/players', params);
     });
   }
@@ -213,7 +203,6 @@ export class SportsService {
         season: cfg.season,
       };
       if (fixtureId) params.fixture = fixtureId;
-
       return this.callApi(cfg.apiHost, '/odds', params);
     });
   }

@@ -173,6 +173,16 @@ function TeamRow({ team, score, isWinner }: { team: GameTeam; score: number | nu
   );
 }
 
+/**
+ * NBA status.short 是數字，需要對照表
+ * 1=未開始, 2=進行中, 3=已結束
+ */
+const NBA_STATUS_MAP: Record<number, { short: string; long: string }> = {
+  1: { short: 'NS', long: 'Not Started' },
+  2: { short: 'LIVE', long: 'In Play' },
+  3: { short: 'FT', long: 'Finished' },
+};
+
 /** 將 API-Sports 不同運動的回傳格式正規化 */
 function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
   if (!Array.isArray(raw)) return [];
@@ -198,18 +208,47 @@ function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
           away: item.goals?.away ?? null,
         },
         status: {
-          short: item.fixture?.status?.short ?? 'NS',
+          short: String(item.fixture?.status?.short ?? 'NS'),
           long: item.fixture?.status?.long ?? '',
         },
         league: item.league?.name,
       };
     }
 
-    // basketball & baseball 格式相近
+    if (sportType === 'basketball') {
+      // NBA API (v2): 客隊是 visitors，分數在 scores.visitors.points / scores.home.points
+      // status.short 是數字（1=未開始, 2=進行中, 3=已結束）
+      const statusNum = item.status?.short;
+      const mappedStatus = NBA_STATUS_MAP[statusNum] ?? { short: String(statusNum ?? 'NS'), long: item.status?.long ?? '' };
+
+      return {
+        id: item.id ?? 0,
+        date: item.date?.start?.slice(0, 10) ?? '',
+        time: formatTime(item.date?.start),
+        home: {
+          id: item.teams?.home?.id ?? 0,
+          name: item.teams?.home?.name ?? '未知',
+          logo: item.teams?.home?.logo ?? '',
+        },
+        away: {
+          id: item.teams?.visitors?.id ?? 0,
+          name: item.teams?.visitors?.name ?? '未知',
+          logo: item.teams?.visitors?.logo ?? '',
+        },
+        score: {
+          home: item.scores?.home?.points ?? null,
+          away: item.scores?.visitors?.points ?? null,
+        },
+        status: mappedStatus,
+        league: item.league === 'standard' ? 'NBA' : item.league,
+      };
+    }
+
+    // Baseball: 格式較標準
     return {
       id: item.id ?? 0,
       date: item.date?.slice(0, 10) ?? '',
-      time: formatTime(item.date ?? item.time),
+      time: formatTime(item.date),
       home: {
         id: item.teams?.home?.id ?? 0,
         name: item.teams?.home?.name ?? '未知',
@@ -225,7 +264,7 @@ function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
         away: item.scores?.away?.total ?? null,
       },
       status: {
-        short: item.status?.short ?? 'NS',
+        short: String(item.status?.short ?? 'NS'),
         long: item.status?.long ?? '',
       },
       league: item.league?.name,
