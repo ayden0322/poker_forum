@@ -188,13 +188,13 @@ export class SportsService {
     // 同一個 API host + date 共用快取，避免每個聯賽板各打一次
     const cacheKey = `sports:${cfg.sportType}:allgames:${today}`;
 
-    const allGames = await this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
+    const allGames = await this.cachedCall<any[]>(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
       if (cfg.sportType === 'football') {
         // 足球 API 可以帶 league 不帶 season，免費方案可用
-        return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
+        return this.callApi<any[]>(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
       // 籃球 / 棒球：免費方案只能帶 date，不能帶 league+season
-      return this.callApi(cfg.apiHost, '/games', { date: today });
+      return this.callApi<any[]>(cfg.apiHost, '/games', { date: today });
     });
 
     if (!allGames || !Array.isArray(allGames)) return [];
@@ -216,11 +216,11 @@ export class SportsService {
     const today = this.getDateString();
     const cacheKey = `sports:${cfg.sportType}:allschedule:${today}`;
 
-    const allGames = await this.cachedCall(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
+    const allGames = await this.cachedCall<any[]>(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
       if (cfg.sportType === 'football') {
-        return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
+        return this.callApi<any[]>(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      return this.callApi(cfg.apiHost, '/games', { date: today });
+      return this.callApi<any[]>(cfg.apiHost, '/games', { date: today });
     });
 
     if (!allGames || !Array.isArray(allGames)) return [];
