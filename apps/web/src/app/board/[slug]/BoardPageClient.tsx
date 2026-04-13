@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth';
 import { useRouter } from 'next/navigation';
 import { LotteryBanner } from '@/components/lottery/LotteryBanner';
+import { ScoreWidget } from '@/components/sports/ScoreWidget';
 
 interface PostItem {
   id: string;
@@ -291,6 +292,9 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       {board.slug === 'daily-cash' && <LotteryBanner gameTypes={['DAILY539']} />}
       {board.slug === 'lotto1224' && <LotteryBanner gameTypes={['LOTTO1224']} />}
       {board.slug === 'star-lotto' && <LotteryBanner gameTypes={['LOTTO3D', 'LOTTO4D']} />}
+
+      {/* 運動看板：即時比分與今日賽程 */}
+      <ScoreWidget boardSlug={board.slug} />
 
       {/* 搜尋列 */}
       <form onSubmit={handleSearch} className="flex gap-2 mb-4">

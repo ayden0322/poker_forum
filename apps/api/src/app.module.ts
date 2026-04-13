@@ -18,6 +18,8 @@ import { GifsModule } from './gifs/gifs.module';
 import { MailModule } from './mail/mail.module';
 import { VerificationModule } from './verification/verification.module';
 import { PrismaModule } from './common/prisma.module';
+import { RedisModule } from './common/redis.module';
+import { SportsModule } from './sports/sports.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
 
@@ -32,6 +34,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
       limit: 100,   // 每 60 秒最多 100 次請求
     }]),
     PrismaModule,
+    RedisModule,
     AuthModule,
     UsersModule,
     BoardsModule,
@@ -47,6 +50,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     GifsModule,
     MailModule,
     VerificationModule,
+    SportsModule,
     ScheduleModule.forRoot(),
   ],
   providers: [
