@@ -24,6 +24,14 @@ export class SportsController {
     return { data: data ?? [] };
   }
 
+  @Get(':boardSlug/recent')
+  @ApiOperation({ summary: '取得昨日+今日+明日三天賽事' })
+  async getRecent(@Param('boardSlug') boardSlug: string) {
+    this.validateBoardSlug(boardSlug);
+    const data = await this.sportsService.getRecentGames(boardSlug);
+    return { data };
+  }
+
   @Get(':boardSlug/schedule')
   @ApiOperation({ summary: '取得近期賽程' })
   async getSchedule(@Param('boardSlug') boardSlug: string) {

@@ -176,6 +176,44 @@ export class SportsService {
     });
   }
 
+  // ============ 三日賽事（昨日 + 今日 + 明日） ============
+
+  async getRecentGames(boardSlug: string) {
+    const cfg = await this.getConfig(boardSlug);
+    if (!cfg) return { yesterday: [], today: [], tomorrow: [] };
+
+    const [yesterday, today, tomorrow] = await Promise.all([
+      this.getGamesByDate(cfg, -1),
+      this.getGamesByDate(cfg, 0),
+      this.getGamesByDate(cfg, 1),
+    ]);
+
+    return { yesterday, today, tomorrow };
+  }
+
+  /** 取得指定日期的賽事（offsetDays: -1=昨天, 0=今天, 1=明天） */
+  private async getGamesByDate(cfg: LeagueDbConfig, offsetDays: number) {
+    const date = this.getDateString(offsetDays);
+    // 昨日/明日用較長快取（10 分鐘），今日用 60 秒
+    const ttl = offsetDays === 0 ? this.getTtl(cfg, 'LIVE') : 600;
+    const cacheKey = `sports:${cfg.sportType}:allgames:${date}`;
+
+    const allGames = await this.cachedCall<any[]>(cacheKey, ttl, async () => {
+      if (cfg.sportType === 'football') {
+        return this.callApi<any[]>(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date });
+      }
+      return this.callApi<any[]>(cfg.apiHost, '/games', { date });
+    });
+
+    if (!allGames || !Array.isArray(allGames)) return [];
+
+    const filtered = cfg.sportType === 'football'
+      ? allGames
+      : allGames.filter((g: any) => g.league?.id === cfg.leagueId);
+
+    return this.translateTeamNames(filtered, cfg.sportType);
+  }
+
   // ============ 即時比分 / 今日賽程 ============
   // 免費方案策略：只帶 date 查詢（不帶 league/season，避免被拒絕）
   // 回傳結果再用 leagueId 後端過濾

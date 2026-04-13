@@ -61,6 +61,14 @@ interface NormalizedGame {
   league?: string;
 }
 
+interface RecentGamesResponse {
+  data: {
+    yesterday: unknown[];
+    today: unknown[];
+    tomorrow: unknown[];
+  };
+}
+
 interface ScoreWidgetProps {
   boardSlug: string;
 }
@@ -72,10 +80,17 @@ export function ScoreWidget({ boardSlug }: ScoreWidgetProps) {
   return <ScoreWidgetInner boardSlug={boardSlug} sportType={sportInfo.sportType} label={sportInfo.label} icon={sportInfo.icon} />;
 }
 
+/** 格式化日期為 MM/DD */
+function formatDate(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: string; sportType: string; label: string; icon: string }) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['sports-live', boardSlug],
-    queryFn: () => apiFetch<{ data: unknown[] }>(`/sports/${boardSlug}/live`),
+    queryKey: ['sports-recent', boardSlug],
+    queryFn: () => apiFetch<RecentGamesResponse>(`/sports/${boardSlug}/recent`),
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   });
@@ -92,17 +107,20 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
 
   if (isError) return null;
 
-  const rawGames = data?.data ?? [];
-  const games = normalizeGames(rawGames, sportType);
+  const yesterday = normalizeGames(data?.data.yesterday ?? [], sportType);
+  const today = normalizeGames(data?.data.today ?? [], sportType);
+  const tomorrow = normalizeGames(data?.data.tomorrow ?? [], sportType);
 
-  if (games.length === 0) {
+  const hasAnyGames = yesterday.length > 0 || today.length > 0 || tomorrow.length > 0;
+
+  if (!hasAnyGames) {
     return (
       <div className="mb-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
         <div className="flex items-center gap-2 mb-2">
           <span className="text-lg">{icon}</span>
-          <h3 className="font-bold text-gray-800">今日{label}賽事</h3>
+          <h3 className="font-bold text-gray-800">{label} 賽事</h3>
         </div>
-        <p className="text-sm text-gray-400">今日暫無賽事</p>
+        <p className="text-sm text-gray-400">近三日暫無賽事</p>
       </div>
     );
   }
@@ -112,8 +130,7 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-lg">{icon}</span>
-          <h3 className="font-bold text-gray-800">今日{label}賽事</h3>
-          <span className="text-xs text-gray-400">{games.length} 場</span>
+          <h3 className="font-bold text-gray-800">{label} 賽事</h3>
         </div>
         <Link
           href={`/sports/${boardSlug}/stats`}
@@ -123,77 +140,126 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
         </Link>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-        {games.map((game) => (
-          <GameCard key={game.id} game={game} />
-        ))}
+      <div className="grid grid-cols-3 gap-3">
+        {/* 昨日賽果 */}
+        <DayColumn
+          title={`昨日 ${formatDate(-1)}`}
+          games={yesterday}
+          emptyText="無賽事"
+          bgClass="bg-gray-50"
+          titleClass="text-gray-500"
+        />
+
+        {/* 今日賽事 */}
+        <DayColumn
+          title={`今日 ${formatDate(0)}`}
+          games={today}
+          emptyText="無賽事"
+          bgClass="bg-blue-50"
+          titleClass="text-blue-600"
+          isToday
+        />
+
+        {/* 明日賽程 */}
+        <DayColumn
+          title={`明日 ${formatDate(1)}`}
+          games={tomorrow}
+          emptyText="無賽事"
+          bgClass="bg-gray-50"
+          titleClass="text-gray-500"
+        />
       </div>
     </div>
   );
 }
 
-function GameCard({ game }: { game: NormalizedGame }) {
+function DayColumn({ title, games, emptyText, bgClass, titleClass, isToday }: {
+  title: string;
+  games: NormalizedGame[];
+  emptyText: string;
+  bgClass: string;
+  titleClass: string;
+  isToday?: boolean;
+}) {
+  return (
+    <div className={`rounded-lg border ${isToday ? 'border-blue-200' : 'border-gray-200'} ${bgClass} p-2`}>
+      <div className={`text-xs font-bold ${titleClass} mb-2 text-center`}>
+        {title}
+        {games.length > 0 && <span className="font-normal text-gray-400 ml-1">({games.length})</span>}
+      </div>
+      {games.length === 0 ? (
+        <p className="text-xs text-gray-300 text-center py-4">{emptyText}</p>
+      ) : (
+        <div className="space-y-2 max-h-64 overflow-y-auto">
+          {games.map((game) => (
+            <GameCard key={game.id} game={game} compact />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GameCard({ game, compact }: { game: NormalizedGame; compact?: boolean }) {
   const isLive = ['1H', '2H', 'Q1', 'Q2', 'Q3', 'Q4', 'HT', 'LIVE', 'IN1', 'IN2', 'IN3', 'IN4', 'IN5', 'IN6', 'IN7', 'IN8', 'IN9'].includes(game.status.short);
   const isFinished = ['FT', 'AET', 'PEN', 'AOT'].includes(game.status.short);
   const isNotStarted = ['NS', 'TBD', 'PST'].includes(game.status.short);
 
   return (
-    <div className="shrink-0 w-52 rounded-lg border border-gray-200 bg-white p-3 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between mb-2">
+    <div className={`rounded-lg border border-gray-200 bg-white ${compact ? 'p-2' : 'p-3'} shadow-sm`}>
+      {/* 狀態 */}
+      <div className="flex items-center justify-center mb-1.5">
         {isLive && (
-          <span className="text-xs font-bold text-red-500 flex items-center gap-1">
+          <span className="text-[10px] font-bold text-red-500 flex items-center gap-1">
             <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
             LIVE
           </span>
         )}
-        {isFinished && <span className="text-xs font-medium text-gray-500">已結束</span>}
-        {isNotStarted && <span className="text-xs text-gray-400">{game.time}</span>}
+        {isFinished && <span className="text-[10px] font-medium text-gray-400">已結束</span>}
+        {isNotStarted && <span className="text-[10px] text-gray-400">{game.time}</span>}
         {!isLive && !isFinished && !isNotStarted && (
-          <span className="text-xs text-gray-400">{game.status.short}</span>
+          <span className="text-[10px] text-gray-400">{game.status.short}</span>
         )}
-        {game.league && <span className="text-xs text-gray-300">{game.league}</span>}
       </div>
 
+      {/* 客隊 */}
       <TeamRow
         team={game.away}
         score={game.score.away}
         isWinner={isFinished && game.score.away !== null && game.score.home !== null && game.score.away > game.score.home}
+        compact={compact}
       />
 
-      <div className="border-t border-gray-100 my-1.5" />
+      <div className="border-t border-gray-100 my-1" />
 
+      {/* 主隊 */}
       <TeamRow
         team={game.home}
         score={game.score.home}
         isWinner={isFinished && game.score.home !== null && game.score.away !== null && game.score.home > game.score.away}
+        compact={compact}
       />
     </div>
   );
 }
 
-function TeamRow({ team, score, isWinner }: { team: GameTeam; score: number | null; isWinner: boolean }) {
+function TeamRow({ team, score, isWinner, compact }: { team: GameTeam; score: number | null; isWinner: boolean; compact?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-2 min-w-0">
+    <div className="flex items-center justify-between gap-1">
+      <div className="flex items-center gap-1.5 min-w-0">
         {team.logo && (
-          <img src={team.logo} alt={team.name} className="w-5 h-5 object-contain" />
+          <img src={team.logo} alt={team.name} className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} object-contain`} />
         )}
-        <span className={`text-sm truncate ${isWinner ? 'font-bold text-gray-900' : 'text-gray-600'}`}>
+        <span className={`${compact ? 'text-xs' : 'text-sm'} truncate ${isWinner ? 'font-bold text-gray-900' : 'text-gray-600'}`}>
           {team.name}
         </span>
       </div>
-      <span className={`text-sm tabular-nums ${isWinner ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
+      <span className={`${compact ? 'text-xs' : 'text-sm'} tabular-nums ${isWinner ? 'font-bold text-gray-900' : 'text-gray-500'}`}>
         {score ?? '-'}
       </span>
     </div>
   );
 }
-
-/**
- * 通用籃球 API (v1.basketball) 的 status 對照
- * 與 NBA API (v2) 不同，通用 API status.short 是字串
- */
-const BASKETBALL_LIVE_STATUSES = ['Q1', 'Q2', 'Q3', 'Q4', 'OT', 'BT', 'HT'];
 
 /** 將 API-Sports 不同運動的回傳格式正規化 */
 function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
@@ -228,7 +294,6 @@ function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
     }
 
     if (sportType === 'basketball') {
-      // 通用籃球 API (v1.basketball)：teams.home / teams.away，scores 結構
       return {
         id: item.id ?? 0,
         date: item.date?.slice(0, 10) ?? '',
