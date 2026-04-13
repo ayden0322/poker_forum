@@ -177,24 +177,34 @@ export class SportsService {
   }
 
   // ============ 即時比分 / 今日賽程 ============
+  // 免費方案策略：只帶 date 查詢（不帶 league/season，避免被拒絕）
+  // 回傳結果再用 leagueId 後端過濾
 
   async getLiveGames(boardSlug: string) {
     const cfg = await this.getConfig(boardSlug);
     if (!cfg) return [];
 
     const today = this.getDateString();
-    const cacheKey = `sports:${boardSlug}:games:${today}`;
+    // 同一個 API host + date 共用快取，避免每個聯賽板各打一次
+    const cacheKey = `sports:${cfg.sportType}:allgames:${today}`;
 
-    const rawGames = await this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
+    const allGames = await this.cachedCall(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
       if (cfg.sportType === 'football') {
+        // 足球 API 可以帶 league 不帶 season，免費方案可用
         return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      // 通用 basketball / baseball API：需要帶 league + season + date
-      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, season: cfg.season, date: today });
+      // 籃球 / 棒球：免費方案只能帶 date，不能帶 league+season
+      return this.callApi(cfg.apiHost, '/games', { date: today });
     });
 
-    if (!rawGames || !Array.isArray(rawGames)) return [];
-    return this.translateTeamNames(rawGames, cfg.sportType);
+    if (!allGames || !Array.isArray(allGames)) return [];
+
+    // 足球已經按 league 過濾了，籃球/棒球需要後端過濾
+    const filtered = cfg.sportType === 'football'
+      ? allGames
+      : allGames.filter((g: any) => g.league?.id === cfg.leagueId);
+
+    return this.translateTeamNames(filtered, cfg.sportType);
   }
 
   // ============ 賽程 ============
@@ -204,14 +214,20 @@ export class SportsService {
     if (!cfg) return [];
 
     const today = this.getDateString();
-    const cacheKey = `sports:${boardSlug}:schedule:${today}`;
+    const cacheKey = `sports:${cfg.sportType}:allschedule:${today}`;
 
-    return this.cachedCall(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
+    const allGames = await this.cachedCall(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
       if (cfg.sportType === 'football') {
         return this.callApi(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
       }
-      return this.callApi(cfg.apiHost, '/games', { league: cfg.leagueId, season: cfg.season, date: today });
+      return this.callApi(cfg.apiHost, '/games', { date: today });
     });
+
+    if (!allGames || !Array.isArray(allGames)) return [];
+
+    return cfg.sportType === 'football'
+      ? allGames
+      : allGames.filter((g: any) => g.league?.id === cfg.leagueId);
   }
 
   // ============ 排名 ============
