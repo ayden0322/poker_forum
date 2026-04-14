@@ -14,9 +14,9 @@ export class BoardsService {
     });
   }
 
-  /** 取得所有分類（含看板），按排序 */
+  /** 取得所有分類（含看板），按排序。自動過濾掉沒有啟用看板的空分類。 */
   async getCategoriesWithBoards() {
-    return this.prisma.category.findMany({
+    const categories = await this.prisma.category.findMany({
       orderBy: { sortOrder: 'asc' },
       include: {
         boards: {
@@ -28,6 +28,8 @@ export class BoardsService {
         },
       },
     });
+    // 過濾掉沒有啟用看板的空分類
+    return categories.filter((c) => c.boards.length > 0);
   }
 
   /** 依 slug 取得看板 */
