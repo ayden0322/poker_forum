@@ -121,15 +121,19 @@ export class SportsService {
   }
 
   /** 以 apiTeamId 查詢隊伍中文名稱 */
-  private async getTeamTranslations(teamIds: number[]): Promise<Map<number, { nameZhTw: string; shortName: string | null }>> {
+  private async getTeamTranslations(teamIds: number[], sport: string): Promise<Map<number, { nameZhTw: string; shortName: string | null }>> {
     if (teamIds.length === 0) return new Map();
 
-    const translations = await this.prisma.teamTranslation.findMany({
-      where: { apiTeamId: { in: teamIds } },
-      select: { apiTeamId: true, nameZhTw: true, shortName: true },
+    const translations = await this.prisma.translation.findMany({
+      where: {
+        entityType: 'team',
+        sport,
+        apiId: { in: teamIds },
+      },
+      select: { apiId: true, nameZhTw: true, shortName: true },
     });
 
-    return new Map(translations.map((t) => [t.apiTeamId, { nameZhTw: t.nameZhTw, shortName: t.shortName }]));
+    return new Map(translations.map((t: { apiId: number; nameZhTw: string; shortName: string | null }) => [t.apiId, { nameZhTw: t.nameZhTw, shortName: t.shortName }]));
   }
 
   /** 替換 API 回傳的隊伍名稱為中文 */
@@ -149,7 +153,7 @@ export class SportsService {
       }
     }
 
-    const translations = await this.getTeamTranslations(Array.from(teamIds));
+    const translations = await this.getTeamTranslations(Array.from(teamIds), sportType);
     if (translations.size === 0) return games;
 
     return games.map((game) => {

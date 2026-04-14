@@ -20,6 +20,7 @@ import { VerificationModule } from './verification/verification.module';
 import { PrismaModule } from './common/prisma.module';
 import { RedisModule } from './common/redis.module';
 import { SportsModule } from './sports/sports.module';
+import { TranslationModule } from './translation/translation.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
 
@@ -51,6 +52,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     MailModule,
     VerificationModule,
     SportsModule,
+    TranslationModule,
     ScheduleModule.forRoot(),
   ],
   providers: [

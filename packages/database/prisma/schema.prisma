@@ -421,20 +421,47 @@ model SmsProviderConfig {
   @@map("sms_provider_configs")
 }
 
-// ===== 隊伍名稱翻譯（台灣用語） =====
-model TeamTranslation {
-  id        String   @id @default(cuid())
-  apiTeamId Int      @unique @map("api_team_id")
-  sport     String                              // football, basketball, baseball
-  nameEn    String   @map("name_en")            // API 原始英文名
-  nameZhTw  String   @map("name_zh_tw")         // 台灣繁體中文名
-  shortName String?  @map("short_name")         // 簡稱（如：湖人、曼聯）
-  logo      String?                             // 快取隊徽 URL
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+// ===== 實體名稱翻譯（通用，支援多種類型） =====
+// entityType: team, player, league, coach, venue, country
+model Translation {
+  id          String   @id @default(cuid())
+  entityType  String   @map("entity_type")       // team | player | league | coach | venue | country
+  apiId       Int      @map("api_id")            // API-Sports 的實體 ID
+  sport       String                              // football | basketball | baseball
+  nameEn      String   @map("name_en")
+  nameZhTw    String   @map("name_zh_tw")
+  shortName   String?  @map("short_name")        // 簡稱（如：湖人、曼聯）
+  nickname    String?                             // 暱稱（如：詹皇、一哥）
+  logo        String?                             // 快取 logo/photo URL
+  source      String   @default("ai")            // ai | manual | official
+  verified    Boolean  @default(false)           // 是否經人工校正
+  bio         String?  @db.Text                   // 長文簡介（球員/球隊介紹，選填）
+  bioZhTw     String?  @db.Text @map("bio_zh_tw") // 中文簡介
+  extra       Json?                               // 額外欄位（位置、球衣號等）
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([sport])
-  @@map("team_translations")
+  @@unique([entityType, apiId, sport])
+  @@index([entityType, sport])
+  @@index([verified])
+  @@map("translations")
+}
+
+// ===== 翻譯使用量紀錄（成本監控） =====
+model TranslationUsage {
+  id             String   @id @default(cuid())
+  date           DateTime @default(now())
+  model          String                           // claude-haiku-4-5
+  inputTokens    Int      @map("input_tokens")
+  outputTokens   Int      @map("output_tokens")
+  costUsd        Float    @map("cost_usd")
+  entityType     String?  @map("entity_type")    // 翻譯哪類實體
+  itemCount      Int      @map("item_count")     // 這次翻了幾個
+  triggeredBy    String   @default("cron") @map("triggered_by") // cron | manual
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([date])
+  @@map("translation_usage")
 }
 
 // ===== 體育賽事 API 設定（後台可編輯） =====
