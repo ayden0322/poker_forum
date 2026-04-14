@@ -217,6 +217,75 @@ export class MLBStatsService {
     });
   }
 
+  // ============ 球隊統計 ============
+
+  /** 球隊賽季統計（打擊 + 投手） */
+  async getTeamStats(teamId: number, season: number = new Date().getFullYear()) {
+    const cacheKey = `mlb:team:${teamId}:stats:${season}`;
+    return this.cached(cacheKey, 3600, async () => {
+      const data = await this.callApi<{ stats: any[] }>(`/teams/${teamId}/stats`, {
+        stats: 'season',
+        season,
+        group: 'hitting,pitching',
+      });
+      const result: { hitting?: any; pitching?: any } = {};
+      for (const s of data?.stats ?? []) {
+        const group = s.group?.displayName;
+        const stat = s.splits?.[0]?.stat;
+        if (group && stat) result[group as 'hitting' | 'pitching'] = stat;
+      }
+      return result;
+    });
+  }
+
+  /** 球隊近期比賽（指定天數） */
+  async getTeamRecentGames(teamId: number, days: number = 14) {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    const startDate = start.toISOString().slice(0, 10);
+    const endDate = end.toISOString().slice(0, 10);
+
+    const cacheKey = `mlb:team:${teamId}:recent:${startDate}:${endDate}`;
+    return this.cached(cacheKey, 600, async () => {
+      const data = await this.callApi<{ dates: any[] }>('/schedule', {
+        sportId: 1,
+        teamId,
+        startDate,
+        endDate,
+      });
+      return data?.dates?.flatMap((d) => d.games) ?? [];
+    });
+  }
+
+  /** 兩隊歷史對戰 */
+  async getHeadToHead(
+    teamId: number,
+    opponentId: number,
+    options: { startDate?: string; endDate?: string; limit?: number } = {},
+  ) {
+    const endDate = options.endDate ?? new Date().toISOString().slice(0, 10);
+    const startDate = options.startDate ?? `${new Date().getFullYear() - 3}-01-01`;
+    const limit = options.limit ?? 20;
+
+    const cacheKey = `mlb:h2h:${teamId}:${opponentId}:${startDate}:${endDate}`;
+    return this.cached(cacheKey, 3600, async () => {
+      const data = await this.callApi<{ dates: any[] }>('/schedule', {
+        sportId: 1,
+        teamId,
+        opponentId,
+        startDate,
+        endDate,
+      });
+      const games = data?.dates?.flatMap((d) => d.games) ?? [];
+      // 按日期倒序，只取 limit 場已結束的
+      return games
+        .filter((g: any) => g.status?.detailedState === 'Final')
+        .sort((a: any, b: any) => b.officialDate.localeCompare(a.officialDate))
+        .slice(0, limit);
+    });
+  }
+
   // ============ 傷兵與交易 ============
 
   /** 取得近期交易 / 傷兵紀錄（只過濾 MLB 層級） */

@@ -210,6 +210,97 @@ export class MLBStatsController {
     return { data };
   }
 
+  // ============ 球隊統計 / 歷史對戰 ============
+
+  @Get('teams/:teamId/stats')
+  @ApiOperation({ summary: '球隊賽季統計（打擊 + 投手）' })
+  async getTeamStats(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Query('season', new DefaultValuePipe(new Date().getFullYear()), ParseIntPipe) season: number,
+  ) {
+    const data = await this.mlbStats.getTeamStats(teamId, season);
+    return { data };
+  }
+
+  @Get('teams/:teamId/recent')
+  @ApiOperation({ summary: '球隊近期比賽' })
+  async getTeamRecent(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Query('days', new DefaultValuePipe(14), ParseIntPipe) days: number,
+  ) {
+    const games = await this.mlbStats.getTeamRecentGames(teamId, days);
+    return { data: games };
+  }
+
+  @Get('teams/:teamId/h2h/:opponentId')
+  @ApiOperation({ summary: '兩隊歷史對戰（近 3 年）' })
+  async getHeadToHead(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Param('opponentId', ParseIntPipe) opponentId: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    const games = (await this.mlbStats.getHeadToHead(teamId, opponentId, { limit })) ?? [];
+
+    // 統計戰績
+    let teamWins = 0;
+    let opponentWins = 0;
+    for (const g of games) {
+      const isHome = g.teams?.home?.team?.id === teamId;
+      const teamScore = isHome ? g.teams?.home?.score : g.teams?.away?.score;
+      const oppScore = isHome ? g.teams?.away?.score : g.teams?.home?.score;
+      if (teamScore > oppScore) teamWins++;
+      else if (oppScore > teamScore) opponentWins++;
+    }
+
+    return {
+      data: {
+        games,
+        summary: {
+          total: games.length,
+          teamWins,
+          opponentWins,
+        },
+      },
+    };
+  }
+
+  /** 單一球隊完整詳情（一次拉所有需要的資料） */
+  @Get('teams/:teamId/overview')
+  @ApiOperation({ summary: '球隊完整資料（info + stats + roster + recent games）' })
+  async getTeamOverview(
+    @Param('teamId', ParseIntPipe) teamId: number,
+    @Query('season', new DefaultValuePipe(new Date().getFullYear()), ParseIntPipe) season: number,
+  ) {
+    const [teamInfo, stats, rosterRes, recent] = await Promise.all([
+      this.mlbStats.getTeam(teamId),
+      this.mlbStats.getTeamStats(teamId, season),
+      this.getRoster(teamId, season),
+      this.mlbStats.getTeamRecentGames(teamId, 14),
+    ]);
+
+    // 球隊中文名
+    const allTr = await this.prisma.translation.findMany({
+      where: { entityType: 'team', sport: 'baseball' },
+    });
+    const tr = allTr.find((t) => (t.extra as any)?.mlbStatsTeamId === teamId);
+
+    return {
+      data: {
+        team: teamInfo
+          ? {
+              ...teamInfo,
+              nameZhTw: tr?.nameZhTw,
+              shortName: tr?.shortName,
+              nickname: tr?.nickname,
+            }
+          : null,
+        stats,
+        roster: rosterRes.data,
+        recentGames: recent,
+      },
+    };
+  }
+
   // ============ 傷兵與交易 ============
 
   @Get('transactions')

@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
+import { HeadToHeadBlock } from '@/components/sports/mlb/HeadToHeadBlock';
 
 interface Response {
   data: {
@@ -279,7 +280,7 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
       <div className="bg-gradient-to-r from-blue-700 to-blue-900 text-white rounded-2xl p-6 mb-4 shadow-lg">
         <div className="flex items-center justify-between">
           {/* 客隊 */}
-          <div className="flex-1 text-center">
+          <Link href={`/team/mlb/${awayTeam?.id}`} className="flex-1 text-center group hover:opacity-90 transition-opacity">
             <img
               src={`https://www.mlbstatic.com/team-logos/${awayTeam?.id}.svg`}
               alt={teamName(awayTeam)}
@@ -287,11 +288,11 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
               onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
             />
             <div className="text-sm text-blue-200">客隊</div>
-            <div className="font-bold text-lg">{teamName(awayTeam)}</div>
+            <div className="font-bold text-lg group-hover:underline">{teamName(awayTeam)}</div>
             <div className={`text-5xl font-black tabular-nums mt-2 ${awayRuns > homeRuns ? '' : 'text-blue-300'}`}>
               {awayRuns}
             </div>
-          </div>
+          </Link>
 
           {/* 中間狀態 */}
           <div className="text-center px-4">
@@ -310,7 +311,7 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
           </div>
 
           {/* 主隊 */}
-          <div className="flex-1 text-center">
+          <Link href={`/team/mlb/${homeTeam?.id}`} className="flex-1 text-center group hover:opacity-90 transition-opacity">
             <img
               src={`https://www.mlbstatic.com/team-logos/${homeTeam?.id}.svg`}
               alt={teamName(homeTeam)}
@@ -318,16 +319,27 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
               onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
             />
             <div className="text-sm text-blue-200">主隊</div>
-            <div className="font-bold text-lg">{teamName(homeTeam)}</div>
+            <div className="font-bold text-lg group-hover:underline">{teamName(homeTeam)}</div>
             <div className={`text-5xl font-black tabular-nums mt-2 ${homeRuns > awayRuns ? '' : 'text-blue-300'}`}>
               {homeRuns}
             </div>
-          </div>
+          </Link>
         </div>
       </div>
 
       {/* 逐局比分 */}
       {linescore && <LineScoreTable linescore={linescore} boxscore={boxscore} />}
+
+      {/* 歷史對戰 */}
+      {awayTeam?.id && homeTeam?.id && (
+        <HeadToHeadBlock
+          teamId={awayTeam.id}
+          opponentId={homeTeam.id}
+          teamName={teamName(awayTeam)}
+          opponentName={teamName(homeTeam)}
+          limit={10}
+        />
+      )}
 
       {/* 雙方打擊 + 投球 */}
       <BattingTable teamData={boxscore.teams?.away} teamLabel={teamName(awayTeam)} />
