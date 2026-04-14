@@ -231,9 +231,64 @@ export class MLBStatsController {
   // ============ 比賽詳情 ============
 
   @Get('games/:gamePk/boxscore')
-  @ApiOperation({ summary: '單場比賽 Box Score' })
+  @ApiOperation({ summary: '單場比賽 Box Score（含中文球員名）' })
   async getBoxScore(@Param('gamePk', ParseIntPipe) gamePk: number) {
     const data = await this.mlbStats.getBoxScore(gamePk);
+    if (!data) return { data: null };
+
+    // 收集所有球員 ID（打者+投手）
+    const playerIds = new Set<number>();
+    const teams = (data as any).teams ?? {};
+    for (const side of ['home', 'away']) {
+      const players = teams[side]?.players ?? {};
+      for (const key of Object.keys(players)) {
+        const id = players[key]?.person?.id;
+        if (id) playerIds.add(id);
+      }
+    }
+
+    // 批次查翻譯
+    const translations = await this.prisma.translation.findMany({
+      where: {
+        entityType: 'player',
+        sport: 'baseball',
+        apiId: { in: Array.from(playerIds) },
+      },
+    });
+    const trMap = new Map(translations.map((t) => [t.apiId, t]));
+
+    // 把中文名塞進球員物件
+    for (const side of ['home', 'away']) {
+      const players = teams[side]?.players ?? {};
+      for (const key of Object.keys(players)) {
+        const p = players[key];
+        const id = p.person?.id;
+        if (id && trMap.has(id)) {
+          const tr = trMap.get(id)!;
+          p.person.nameZhTw = tr.nameZhTw;
+          p.person.shortName = tr.shortName;
+          p.person.nickname = tr.nickname;
+        }
+      }
+
+      // 也翻譯球隊名
+      const teamId = teams[side]?.team?.id;
+      if (teamId) {
+        const teamTr = await this.prisma.translation.findFirst({
+          where: { entityType: 'team', sport: 'baseball' },
+        });
+        // 從 extra 找 mlbStatsTeamId
+        const allTeams = await this.prisma.translation.findMany({
+          where: { entityType: 'team', sport: 'baseball' },
+        });
+        const match = allTeams.find((t) => (t.extra as any)?.mlbStatsTeamId === teamId);
+        if (match) {
+          teams[side].team.nameZhTw = match.nameZhTw;
+          teams[side].team.shortName = match.shortName;
+        }
+      }
+    }
+
     return { data };
   }
 
@@ -242,6 +297,40 @@ export class MLBStatsController {
   async getLineScore(@Param('gamePk', ParseIntPipe) gamePk: number) {
     const data = await this.mlbStats.getLineScore(gamePk);
     return { data };
+  }
+
+  @Get('games/:gamePk')
+  @ApiOperation({ summary: '比賽完整資料（整合 schedule + linescore + boxscore）' })
+  async getGameSummary(@Param('gamePk', ParseIntPipe) gamePk: number) {
+    const [schedule, linescore, boxscore] = await Promise.all([
+      this.mlbStats.getSchedule(new Date().toISOString().slice(0, 10)),
+      this.mlbStats.getLineScore(gamePk),
+      this.getBoxScore(gamePk).then((r) => r.data),
+    ]);
+
+    // 從 schedule 中找到這場比賽的基本資訊（或用 gamePk 查其他日期）
+    let game = schedule?.find((g: any) => g.gamePk === gamePk);
+
+    // 如果今天的 schedule 沒有，嘗試從 boxscore 推斷
+    if (!game && boxscore) {
+      const bs = boxscore as any;
+      game = {
+        gamePk,
+        teams: {
+          home: { team: bs.teams?.home?.team, score: bs.teams?.home?.teamStats?.batting?.runs ?? 0 },
+          away: { team: bs.teams?.away?.team, score: bs.teams?.away?.teamStats?.batting?.runs ?? 0 },
+        },
+        status: { detailedState: 'Final' },
+      };
+    }
+
+    return {
+      data: {
+        game,
+        linescore,
+        boxscore,
+      },
+    };
   }
 
   @Get('schedule')

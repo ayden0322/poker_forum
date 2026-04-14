@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
 import { LeadersSidebar } from '@/components/sports/mlb/LeadersSidebar';
+import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
 
 interface PostItem {
   id: string;
@@ -295,13 +296,16 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       {board.slug === 'star-lotto' && <LotteryBanner gameTypes={['LOTTO3D', 'LOTTO4D']} />}
 
       {/* 運動看板：即時比分與今日賽程 */}
-      <ScoreWidget boardSlug={board.slug} />
-
-      {/* MLB 專屬：排行榜邊欄（在右上角顯示） */}
-      {board.slug === 'mlb' && (
-        <div className="mb-4">
-          <LeadersSidebar />
-        </div>
+      {/* MLB 使用官方 API（可點進詳情頁），其他聯賽用 API-Sports */}
+      {board.slug === 'mlb' ? (
+        <>
+          <MLBGamesWidget />
+          <div className="mb-4">
+            <LeadersSidebar />
+          </div>
+        </>
+      ) : (
+        <ScoreWidget boardSlug={board.slug} />
       )}
 
       {/* 搜尋列 */}
