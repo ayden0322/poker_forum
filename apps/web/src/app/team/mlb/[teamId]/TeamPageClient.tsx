@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useState } from 'react';
+import { InjuriesWidget } from '@/components/sports/mlb/InjuriesWidget';
 
 interface TeamData {
   id: number;
@@ -61,7 +62,7 @@ function teamName(team: any, fallback = '未知'): string {
 }
 
 export default function TeamPageClient({ teamId }: { teamId: number }) {
-  const [activeTab, setActiveTab] = useState<'roster' | 'recent'>('roster');
+  const [activeTab, setActiveTab] = useState<'roster' | 'recent' | 'injuries'>('roster');
   const [positionFilter, setPositionFilter] = useState<'all' | 'hitter' | 'pitcher'>('all');
 
   const { data, isLoading } = useQuery({
@@ -219,6 +220,16 @@ export default function TeamPageClient({ teamId }: { teamId: number }) {
           >
             近期比賽（{recentGames.length}）
           </button>
+          <button
+            className={`px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'injuries'
+                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+            onClick={() => setActiveTab('injuries')}
+          >
+            🏥 傷兵
+          </button>
         </div>
 
         {activeTab === 'roster' && (
@@ -320,6 +331,12 @@ export default function TeamPageClient({ teamId }: { teamId: number }) {
             {recentGames.length === 0 && (
               <div className="text-center py-8 text-gray-400 text-sm">近期無比賽</div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'injuries' && (
+          <div className="p-3">
+            <InjuriesWidget teamId={teamId} days={30} />
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe } from '@
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { MLBStatsService } from './mlb-stats.service';
 import { PrismaService } from '../../common/prisma.service';
+import { parseTransaction, ParsedTransaction } from './mlb-injury-dict';
 
 /**
  * MLB 專屬 API
@@ -317,6 +318,110 @@ export class MLBStatsController {
 
     const transactions = await this.mlbStats.getTransactions(startDate, endDate);
     return { data: transactions };
+  }
+
+  @Get('injuries')
+  @ApiOperation({
+    summary: 'MLB 近期傷兵動態（含球員翻譯、自動解析英文描述）',
+  })
+  async getInjuries(
+    @Query('days', new DefaultValuePipe(14), ParseIntPipe) days: number,
+    @Query('teamId', new DefaultValuePipe(0), ParseIntPipe) teamId: number,
+  ) {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - days);
+    const startDate = start.toISOString().slice(0, 10);
+    const endDate = end.toISOString().slice(0, 10);
+
+    const transactions = (await this.mlbStats.getTransactions(startDate, endDate)) ?? [];
+
+    // 解析每筆交易
+    const parsed: ParsedTransaction[] = transactions
+      .map((tx: any) => parseTransaction(tx))
+      .filter((p: ParsedTransaction) => p.type === 'injury' || p.type === 'activation');
+
+    // 過濾球隊
+    let filtered = parsed;
+    if (teamId) {
+      filtered = parsed.filter((p) => {
+        const tx = transactions.find((t: any) => t.id === (p as any).id);
+        return (
+          tx?.fromTeam?.id === teamId ||
+          tx?.toTeam?.id === teamId
+        );
+      });
+    }
+
+    // 球員中文名翻譯
+    const playerIds = Array.from(
+      new Set(filtered.map((p) => p.playerId).filter((id): id is number => !!id)),
+    );
+    const translations = await this.prisma.translation.findMany({
+      where: {
+        entityType: 'player',
+        sport: 'baseball',
+        apiId: { in: playerIds },
+      },
+    });
+    const playerTrMap = new Map(translations.map((t) => [t.apiId, t]));
+
+    // 球隊中文名翻譯
+    const teamTranslations = await this.prisma.translation.findMany({
+      where: { entityType: 'team', sport: 'baseball' },
+    });
+    const teamTrByMlbId = new Map<number, any>();
+    for (const t of teamTranslations) {
+      const mlbId = (t.extra as any)?.mlbStatsTeamId;
+      if (mlbId) teamTrByMlbId.set(mlbId, t);
+    }
+
+    // 拼接回傳
+    const data = filtered.map((p, idx) => {
+      const tx = transactions[idx];
+      const actualTeamId = tx?.fromTeam?.id ?? tx?.toTeam?.id;
+      const playerTr = p.playerId ? playerTrMap.get(p.playerId) : null;
+      const teamTr = actualTeamId ? teamTrByMlbId.get(actualTeamId) : null;
+
+      return {
+        type: p.type,
+        date: p.date,
+        player: p.playerId
+          ? {
+              id: p.playerId,
+              nameEn: p.playerName,
+              nameZhTw: playerTr?.nameZhTw ?? p.playerName,
+              shortName: playerTr?.shortName,
+            }
+          : null,
+        team: actualTeamId
+          ? {
+              id: actualTeamId,
+              nameEn: tx?.fromTeam?.name ?? tx?.toTeam?.name,
+              nameZhTw: teamTr?.nameZhTw,
+              shortName: teamTr?.shortName,
+            }
+          : null,
+        ilType: p.ilType,
+        ilTypeZh: p.ilTypeZh,
+        injury: p.injury,
+        injuryZh: p.injuryZh,
+        retroactive: p.retroactive,
+        originalDescription: p.originalDescription,
+      };
+    });
+
+    // 按日期倒序
+    data.sort((a, b) => b.date.localeCompare(a.date));
+
+    return {
+      data,
+      summary: {
+        total: data.length,
+        injuries: data.filter((d) => d.type === 'injury').length,
+        activations: data.filter((d) => d.type === 'activation').length,
+      },
+    };
   }
 
   // ============ 比賽詳情 ============

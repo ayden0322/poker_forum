@@ -10,6 +10,7 @@ import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
 import { LeadersSidebar } from '@/components/sports/mlb/LeadersSidebar';
 import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
+import { InjuriesWidget } from '@/components/sports/mlb/InjuriesWidget';
 
 interface PostItem {
   id: string;
@@ -300,8 +301,10 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       {board.slug === 'mlb' ? (
         <>
           <MLBGamesWidget />
-          <div className="mb-4">
+          {/* 並排顯示：左邊排行榜、右邊傷兵動態 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <LeadersSidebar />
+            <InjuriesWidget />
           </div>
         </>
       ) : (
