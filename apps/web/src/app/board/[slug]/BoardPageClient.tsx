@@ -8,6 +8,7 @@ import { useAuth } from '@/context/auth';
 import { useRouter } from 'next/navigation';
 import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
+import { LeadersSidebar } from '@/components/sports/mlb/LeadersSidebar';
 
 interface PostItem {
   id: string;
@@ -295,6 +296,13 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
 
       {/* 運動看板：即時比分與今日賽程 */}
       <ScoreWidget boardSlug={board.slug} />
+
+      {/* MLB 專屬：排行榜邊欄（在右上角顯示） */}
+      {board.slug === 'mlb' && (
+        <div className="mb-4">
+          <LeadersSidebar />
+        </div>
+      )}
 
       {/* 搜尋列 */}
       <form onSubmit={handleSearch} className="flex gap-2 mb-4">
