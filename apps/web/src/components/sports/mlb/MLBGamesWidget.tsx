@@ -56,14 +56,14 @@ function formatTime(dateStr: string): string {
 
 /** 呼叫後端取得某日 MLB 賽程（會從 MLB 官方來） */
 async function fetchGames(date: string): Promise<Game[]> {
-  const res = await apiFetch<{ data: Game[] }>(`/sports/mlb/schedule?date=${date}`);
+  const res = await apiFetch<{ data: Game[] }>(`/mlb/schedule?date=${date}`);
   return res.data ?? [];
 }
 
 /** 呼叫後端取得球隊翻譯 */
 async function fetchTeamTranslations(): Promise<Map<number, TeamTranslation>> {
   const res = await apiFetch<{ data: Array<{ id: number; nameZhTw: string; shortName?: string }> }>(
-    '/sports/mlb/teams',
+    '/mlb/teams',
   );
   return new Map(res.data.map((t) => [t.id, { mlbStatsTeamId: t.id, nameZhTw: t.nameZhTw, shortName: t.shortName }]));
 }

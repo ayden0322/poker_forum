@@ -31,7 +31,7 @@ interface Response {
 export async function generateMetadata({ params }: { params: Promise<{ playerId: string }> }) {
   const { playerId } = await params;
   try {
-    const res = await apiFetch<Response>(`/sports/mlb/players/${playerId}`);
+    const res = await apiFetch<Response>(`/mlb/players/${playerId}`);
     if (!res.data) return { title: '找不到球員' };
     return {
       title: `${res.data.nameZhTw} - MLB 球員資料`,
@@ -47,7 +47,7 @@ export default async function MLBPlayerPage({ params }: { params: Promise<{ play
   let playerData: PlayerData | null = null;
 
   try {
-    const res = await apiFetch<Response>(`/sports/mlb/players/${playerId}`);
+    const res = await apiFetch<Response>(`/mlb/players/${playerId}`);
     playerData = res.data;
   } catch {
     // API 未啟動

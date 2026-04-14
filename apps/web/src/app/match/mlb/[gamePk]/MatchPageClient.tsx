@@ -235,7 +235,7 @@ function PitchingTable({ teamData, teamLabel }: { teamData: any; teamLabel: stri
 export default function MatchPageClient({ gamePk }: { gamePk: number }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['mlb-game', gamePk],
-    queryFn: () => apiFetch<Response>(`/sports/mlb/games/${gamePk}`),
+    queryFn: () => apiFetch<Response>(`/mlb/games/${gamePk}`),
     staleTime: 60 * 1000,
     refetchInterval: 60 * 1000,
   });

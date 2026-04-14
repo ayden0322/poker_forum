@@ -92,7 +92,7 @@ export default function PlayerPageClient({ player }: { player: PlayerData }) {
   // 本季數據
   const { data: statsData, isLoading: statsLoading } = useQuery({
     queryKey: ['mlb-player-stats', player.id],
-    queryFn: () => apiFetch<StatsResponse>(`/sports/mlb/players/${player.id}/stats`),
+    queryFn: () => apiFetch<StatsResponse>(`/mlb/players/${player.id}/stats`),
     staleTime: 60 * 60 * 1000, // 1 小時
   });
 

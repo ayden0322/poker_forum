@@ -87,6 +87,11 @@ function formatDate(offsetDays: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+/** 哪些 board 的比賽可以點進去看詳情 */
+const DETAIL_SUPPORTED: Record<string, (id: number) => string> = {
+  mlb: (gamePk) => `/match/mlb/${gamePk}`,
+};
+
 function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: string; sportType: string; label: string; icon: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['sports-recent', boardSlug],

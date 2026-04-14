@@ -8,7 +8,7 @@ import { PrismaService } from '../../common/prisma.service';
  * 資料來源：MLB 官方 Stats API（免費）+ Translation 表（中文化）
  */
 @ApiTags('MLB')
-@Controller('sports/mlb')
+@Controller('mlb')
 export class MLBStatsController {
   constructor(
     private mlbStats: MLBStatsService,

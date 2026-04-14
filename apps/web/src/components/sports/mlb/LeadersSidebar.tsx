@@ -41,7 +41,7 @@ export function LeadersSidebar() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['mlb-leaders', activeCategory],
-    queryFn: () => apiFetch<Response>(`/sports/mlb/leaders/${activeCategory}?limit=10`),
+    queryFn: () => apiFetch<Response>(`/mlb/leaders/${activeCategory}?limit=10`),
     staleTime: 60 * 60 * 1000, // 1 小時
   });
 
