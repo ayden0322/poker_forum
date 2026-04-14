@@ -19,7 +19,6 @@ import {
 } from 'antd';
 import {
   ThunderboltOutlined,
-  DollarOutlined,
   TranslationOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
@@ -28,21 +27,18 @@ import { adminApiFetch } from '@/lib/api';
 
 const { Title, Text, Paragraph } = Typography;
 
-interface SeedResult {
-  teamsTranslated: number;
-  teamIdsMapped: number;
-  playersTranslated: number;
-  errors: string[];
-  monthlyCost: {
-    totalCostUsd: number;
-    totalInputTokens: number;
-    totalOutputTokens: number;
-    callCount: number;
+interface SeedStatus {
+  running: boolean;
+  startedAt: string | null;
+  finishedAt: string | null;
+  stats: {
+    teamsTranslated: number;
+    teamIdsMapped: number;
+    playersTranslated: number;
+    errors: string[];
   };
-}
-
-interface UsageResponse {
-  data: {
+  currentStep: string;
+  monthlyCost: {
     totalCostUsd: number;
     totalInputTokens: number;
     totalOutputTokens: number;
@@ -52,35 +48,52 @@ interface UsageResponse {
 
 export default function TranslationsPage() {
   const [season, setSeason] = useState<number>(new Date().getFullYear());
+  const [watchingStatus, setWatchingStatus] = useState(false);
 
-  // 本月使用量
-  const { data: usage, refetch: refetchUsage } = useQuery({
-    queryKey: ['translation-usage'],
-    queryFn: () => adminApiFetch<UsageResponse>('/admin/translations/usage'),
-    staleTime: 60 * 1000,
+  // 輪詢狀態
+  const { data: statusData, refetch: refetchStatus } = useQuery({
+    queryKey: ['mlb-seed-status'],
+    queryFn: () => adminApiFetch<{ data: SeedStatus }>('/admin/mlb-seed/status'),
+    refetchInterval: watchingStatus ? 3000 : false,
+    staleTime: 0,
   });
 
-  // MLB 一鍵 Seed
-  const mlbSeedMutation = useMutation({
+  const status = statusData?.data;
+  const isRunning = status?.running ?? false;
+
+  // 當 status 變為 running=false 時關閉輪詢
+  React.useEffect(() => {
+    if (watchingStatus && status && !status.running) {
+      setWatchingStatus(false);
+      if (status.finishedAt) {
+        message.success('翻譯任務完成！');
+      }
+    }
+    if (status?.running && !watchingStatus) {
+      setWatchingStatus(true);
+    }
+  }, [status, watchingStatus]);
+
+  // 啟動 Seed
+  const startMutation = useMutation({
     mutationFn: () =>
-      adminApiFetch<{ success: boolean; data: SeedResult }>('/admin/mlb-seed/all', {
-        method: 'POST',
-        body: JSON.stringify({ season }),
-      }),
+      adminApiFetch<{ success: boolean; message: string; data: SeedStatus }>(
+        '/admin/mlb-seed/all',
+        {
+          method: 'POST',
+          body: JSON.stringify({ season }),
+        },
+      ),
     onSuccess: (res) => {
       if (res.success) {
-        message.success(
-          `完成！球隊 ${res.data.teamsTranslated} / ID 對應 ${res.data.teamIdsMapped} / 球員 ${res.data.playersTranslated}`,
-        );
-        refetchUsage();
+        message.success('已啟動翻譯任務，請觀察進度');
+        setWatchingStatus(true);
       } else {
-        message.error('Seed 失敗，請查看日誌');
+        message.warning(res.message);
       }
     },
-    onError: (e: Error) => message.error(`失敗：${e.message}`),
+    onError: (e: Error) => message.error(`啟動失敗：${e.message}`),
   });
-
-  const currentUsage = usage?.data;
 
   return (
     <div style={{ maxWidth: 1000 }}>
@@ -95,29 +108,31 @@ export default function TranslationsPage() {
           <Col span={6}>
             <Statistic
               title="本月花費"
-              value={currentUsage?.totalCostUsd ?? 0}
+              value={status?.monthlyCost?.totalCostUsd ?? 0}
               precision={4}
               prefix="$"
               suffix="USD"
-              valueStyle={{ color: (currentUsage?.totalCostUsd ?? 0) > 10 ? '#ff4d4f' : '#3f8600' }}
+              valueStyle={{
+                color: (status?.monthlyCost?.totalCostUsd ?? 0) > 10 ? '#ff4d4f' : '#3f8600',
+              }}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              約 NT${Math.ceil((currentUsage?.totalCostUsd ?? 0) * 32)}
+              約 NT${Math.ceil((status?.monthlyCost?.totalCostUsd ?? 0) * 32)}
             </Text>
           </Col>
           <Col span={6}>
-            <Statistic title="Input Tokens" value={currentUsage?.totalInputTokens ?? 0} />
+            <Statistic title="Input Tokens" value={status?.monthlyCost?.totalInputTokens ?? 0} />
           </Col>
           <Col span={6}>
-            <Statistic title="Output Tokens" value={currentUsage?.totalOutputTokens ?? 0} />
+            <Statistic title="Output Tokens" value={status?.monthlyCost?.totalOutputTokens ?? 0} />
           </Col>
           <Col span={6}>
-            <Statistic title="呼叫次數" value={currentUsage?.callCount ?? 0} />
+            <Statistic title="呼叫次數" value={status?.monthlyCost?.callCount ?? 0} />
           </Col>
         </Row>
         <Divider style={{ margin: '16px 0' }} />
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => refetchUsage()}>
+          <Button icon={<ReloadOutlined />} onClick={() => refetchStatus()}>
             刷新
           </Button>
           <Text type="secondary" style={{ fontSize: 12 }}>
@@ -132,6 +147,7 @@ export default function TranslationsPage() {
           <Space>
             <TranslationOutlined />
             <span>MLB 一鍵翻譯</span>
+            {isRunning && <Tag color="processing">執行中</Tag>}
           </Space>
         }
         style={{ marginBottom: 16 }}
@@ -160,7 +176,9 @@ export default function TranslationsPage() {
           <Descriptions.Item label="預期成本">
             球隊 $0.01 + 球員 $0.32 ≈ <Tag color="green">$0.33 USD（NT$11）</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="執行時間">約 5-10 分鐘（取決於球員數量）</Descriptions.Item>
+          <Descriptions.Item label="執行時間">
+            <Tag color="blue">背景非同步執行</Tag> 約 5-10 分鐘（取決於球員數量），**可關閉頁面，結果會自動儲存**
+          </Descriptions.Item>
           <Descriptions.Item label="安全機制">已翻譯過的實體會跳過，不會重複扣費</Descriptions.Item>
         </Descriptions>
 
@@ -171,6 +189,7 @@ export default function TranslationsPage() {
             max={2030}
             value={season}
             onChange={(v) => setSeason(v ?? new Date().getFullYear())}
+            disabled={isRunning}
           />
         </Space>
 
@@ -181,33 +200,60 @@ export default function TranslationsPage() {
             type="primary"
             size="large"
             icon={<ThunderboltOutlined />}
-            loading={mlbSeedMutation.isPending}
-            onClick={() => mlbSeedMutation.mutate()}
-            danger={mlbSeedMutation.isPending}
+            loading={startMutation.isPending}
+            disabled={isRunning}
+            onClick={() => startMutation.mutate()}
           >
-            {mlbSeedMutation.isPending ? '執行中，請等待（5-10 分鐘）...' : '一鍵翻譯所有 MLB 實體'}
+            {isRunning ? '執行中...' : '一鍵翻譯所有 MLB 實體'}
           </Button>
 
-          {mlbSeedMutation.isPending && (
-            <Progress percent={99} status="active" showInfo={false} />
-          )}
-
-          {mlbSeedMutation.data?.success && (
+          {/* 執行中狀態 */}
+          {isRunning && status && (
             <Alert
-              message="執行完成"
+              message={`正在執行：${status.currentStep}`}
               description={
                 <div>
-                  <div>球隊翻譯：{mlbSeedMutation.data.data.teamsTranslated} 支</div>
-                  <div>ID 對應建立：{mlbSeedMutation.data.data.teamIdsMapped} 筆</div>
-                  <div>球員翻譯：{mlbSeedMutation.data.data.playersTranslated} 位</div>
-                  {mlbSeedMutation.data.data.errors.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    已翻譯球隊：{status.stats.teamsTranslated} / ID 對應：
+                    {status.stats.teamIdsMapped} / 球員：{status.stats.playersTranslated}
+                  </div>
+                  <Progress percent={99} status="active" showInfo={false} />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    背景執行中，可關閉頁面，每 3 秒自動更新進度
+                  </Text>
+                </div>
+              }
+              type="info"
+              showIcon
+            />
+          )}
+
+          {/* 執行完成狀態 */}
+          {!isRunning && status?.finishedAt && (
+            <Alert
+              message={
+                status.currentStep === '失敗'
+                  ? '執行失敗'
+                  : status.currentStep === '完成'
+                  ? '執行完成'
+                  : '尚未執行'
+              }
+              description={
+                <div>
+                  <div>球隊翻譯：{status.stats.teamsTranslated} 支</div>
+                  <div>ID 對應建立：{status.stats.teamIdsMapped} 筆</div>
+                  <div>球員翻譯：{status.stats.playersTranslated} 位</div>
+                  <div>
+                    完成時間：{new Date(status.finishedAt).toLocaleString('zh-TW')}
+                  </div>
+                  {status.stats.errors.length > 0 && (
                     <div style={{ color: '#ff4d4f', marginTop: 8 }}>
-                      錯誤：{mlbSeedMutation.data.data.errors.join(', ')}
+                      錯誤：{status.stats.errors.join(', ')}
                     </div>
                   )}
                 </div>
               }
-              type="success"
+              type={status.currentStep === '失敗' ? 'error' : 'success'}
               showIcon
             />
           )}
