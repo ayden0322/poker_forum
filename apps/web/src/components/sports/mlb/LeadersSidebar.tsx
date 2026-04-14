@@ -25,14 +25,14 @@ interface Response {
 }
 
 const LEADERBOARDS = [
-  { key: 'homeRuns', label: '全壘打榜', icon: '💣', unit: '轟' },
-  { key: 'battingAverage', label: '打擊率榜', icon: '🎯', unit: '' },
-  { key: 'runsBattedIn', label: '打點榜', icon: '🏆', unit: '分' },
-  { key: 'stolenBases', label: '盜壘榜', icon: '⚡', unit: '盜' },
-  { key: 'earnedRunAverage', label: '防禦率榜', icon: '🛡️', unit: '' },
-  { key: 'strikeouts', label: '三振榜', icon: '🔥', unit: 'K' },
-  { key: 'wins', label: '勝投榜', icon: '✅', unit: '勝' },
-  { key: 'saves', label: '救援榜', icon: '🚨', unit: '救援' },
+  { key: 'homeRuns',         label: '全壘打',  shortLabel: '全壘打', unit: '轟' },
+  { key: 'battingAverage',   label: '打擊率',  shortLabel: '打擊率', unit: '' },
+  { key: 'runsBattedIn',     label: '打點',    shortLabel: '打點',   unit: '分' },
+  { key: 'stolenBases',      label: '盜壘',    shortLabel: '盜壘',   unit: '盜' },
+  { key: 'earnedRunAverage', label: '防禦率',  shortLabel: '防禦率', unit: '' },
+  { key: 'strikeouts',       label: '三振',    shortLabel: '三振',   unit: 'K' },
+  { key: 'wins',             label: '勝投',    shortLabel: '勝投',   unit: '勝' },
+  { key: 'saves',            label: '救援',    shortLabel: '救援',   unit: '救援' },
 ];
 
 export function LeadersSidebar() {
@@ -49,24 +49,23 @@ export function LeadersSidebar() {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
-        <span>{currentConfig.icon}</span>
-        <span>MLB {currentConfig.label}</span>
+      <h3 className="text-lg font-bold mb-3">
+        MLB {currentConfig.label}排行榜
       </h3>
 
       {/* 類別切換 */}
-      <div className="flex flex-wrap gap-1 mb-3 pb-3 border-b border-gray-100">
+      <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-gray-100">
         {LEADERBOARDS.map((b) => (
           <button
             key={b.key}
             onClick={() => setActiveCategory(b.key)}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
+            className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
               activeCategory === b.key
-                ? 'bg-blue-600 text-white'
+                ? 'bg-blue-600 text-white font-medium'
                 : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
             }`}
           >
-            {b.icon}
+            {b.shortLabel}
           </button>
         ))}
       </div>
