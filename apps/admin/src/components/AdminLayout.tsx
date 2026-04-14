@@ -17,6 +17,7 @@ import {
   MessageOutlined,
   MobileOutlined,
   TrophyOutlined,
+  TranslationOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAdminAuth } from '@/context/auth';
@@ -38,6 +39,7 @@ const menuItems = [
   { key: '/feedbacks', icon: <MessageOutlined />, label: '意見回報' },
   { key: '/sms-provider', icon: <MobileOutlined />, label: '簡訊服務商' },
   { key: '/sports-settings', icon: <TrophyOutlined />, label: '運彩 API 設定' },
+  { key: '/translations', icon: <TranslationOutlined />, label: '翻譯管理' },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
