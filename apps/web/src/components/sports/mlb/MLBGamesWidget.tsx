@@ -33,22 +33,53 @@ interface TeamTranslation {
   shortName?: string;
 }
 
+/**
+ * MLB 賽程 API 用美東日期當「比賽日」
+ * 一場 4/14 晚上 7:40 ET 開打的比賽，在 API 是 date=2026-04-14
+ * 但台灣時間是 4/15 早上 07:40
+ *
+ * 對台灣使用者的時間體驗：
+ * - 「昨日」= 兩天前開始的 MLB 比賽（台灣昨日凌晨結束）
+ * - 「今日」= 前一天開始的 MLB 比賽（台灣今早剛結束 / 正在打）
+ * - 「明日」= 今天開始的 MLB 比賽（台灣今晚開打 / 明早結束）
+ *
+ * 所以在 formatDate 時加上 -1 天偏移：
+ *   widget offset  →  實際 MLB date
+ *      -1 (昨日)   →   現在美東日期 - 2 天
+ *       0 (今日)   →   現在美東日期 - 1 天
+ *      +1 (明日)   →   現在美東日期
+ */
 function formatDate(offsetDays: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  // 取得當前美東日期
+  const now = new Date();
+  const etString = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+  const et = new Date(etString);
+  // 再扣 1 天，讓「今日」對應台灣使用者早上能看的比賽
+  et.setDate(et.getDate() + offsetDays - 1);
+  const y = et.getFullYear();
+  const m = String(et.getMonth() + 1).padStart(2, '0');
+  const d = String(et.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
+/** 顯示台灣時間的比賽日期（MLB date + 1 天 ≈ 台灣日期） */
 function formatDateLabel(offsetDays: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  const now = new Date();
+  const twString = now.toLocaleString('en-US', { timeZone: 'Asia/Taipei' });
+  const tw = new Date(twString);
+  tw.setDate(tw.getDate() + offsetDays);
+  return `${tw.getMonth() + 1}/${tw.getDate()}`;
 }
 
 function formatTime(dateStr: string): string {
   try {
     const d = new Date(dateStr);
-    return d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return d.toLocaleTimeString('zh-TW', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Taipei',
+    });
   } catch {
     return '';
   }
