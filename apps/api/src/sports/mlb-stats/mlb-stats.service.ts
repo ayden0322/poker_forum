@@ -169,7 +169,7 @@ export class MLBStatsService {
 
   // ============ 賽程 ============
 
-  /** 取得指定日期的比賽 */
+  /** 取得指定日期的比賽（MLB 美東日期） */
   async getSchedule(date: string) {
     const cacheKey = `mlb:schedule:${date}`;
     return this.cached(cacheKey, 300, async () => {
@@ -178,6 +178,51 @@ export class MLBStatsService {
         date,
       });
       return data?.dates?.[0]?.games ?? [];
+    });
+  }
+
+  /**
+   * 以「台灣日期」取得賽程
+   * 一個台灣日可能橫跨 2 個 MLB 美東日期，所以查詢 startDate~endDate 範圍
+   * 再用 Taiwan 時區過濾開打時間落在該台灣日的比賽
+   * 同時包含即時比分（linescore.currentInning/inningState）
+   *
+   * @param twDate 台灣日期 YYYY-MM-DD
+   */
+  async getScheduleByTaiwanDate(twDate: string) {
+    const cacheKey = `mlb:schedule:tw:${twDate}`;
+    // TTL 30 秒，配合前端 10 秒輪詢（快取命中時只壓 MLB API 每 30 秒一次）
+    return this.cached(cacheKey, 30, async () => {
+      // 台灣一天的 UTC 範圍
+      // Taiwan 00:00 = UTC 前一日 16:00
+      // Taiwan 23:59 = UTC 當日 15:59
+      const [y, m, d] = twDate.split('-').map(Number);
+      const startTwUtc = new Date(Date.UTC(y, m - 1, d) - 8 * 3600 * 1000); // 台灣當日 00:00 的 UTC
+      const endTwUtc = new Date(startTwUtc.getTime() + 24 * 3600 * 1000); // +24h
+
+      // 查 MLB 美東日期：從 startTwUtc 前一天到當天，覆蓋所有可能的比賽
+      const etStart = new Date(startTwUtc);
+      etStart.setUTCDate(etStart.getUTCDate() - 1);
+      const etEnd = new Date(endTwUtc);
+
+      const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+      // 用 startDate/endDate 範圍查（MLB API 支援），含即時比分
+      const data = await this.callApi<{ dates: any[] }>('/schedule', {
+        sportId: 1,
+        startDate: fmt(etStart),
+        endDate: fmt(etEnd),
+        hydrate: 'linescore',
+      });
+
+      const allGames = (data?.dates ?? []).flatMap((dd: any) => dd.games ?? []);
+
+      // 過濾：開打時間（UTC）落在台灣當日範圍內的比賽
+      return allGames.filter((g: any) => {
+        if (!g.gameDate) return false;
+        const gameTime = new Date(g.gameDate).getTime();
+        return gameTime >= startTwUtc.getTime() && gameTime < endTwUtc.getTime();
+      });
     });
   }
 

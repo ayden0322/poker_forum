@@ -530,10 +530,25 @@ export class MLBStatsController {
   }
 
   @Get('schedule')
-  @ApiOperation({ summary: 'MLB 賽程（指定日期）' })
+  @ApiOperation({ summary: 'MLB 賽程（指定美東日期）' })
   async getSchedule(@Query('date') date?: string) {
     const targetDate = date ?? new Date().toISOString().slice(0, 10);
     const games = await this.mlbStats.getSchedule(targetDate);
+    return { data: games };
+  }
+
+  @Get('schedule/tw')
+  @ApiOperation({
+    summary: 'MLB 賽程（以台灣日期查詢，含即時比分）',
+    description: '台灣一天橫跨 2 個美東日，以開打時間為準過濾',
+  })
+  async getScheduleByTaiwanDate(@Query('date') date?: string) {
+    if (!date) {
+      // 預設台灣今日
+      const tw = new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' });
+      date = new Date(tw).toISOString().slice(0, 10);
+    }
+    const games = await this.mlbStats.getScheduleByTaiwanDate(date);
     return { data: games };
   }
 }
