@@ -35,8 +35,12 @@ const LEADERBOARDS = [
   { key: 'saves',            label: '救援',    shortLabel: '救援',   unit: '救援' },
 ];
 
+/** 預設顯示筆數 */
+const DEFAULT_VISIBLE = 5;
+
 export function LeadersSidebar() {
   const [activeCategory, setActiveCategory] = useState<string>('homeRuns');
+  const [showAll, setShowAll] = useState(false);
   const currentConfig = LEADERBOARDS.find((b) => b.key === activeCategory)!;
 
   const { data, isLoading } = useQuery({
@@ -58,7 +62,10 @@ export function LeadersSidebar() {
         {LEADERBOARDS.map((b) => (
           <button
             key={b.key}
-            onClick={() => setActiveCategory(b.key)}
+            onClick={() => {
+              setActiveCategory(b.key);
+              setShowAll(false); // 切換類別時重置展開狀態
+            }}
             className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
               activeCategory === b.key
                 ? 'bg-blue-600 text-white font-medium'
@@ -76,8 +83,9 @@ export function LeadersSidebar() {
       ) : leaders.length === 0 ? (
         <div className="text-center py-6 text-gray-400 text-sm">暫無資料</div>
       ) : (
+        <>
         <ol className="space-y-2">
-          {leaders.map((leader) => (
+          {(showAll ? leaders : leaders.slice(0, DEFAULT_VISIBLE)).map((leader) => (
             <li key={`${leader.rank}-${leader.player.id}`} className="flex items-center gap-2 text-sm">
               <span
                 className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
@@ -108,6 +116,16 @@ export function LeadersSidebar() {
             </li>
           ))}
         </ol>
+        {/* 超過預設筆數時顯示展開/收起按鈕 */}
+        {leaders.length > DEFAULT_VISIBLE && (
+          <button
+            onClick={() => setShowAll((prev) => !prev)}
+            className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-colors mt-2 py-1.5 rounded-lg hover:bg-blue-50"
+          >
+            {showAll ? '收起 ▲' : '查看更多 ▼'}
+          </button>
+        )}
+        </>
       )}
 
       <div className="text-[10px] text-gray-400 text-center mt-3 pt-3 border-t border-gray-100">

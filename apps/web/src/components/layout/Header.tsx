@@ -155,8 +155,8 @@ export function Header() {
             </button>
 
             {/* Logo */}
-            <Link href="/" className="text-xl font-bold tracking-wide flex items-center gap-2">
-              博客邦
+            <Link href="/" className="flex items-center gap-2">
+              <Image src="/logo.png" alt="博客邦 GOBOKA" width={120} height={60} className="h-10 w-auto" priority />
             </Link>
 
             {/* 桌面版 Nav */}

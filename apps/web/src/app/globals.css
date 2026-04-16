@@ -34,6 +34,11 @@ body {
   animation: pulse-border 2s ease-in-out infinite;
 }
 
+/* 隱藏滾動條（橫向滾動橫幅用） */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* ─── TipTap 編輯器樣式 ─── */
 .tiptap {
   outline: none;

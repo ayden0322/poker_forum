@@ -3,14 +3,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
- * MLB 比賽 Widget — 以台灣日期為主（UTC+8）
+ * MLB 比賽橫幅 Widget — 橫向滾動樣式（類似 NBA 官網頂部賽程橫幅）
  *
- * 三欄：昨日 / 今日 / 明日（全部以台灣當日為基準）
- * - 中間「今日」欄：含進行中比賽，每 10 秒刷新
- * - 排序：進行中 → 即將開打 → 已結束
+ * - 日期切換標籤：昨日 / 今日 / 明日，預設顯示「今日」
+ * - 所有比賽卡片水平排列，可左右捲動
  * - LIVE 比賽：紅色邊框 + 脈衝動畫
+ * - 每張卡片可點擊，連到 /match/mlb/{gamePk}
  */
 
 interface Game {
@@ -101,7 +102,22 @@ function sortGames(games: Game[]): Game[] {
   });
 }
 
+/** 日期標籤定義 */
+const DATE_TABS = [
+  { key: 'yesterday', label: '昨日', offset: -1 },
+  { key: 'today', label: '今日', offset: 0 },
+  { key: 'tomorrow', label: '明日', offset: 1 },
+] as const;
+
+type TabKey = (typeof DATE_TABS)[number]['key'];
+
 export function MLBGamesWidget() {
+  const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** 追蹤是否可往左/右捲動，用於顯示箭頭按鈕 */
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
   const { data: translations } = useQuery({
     queryKey: ['mlb-team-translations'],
     queryFn: fetchTeamTranslations,
@@ -127,11 +143,61 @@ export function MLBGamesWidget() {
     staleTime: 10 * 60 * 1000,
   });
 
+  /** 根據當前 tab 取得對應比賽資料 */
+  const activeGames = activeTab === 'yesterday' ? yesterday : activeTab === 'today' ? today : tomorrow;
+  const sorted = activeGames ? sortGames(activeGames) : undefined;
+  const liveCount = sorted?.filter((g) => g.status.abstractGameState === 'Live').length ?? 0;
+
   const teamName = (team: { id: number; name: string }): string => {
     const tr = translations?.get(team.id);
     return tr?.shortName ?? tr?.nameZhTw ?? team.name;
   };
 
+  /** 更新捲動箭頭可見性 */
+  const updateScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  /** 切換 tab 後重設捲動位置 */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) {
+      el.scrollLeft = 0;
+    }
+    // 等 DOM 更新後再算捲動狀態
+    requestAnimationFrame(updateScrollState);
+  }, [activeTab, sorted, updateScrollState]);
+
+  /** 監聽滾動事件 */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener('scroll', updateScrollState, { passive: true });
+    updateScrollState();
+    return () => el.removeEventListener('scroll', updateScrollState);
+  }, [updateScrollState]);
+
+  /** 左右捲動 */
+  const scroll = (direction: 'left' | 'right') => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const amount = 320; // 約兩張卡片的寬度
+    el.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' });
+  };
+
+  /** 局數文字（例如「5局上」） */
+  const inningText = (game: Game) => {
+    if (game.status.abstractGameState !== 'Live' || !game.linescore?.currentInning) return '';
+    const half = game.linescore.inningState;
+    const halfCh =
+      half === 'Top' || half === 'Middle' ? '上' : half === 'Bottom' || half === 'End' ? '下' : '';
+    return `${game.linescore.currentInning}局${halfCh}`;
+  };
+
+  /** 渲染單張比賽卡片（橫幅版，高度精簡） */
   const renderGameCard = (game: Game) => {
     const isLive = game.status.abstractGameState === 'Live';
     const isFinal = game.status.abstractGameState === 'Final';
@@ -142,54 +208,43 @@ export function MLBGamesWidget() {
     const awayWins = isFinal && awayScore! > homeScore!;
     const homeWins = isFinal && homeScore! > awayScore!;
 
-    // LIVE 狀態：邊框脈衝動畫
+    // LIVE 狀態：紅色邊框 + 脈衝動畫
     const borderCls = isLive
       ? 'border-2 border-red-400 shadow-[0_0_0_3px_rgba(248,113,113,0.2)] animate-pulse-border'
       : 'border border-gray-200';
-
-    // 局數文字（例如「5局上」）
-    const inningText = () => {
-      if (!isLive || !game.linescore?.currentInning) return '';
-      const half = game.linescore.inningState;
-      const halfCh =
-        half === 'Top' || half === 'Middle' ? '上' : half === 'Bottom' || half === 'End' ? '下' : '';
-      return `${game.linescore.currentInning}局${halfCh}`;
-    };
 
     return (
       <Link
         key={game.gamePk}
         href={`/match/mlb/${game.gamePk}`}
-        className={`block rounded-lg ${borderCls} bg-white p-2 shadow-sm hover:shadow-md hover:border-blue-300 transition-all`}
+        className={`flex-shrink-0 w-[148px] rounded-lg ${borderCls} bg-white px-2.5 py-1.5 shadow-sm hover:shadow-md hover:border-blue-300 transition-all`}
       >
         {/* 狀態列 */}
-        <div className="flex items-center justify-center mb-1.5">
+        <div className="flex items-center justify-center mb-0.5 h-4">
           {isLive && (
-            <span className="text-[11px] font-bold text-red-500 flex items-center gap-1">
-              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              <span>⚡ 比賽進行中</span>
-              {inningText() && <span className="text-red-400">· {inningText()}</span>}
+            <span className="text-[10px] font-bold text-red-500 flex items-center gap-0.5 leading-none">
+              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              <span>LIVE</span>
+              {inningText(game) && <span className="text-red-400">· {inningText(game)}</span>}
             </span>
           )}
-          {isFinal && <span className="text-[10px] font-medium text-gray-400">已結束</span>}
+          {isFinal && <span className="text-[10px] font-medium text-gray-400 leading-none">已結束</span>}
           {isPreview && (
-            <span className="text-[10px] text-gray-400">
-              {twTime(game.gameDate)} 開打
-            </span>
+            <span className="text-[10px] text-gray-400 leading-none">{twTime(game.gameDate)}</span>
           )}
         </div>
 
         {/* 客隊 */}
-        <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center justify-between gap-1 h-5">
+          <div className="flex items-center gap-1 min-w-0">
             <img
               src={`https://www.mlbstatic.com/team-logos/${game.teams.away.team.id}.svg`}
               alt=""
-              className="w-4 h-4 object-contain"
+              className="w-3.5 h-3.5 object-contain flex-shrink-0"
               onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
             />
             <span
-              className={`text-xs truncate ${
+              className={`text-[11px] truncate leading-none ${
                 awayWins ? 'font-bold text-gray-900' : isLive ? 'text-gray-800' : 'text-gray-600'
               }`}
             >
@@ -197,7 +252,7 @@ export function MLBGamesWidget() {
             </span>
           </div>
           <span
-            className={`text-sm tabular-nums ${
+            className={`text-xs tabular-nums leading-none ${
               awayWins
                 ? 'font-bold text-gray-900'
                 : isLive
@@ -209,19 +264,19 @@ export function MLBGamesWidget() {
           </span>
         </div>
 
-        <div className="border-t border-gray-100 my-1" />
+        <div className="border-t border-gray-100 my-0.5" />
 
         {/* 主隊 */}
-        <div className="flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center justify-between gap-1 h-5">
+          <div className="flex items-center gap-1 min-w-0">
             <img
               src={`https://www.mlbstatic.com/team-logos/${game.teams.home.team.id}.svg`}
               alt=""
-              className="w-4 h-4 object-contain"
+              className="w-3.5 h-3.5 object-contain flex-shrink-0"
               onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
             />
             <span
-              className={`text-xs truncate ${
+              className={`text-[11px] truncate leading-none ${
                 homeWins ? 'font-bold text-gray-900' : isLive ? 'text-gray-800' : 'text-gray-600'
               }`}
             >
@@ -229,7 +284,7 @@ export function MLBGamesWidget() {
             </span>
           </div>
           <span
-            className={`text-sm tabular-nums ${
+            className={`text-xs tabular-nums leading-none ${
               homeWins
                 ? 'font-bold text-gray-900'
                 : isLive
@@ -244,55 +299,93 @@ export function MLBGamesWidget() {
     );
   };
 
-  const renderColumn = (games: Game[] | undefined, title: string, isToday: boolean) => {
-    const sorted = games ? sortGames(games) : undefined;
-    const liveCount = sorted?.filter((g) => g.status.abstractGameState === 'Live').length ?? 0;
-
-    return (
-      <div
-        className={`rounded-lg border ${
-          isToday ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
-        } p-2`}
-      >
-        <div
-          className={`text-xs font-bold ${isToday ? 'text-blue-700' : 'text-gray-500'} mb-2 text-center`}
-        >
-          {title}
-          {sorted && sorted.length > 0 && (
-            <span className="font-normal text-gray-400 ml-1">({sorted.length})</span>
-          )}
+  return (
+    <div className="mb-4">
+      {/* 標題列 + 日期切換標籤 */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-base">⚾</span>
+          <h3 className="font-bold text-sm text-gray-800">MLB 比賽</h3>
+          {/* 日期切換標籤 */}
+          <div className="flex items-center gap-0.5 ml-2">
+            {DATE_TABS.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label} {twDateLabel(tab.offset)}
+                </button>
+              );
+            })}
+          </div>
+          {/* LIVE 計數 */}
           {liveCount > 0 && (
-            <span className="ml-1 inline-flex items-center gap-0.5 text-red-500 font-bold">
-              · <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse inline-block" />
-              {liveCount} 進行中
+            <span className="flex items-center gap-1 text-[11px] text-red-500 font-bold ml-1">
+              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              {liveCount} LIVE
             </span>
           )}
         </div>
-        {!sorted ? (
-          <p className="text-xs text-gray-300 text-center py-4">載入中...</p>
-        ) : sorted.length === 0 ? (
-          <p className="text-xs text-gray-300 text-center py-4">無賽事</p>
-        ) : (
-          <div className="space-y-2 max-h-72 overflow-y-auto">{sorted.map(renderGameCard)}</div>
+        <span className="text-[10px] text-gray-400 hidden sm:inline">點卡片看詳細戰報</span>
+      </div>
+
+      {/* 橫向滾動區域 */}
+      <div className="relative group">
+        {/* 左箭頭 */}
+        {canScrollLeft && (
+          <button
+            onClick={() => scroll('left')}
+            className="absolute left-0 top-0 bottom-0 z-10 w-7 flex items-center justify-center
+              bg-gradient-to-r from-gray-100/90 to-transparent
+              opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            aria-label="向左捲動"
+          >
+            <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
         )}
-      </div>
-    );
-  };
 
-  return (
-    <div className="mb-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">⚾</span>
-          <h3 className="font-bold text-gray-800">MLB 比賽（台灣時間）</h3>
+        {/* 右箭頭 */}
+        {canScrollRight && (
+          <button
+            onClick={() => scroll('right')}
+            className="absolute right-0 top-0 bottom-0 z-10 w-7 flex items-center justify-center
+              bg-gradient-to-l from-gray-100/90 to-transparent
+              opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            aria-label="向右捲動"
+          >
+            <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+
+        {/* 比賽卡片橫向捲動容器 */}
+        <div
+          ref={scrollRef}
+          className="flex gap-2 overflow-x-auto scrollbar-hide pb-1"
+          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
+          {!sorted ? (
+            <div className="flex items-center justify-center w-full h-[76px]">
+              <p className="text-xs text-gray-400">載入中...</p>
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="flex items-center justify-center w-full h-[76px]">
+              <p className="text-xs text-gray-400">今日無賽事</p>
+            </div>
+          ) : (
+            sorted.map(renderGameCard)
+          )}
         </div>
-        <span className="text-xs text-gray-400">點卡片看詳細戰報</span>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        {renderColumn(yesterday, `昨日 ${twDateLabel(-1)}`, false)}
-        {renderColumn(today, `今日 ${twDateLabel(0)}`, true)}
-        {renderColumn(tomorrow, `明日 ${twDateLabel(1)}`, false)}
       </div>
     </div>
   );

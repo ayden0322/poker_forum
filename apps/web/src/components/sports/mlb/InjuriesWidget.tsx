@@ -43,9 +43,13 @@ function formatDate(dateStr: string): string {
   return `${m}/${d}`;
 }
 
+/** 預設顯示筆數 */
+const DEFAULT_VISIBLE = 5;
+
 export function InjuriesWidget({ teamId, days = 14 }: { teamId?: number; days?: number }) {
   const [tab, setTab] = useState<'injury' | 'activation'>('injury');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAll, setShowAll] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['mlb-injuries', teamId ?? 'all', days],
@@ -81,7 +85,10 @@ export function InjuriesWidget({ teamId, days = 14 }: { teamId?: number; days?: 
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3 pb-3 border-b border-gray-100">
         <button
-          onClick={() => setTab('injury')}
+          onClick={() => {
+            setTab('injury');
+            setShowAll(false); // 切換 tab 時重置展開狀態
+          }}
           className={`text-xs px-3 py-1 rounded-full transition-colors ${
             tab === 'injury'
               ? 'bg-red-500 text-white font-medium'
@@ -92,7 +99,10 @@ export function InjuriesWidget({ teamId, days = 14 }: { teamId?: number; days?: 
           {data?.summary.injuries ? ` (${data.summary.injuries})` : ''}
         </button>
         <button
-          onClick={() => setTab('activation')}
+          onClick={() => {
+            setTab('activation');
+            setShowAll(false); // 切換 tab 時重置展開狀態
+          }}
           className={`text-xs px-3 py-1 rounded-full transition-colors ${
             tab === 'activation'
               ? 'bg-green-500 text-white font-medium'
@@ -112,8 +122,9 @@ export function InjuriesWidget({ teamId, days = 14 }: { teamId?: number; days?: 
           {tab === 'injury' ? '近期無新傷兵' : '近期無球員回歸'}
         </div>
       ) : (
+        <>
         <ul className="space-y-2 max-h-80 overflow-y-auto">
-          {filtered.map((item, idx) => {
+          {(showAll ? filtered : filtered.slice(0, DEFAULT_VISIBLE)).map((item, idx) => {
             const key = `${item.date}-${item.player?.id}-${idx}`;
             const isExpanded = expanded.has(key);
 
@@ -179,6 +190,16 @@ export function InjuriesWidget({ teamId, days = 14 }: { teamId?: number; days?: 
             );
           })}
         </ul>
+        {/* 超過預設筆數時顯示展開/收起按鈕 */}
+        {filtered.length > DEFAULT_VISIBLE && (
+          <button
+            onClick={() => setShowAll((prev) => !prev)}
+            className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-colors mt-2 py-1.5 rounded-lg hover:bg-blue-50"
+          >
+            {showAll ? '收起 ▲' : '查看更多 ▼'}
+          </button>
+        )}
+        </>
       )}
 
       <div className="text-[10px] text-gray-400 text-center mt-3 pt-3 border-t border-gray-100">
