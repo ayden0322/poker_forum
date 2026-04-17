@@ -39,6 +39,7 @@ const LEADERBOARDS = [
 const DEFAULT_VISIBLE = 5;
 
 export function LeadersSidebar() {
+  const [expanded, setExpanded] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string>('homeRuns');
   const [showAll, setShowAll] = useState(false);
   const currentConfig = LEADERBOARDS.find((b) => b.key === activeCategory)!;
@@ -47,90 +48,104 @@ export function LeadersSidebar() {
     queryKey: ['mlb-leaders', activeCategory],
     queryFn: () => apiFetch<Response>(`/mlb/leaders/${activeCategory}?limit=10`),
     staleTime: 60 * 60 * 1000, // 1 小時
+    enabled: expanded, // 只有展開時才載入
   });
 
   const leaders = data?.data ?? [];
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <h3 className="text-lg font-bold mb-3">
-        MLB {currentConfig.label}排行榜
-      </h3>
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* 標題列（可點擊展開/收起） */}
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 transition-colors"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+          <span>🏆</span>
+          <span>MLB 數據排行榜</span>
+        </span>
+        <span className="text-xs text-gray-400">
+          {expanded ? '▲ 收起' : '▼ 展開'}
+        </span>
+      </button>
 
-      {/* 類別切換 */}
-      <div className="flex flex-wrap gap-1.5 mb-3 pb-3 border-b border-gray-100">
-        {LEADERBOARDS.map((b) => (
-          <button
-            key={b.key}
-            onClick={() => {
-              setActiveCategory(b.key);
-              setShowAll(false); // 切換類別時重置展開狀態
-            }}
-            className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
-              activeCategory === b.key
-                ? 'bg-blue-600 text-white font-medium'
-                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {b.shortLabel}
-          </button>
-        ))}
-      </div>
-
-      {/* 排行榜 */}
-      {isLoading ? (
-        <div className="text-center py-6 text-gray-400 text-sm">載入中...</div>
-      ) : leaders.length === 0 ? (
-        <div className="text-center py-6 text-gray-400 text-sm">暫無資料</div>
-      ) : (
-        <>
-        <ol className="space-y-2">
-          {(showAll ? leaders : leaders.slice(0, DEFAULT_VISIBLE)).map((leader) => (
-            <li key={`${leader.rank}-${leader.player.id}`} className="flex items-center gap-2 text-sm">
-              <span
-                className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  leader.rank <= 3
-                    ? leader.rank === 1
-                      ? 'bg-yellow-400 text-yellow-900'
-                      : leader.rank === 2
-                      ? 'bg-gray-300 text-gray-800'
-                      : 'bg-orange-300 text-orange-900'
-                    : 'bg-gray-100 text-gray-500'
+      {/* 展開內容 */}
+      {expanded && (
+        <div className="px-3 pb-3 border-t border-gray-100">
+          {/* 類別切換 */}
+          <div className="flex flex-wrap gap-1 py-2">
+            {LEADERBOARDS.map((b) => (
+              <button
+                key={b.key}
+                onClick={() => {
+                  setActiveCategory(b.key);
+                  setShowAll(false);
+                }}
+                className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${
+                  activeCategory === b.key
+                    ? 'bg-blue-600 text-white font-medium'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                 }`}
               >
-                {leader.rank}
-              </span>
-              <Link
-                href={`/player/mlb/${leader.player.id}`}
-                className="flex-1 min-w-0 hover:text-blue-600 transition-colors"
-              >
-                <div className="font-medium text-gray-800 truncate">
-                  {leader.player.shortName ?? leader.player.nameZhTw}
-                </div>
-                <div className="text-xs text-gray-400 truncate">{leader.team.nameEn}</div>
-              </Link>
-              <span className="font-bold text-blue-600 tabular-nums shrink-0">
-                {leader.value}
-                {currentConfig.unit && <span className="text-xs text-gray-400 ml-0.5">{currentConfig.unit}</span>}
-              </span>
-            </li>
-          ))}
-        </ol>
-        {/* 超過預設筆數時顯示展開/收起按鈕 */}
-        {leaders.length > DEFAULT_VISIBLE && (
-          <button
-            onClick={() => setShowAll((prev) => !prev)}
-            className="w-full text-center text-xs text-blue-500 hover:text-blue-700 transition-colors mt-2 py-1.5 rounded-lg hover:bg-blue-50"
-          >
-            {showAll ? '收起 ▲' : '查看更多 ▼'}
-          </button>
-        )}
-        </>
-      )}
+                {b.shortLabel}
+              </button>
+            ))}
+          </div>
 
-      <div className="text-[10px] text-gray-400 text-center mt-3 pt-3 border-t border-gray-100">
-        資料來源：MLB 官方
-      </div>
+          {/* 排行榜 */}
+          {isLoading ? (
+            <div className="text-center py-4 text-gray-400 text-xs">載入中...</div>
+          ) : leaders.length === 0 ? (
+            <div className="text-center py-4 text-gray-400 text-xs">暫無資料</div>
+          ) : (
+            <>
+              <ol className="space-y-1">
+                {(showAll ? leaders : leaders.slice(0, DEFAULT_VISIBLE)).map((leader) => (
+                  <li key={`${leader.rank}-${leader.player.id}`} className="flex items-center gap-2 text-xs">
+                    <span
+                      className={`shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                        leader.rank <= 3
+                          ? leader.rank === 1
+                            ? 'bg-yellow-400 text-yellow-900'
+                            : leader.rank === 2
+                            ? 'bg-gray-300 text-gray-800'
+                            : 'bg-orange-300 text-orange-900'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      {leader.rank}
+                    </span>
+                    <Link
+                      href={`/player/mlb/${leader.player.id}`}
+                      className="flex-1 min-w-0 hover:text-blue-600 transition-colors flex items-center gap-1.5"
+                    >
+                      <span className="font-medium text-gray-800 truncate">
+                        {leader.player.shortName ?? leader.player.nameZhTw}
+                      </span>
+                      <span className="text-[10px] text-gray-400 truncate">
+                        {leader.team.nameEn}
+                      </span>
+                    </Link>
+                    <span className="font-bold text-blue-600 tabular-nums shrink-0 text-xs">
+                      {leader.value}
+                      {currentConfig.unit && <span className="text-[10px] text-gray-400 ml-0.5">{currentConfig.unit}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              {leaders.length > DEFAULT_VISIBLE && (
+                <button
+                  onClick={() => setShowAll((prev) => !prev)}
+                  className="w-full text-center text-[11px] text-blue-500 hover:text-blue-700 transition-colors mt-1.5 py-1 rounded hover:bg-blue-50"
+                >
+                  {showAll ? '收起 ▲' : '查看更多 ▼'}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
