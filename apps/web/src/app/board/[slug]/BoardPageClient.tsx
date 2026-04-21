@@ -8,9 +8,8 @@ import { useAuth } from '@/context/auth';
 import { useRouter } from 'next/navigation';
 import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
-import { LeadersSidebar } from '@/components/sports/mlb/LeadersSidebar';
 import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
-import { InjuriesWidget } from '@/components/sports/mlb/InjuriesWidget';
+import { MLBStatsPanel } from '@/components/sports/mlb/MLBStatsPanel';
 
 interface PostItem {
   id: string;
@@ -301,11 +300,8 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       {board.slug === 'mlb' ? (
         <>
           <MLBGamesWidget />
-          {/* 並排顯示：左邊排行榜、右邊傷兵動態 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <LeadersSidebar />
-            <InjuriesWidget />
-          </div>
+          {/* 合併為單一 Tab 面板，避免並排時高度不對稱 */}
+          <MLBStatsPanel />
         </>
       ) : (
         <ScoreWidget boardSlug={board.slug} />
