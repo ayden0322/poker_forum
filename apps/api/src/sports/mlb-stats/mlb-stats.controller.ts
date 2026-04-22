@@ -234,13 +234,14 @@ export class MLBStatsController {
   }
 
   @Get('teams/:teamId/h2h/:opponentId')
-  @ApiOperation({ summary: '兩隊歷史對戰（近 3 年）' })
+  @ApiOperation({ summary: '兩隊歷史對戰（近 N 年，預設 3 年）' })
   async getHeadToHead(
     @Param('teamId', ParseIntPipe) teamId: number,
     @Param('opponentId', ParseIntPipe) opponentId: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query('years', new DefaultValuePipe(3), ParseIntPipe) years: number,
   ) {
-    const games = (await this.mlbStats.getHeadToHead(teamId, opponentId, { limit })) ?? [];
+    const games = (await this.mlbStats.getHeadToHead(teamId, opponentId, { limit, years })) ?? [];
 
     // 統計戰績
     let teamWins = 0;

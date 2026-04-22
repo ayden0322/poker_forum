@@ -303,26 +303,40 @@ export class MLBStatsService {
     });
   }
 
-  /** 兩隊歷史對戰 */
+  /**
+   * 兩隊歷史對戰
+   *
+   * 注意：MLB Stats API 的 /schedule 端點傳入 startDate/endDate 時，
+   * 實際上只會回傳 startDate 那一年的資料，無法跨賽季查詢。
+   * 因此必須逐年（season 參數）查詢再合併。
+   */
   async getHeadToHead(
     teamId: number,
     opponentId: number,
-    options: { startDate?: string; endDate?: string; limit?: number } = {},
+    options: { years?: number; limit?: number } = {},
   ) {
-    const endDate = options.endDate ?? new Date().toISOString().slice(0, 10);
-    const startDate = options.startDate ?? `${new Date().getFullYear() - 3}-01-01`;
+    const years = options.years ?? 3;
     const limit = options.limit ?? 20;
+    const currentYear = new Date().getFullYear();
+    // 從當年度往前回溯 N 年，例如 2026 + years=3 → [2026, 2025, 2024, 2023]
+    const seasons = Array.from({ length: years + 1 }, (_, i) => currentYear - i);
 
-    const cacheKey = `mlb:h2h:${teamId}:${opponentId}:${startDate}:${endDate}`;
+    const cacheKey = `mlb:h2h:${teamId}:${opponentId}:${seasons.join(',')}:${limit}`;
     return this.cached(cacheKey, 3600, async () => {
-      const data = await this.callApi<{ dates: any[] }>('/schedule', {
-        sportId: 1,
-        teamId,
-        opponentId,
-        startDate,
-        endDate,
-      });
-      const games = data?.dates?.flatMap((d) => d.games) ?? [];
+      // 平行查詢各賽季，單一賽季失敗不影響其他賽季
+      const results = await Promise.all(
+        seasons.map((season) =>
+          this.callApi<{ dates: any[] }>('/schedule', {
+            sportId: 1,
+            teamId,
+            opponentId,
+            season,
+          }).catch(() => ({ dates: [] as any[] })),
+        ),
+      );
+
+      const games = results.flatMap((r) => r?.dates?.flatMap((d) => d.games) ?? []);
+
       // 按日期倒序，只取 limit 場已結束的
       return games
         .filter((g: any) => g.status?.detailedState === 'Final')
