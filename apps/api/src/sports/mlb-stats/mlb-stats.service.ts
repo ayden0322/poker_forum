@@ -262,6 +262,80 @@ export class MLBStatsService {
     });
   }
 
+  /**
+   * 賽前資訊（預計先發投手 + 先發打線）
+   *
+   * - probablePitcher：開賽前 1~2 天就會公布
+   * - lineups：通常開賽前 2~3 小時公布（未公布時回傳空陣列）
+   * - 單次 API 同時取得雙隊資訊
+   */
+  async getGamePreview(gamePk: number) {
+    const cacheKey = `mlb:preview:${gamePk}`;
+    // 60 秒快取：lineups 公布前後會變動，不宜快取太久
+    return this.cached(cacheKey, 60, async () => {
+      const data = await this.callApi<{ dates: any[] }>('/schedule', {
+        sportId: 1,
+        gamePk,
+        hydrate: 'probablePitcher,lineups',
+      });
+      const game = data?.dates?.[0]?.games?.[0];
+      if (!game) return null;
+
+      const extractPitcher = (side: 'home' | 'away') => {
+        const pp = game.teams?.[side]?.probablePitcher;
+        if (!pp) return null;
+        return {
+          id: pp.id,
+          fullName: pp.fullName,
+          firstName: pp.firstName,
+          lastName: pp.lastName,
+          primaryNumber: pp.primaryNumber,
+        };
+      };
+
+      const extractLineup = (key: 'homePlayers' | 'awayPlayers') => {
+        const players = game.lineups?.[key] ?? [];
+        return players.map((p: any, idx: number) => ({
+          order: idx + 1,
+          id: p.id,
+          fullName: p.fullName,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          primaryNumber: p.primaryNumber,
+          position: {
+            code: p.primaryPosition?.code,
+            name: p.primaryPosition?.name,
+            abbreviation: p.primaryPosition?.abbreviation,
+          },
+        }));
+      };
+
+      return {
+        gamePk,
+        gameDate: game.gameDate,
+        status: game.status,
+        teams: {
+          home: {
+            id: game.teams?.home?.team?.id,
+            name: game.teams?.home?.team?.name,
+          },
+          away: {
+            id: game.teams?.away?.team?.id,
+            name: game.teams?.away?.team?.name,
+          },
+        },
+        probablePitchers: {
+          home: extractPitcher('home'),
+          away: extractPitcher('away'),
+        },
+        lineups: {
+          home: extractLineup('homePlayers'),
+          away: extractLineup('awayPlayers'),
+        },
+      };
+    });
+  }
+
   // ============ 球隊統計 ============
 
   /** 球隊賽季統計（打擊 + 投手） */

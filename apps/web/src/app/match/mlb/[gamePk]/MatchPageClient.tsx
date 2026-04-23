@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { HeadToHeadBlock } from '@/components/sports/mlb/HeadToHeadBlock';
+import { StartingLineupCard } from '@/components/sports/mlb/StartingLineupCard';
 
 interface Response {
   data: {
@@ -329,6 +330,16 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
 
       {/* 逐局比分 */}
       {linescore && <LineScoreTable linescore={linescore} boxscore={boxscore} />}
+
+      {/* 賽前先發名單（含預計先發投手） */}
+      <StartingLineupCard
+        gamePk={gamePk}
+        awayName={teamName(awayTeam)}
+        homeName={teamName(homeTeam)}
+        awayId={awayTeam?.id}
+        homeId={homeTeam?.id}
+        isFinished={isFinished}
+      />
 
       {/* 歷史對戰 */}
       {awayTeam?.id && homeTeam?.id && (

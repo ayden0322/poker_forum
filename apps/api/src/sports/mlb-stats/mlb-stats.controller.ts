@@ -496,6 +496,91 @@ export class MLBStatsController {
     return { data };
   }
 
+  @Get('games/:gamePk/preview')
+  @ApiOperation({
+    summary: '賽前資訊（預計先發投手 + 先發打線，含中文翻譯）',
+    description: '開賽前 1~2 天可拿到先發投手；先發打線通常開賽前 2~3 小時才公布',
+  })
+  async getGamePreview(@Param('gamePk', ParseIntPipe) gamePk: number) {
+    const preview = await this.mlbStats.getGamePreview(gamePk);
+    if (!preview) return { data: null };
+
+    // 收集所有要翻譯的球員 ID
+    const playerIds = new Set<number>();
+    for (const side of ['home', 'away'] as const) {
+      const pp = preview.probablePitchers[side];
+      if (pp?.id) playerIds.add(pp.id);
+      for (const p of preview.lineups[side]) {
+        if (p?.id) playerIds.add(p.id);
+      }
+    }
+
+    // 批次查球員翻譯
+    const playerTranslations = playerIds.size
+      ? await this.prisma.translation.findMany({
+          where: {
+            entityType: 'player',
+            sport: 'baseball',
+            apiId: { in: Array.from(playerIds) },
+          },
+        })
+      : [];
+    const playerMap = new Map(playerTranslations.map((t) => [t.apiId, t]));
+
+    // 批次查球隊翻譯（透過 extra.mlbStatsTeamId）
+    const allTeamTranslations = await this.prisma.translation.findMany({
+      where: { entityType: 'team', sport: 'baseball' },
+    });
+    const findTeamTr = (teamId: number) =>
+      allTeamTranslations.find((t) => (t.extra as any)?.mlbStatsTeamId === teamId);
+
+    const enrichPlayer = (p: any) => {
+      if (!p) return null;
+      const tr = playerMap.get(p.id);
+      return {
+        ...p,
+        nameZhTw: tr?.nameZhTw ?? p.fullName,
+        shortName: tr?.shortName,
+        nickname: tr?.nickname,
+      };
+    };
+
+    const enrichTeam = (team: { id?: number; name?: string }) => {
+      if (!team?.id) return team;
+      const tr = findTeamTr(team.id);
+      return {
+        ...team,
+        nameZhTw: tr?.nameZhTw ?? team.name,
+        shortName: tr?.shortName,
+      };
+    };
+
+    return {
+      data: {
+        gamePk: preview.gamePk,
+        gameDate: preview.gameDate,
+        status: preview.status,
+        teams: {
+          home: enrichTeam(preview.teams.home),
+          away: enrichTeam(preview.teams.away),
+        },
+        probablePitchers: {
+          home: enrichPlayer(preview.probablePitchers.home),
+          away: enrichPlayer(preview.probablePitchers.away),
+        },
+        lineups: {
+          home: preview.lineups.home.map(enrichPlayer),
+          away: preview.lineups.away.map(enrichPlayer),
+        },
+        // 方便前端判斷：打線是否已公布
+        lineupsPosted: {
+          home: preview.lineups.home.length > 0,
+          away: preview.lineups.away.length > 0,
+        },
+      },
+    };
+  }
+
   @Get('games/:gamePk')
   @ApiOperation({ summary: '比賽完整資料（整合 schedule + linescore + boxscore）' })
   async getGameSummary(@Param('gamePk', ParseIntPipe) gamePk: number) {
