@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../common/redis.service';
 
 /**
@@ -15,7 +16,16 @@ import { RedisService } from '../../common/redis.service';
 @Injectable()
 export class CpblStatsService {
   private readonly logger = new Logger(CpblStatsService.name);
-  private readonly baseUrl = 'https://www.cpbl.com.tw';
+
+  /**
+   * CPBL 官網 base URL
+   *
+   * 預設指向 cpbl.com.tw。但 HiNet CDN 對非台灣 IP 回 404，
+   * 所以正式環境（Zeabur 大阪機房）需要透過台灣 IP proxy。
+   *
+   * 設定 CPBL_PROXY_URL 環境變數可指向 proxy（如 https://cpbl-proxy.example.com）
+   */
+  private readonly baseUrl: string;
 
   // ============ 診斷工具（B0）============
 
@@ -165,7 +175,15 @@ export class CpblStatsService {
   private readonly REDIS_SCHEDULE_TOKEN_KEY = 'cpbl:csrf:schedule';
   private readonly REDIS_TOKEN_TTL = 1500; // 25 分鐘（秒）
 
-  constructor(private redis: RedisService) {}
+  constructor(
+    private redis: RedisService,
+    private config: ConfigService,
+  ) {
+    this.baseUrl = this.config.get<string>('CPBL_PROXY_URL', 'https://www.cpbl.com.tw');
+    if (this.baseUrl !== 'https://www.cpbl.com.tw') {
+      this.logger.log(`[CPBL] 使用 proxy: ${this.baseUrl}`);
+    }
+  }
 
   // ============ CSRF Token 管理 ============
 
