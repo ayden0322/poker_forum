@@ -34,6 +34,9 @@ pnpm-debug.log*
 # turbo
 .turbo
 
+# typescript incremental build cache
+*.tsbuildinfo
+
 # prisma
 packages/database/prisma/*.db
 
@@ -46,3 +49,4 @@ packages/database/prisma/*.db
 
 # claude
 .claude/settings.local.json
+.claude/session_log.md
