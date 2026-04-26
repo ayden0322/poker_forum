@@ -17,6 +17,94 @@ export class CpblStatsService {
   private readonly logger = new Logger(CpblStatsService.name);
   private readonly baseUrl = 'https://www.cpbl.com.tw';
 
+  // ============ 診斷工具（B0）============
+
+  /**
+   * 診斷 CPBL 官網連線狀態
+   * 回傳每個步驟的詳細資訊，幫助找出正式環境連不到的根因
+   */
+  async diagnose(): Promise<DiagnoseResult> {
+    const result: DiagnoseResult = {
+      timestamp: new Date().toISOString(),
+      steps: [],
+    };
+
+    // 步驟 1：能否拿到 /box 頁面 HTML
+    const step1 = await this.timed(async () => {
+      const res = await fetch(`${this.baseUrl}/box`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Accept-Language': 'zh-TW,zh;q=0.9',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+      const html = await res.text();
+      const setCookies = res.headers.getSetCookie?.() ?? [];
+      return {
+        status: res.status,
+        ok: res.ok,
+        contentType: res.headers.get('content-type'),
+        htmlLength: html.length,
+        htmlPreview: html.substring(0, 200),
+        cookieCount: setCookies.length,
+        hasTokenInput: /name="__RequestVerificationToken"/.test(html),
+        hasTokenInJs: /RequestVerificationToken['"]?\s*:/.test(html),
+      };
+    });
+    result.steps.push({ name: 'fetch /box', ...step1 });
+
+    // 步驟 2：能否拿到 /schedule 頁面 HTML
+    const step2 = await this.timed(async () => {
+      const res = await fetch(`${this.baseUrl}/schedule`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'text/html',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+      const html = await res.text();
+      return {
+        status: res.status,
+        ok: res.ok,
+        htmlLength: html.length,
+        htmlPreview: html.substring(0, 200),
+        hasTokenInJs: /RequestVerificationToken['"]?\s*:/.test(html),
+      };
+    });
+    result.steps.push({ name: 'fetch /schedule', ...step2 });
+
+    // 步驟 3：嘗試實際呼叫 schedule API
+    const step3 = await this.timed(async () => {
+      const data = await this.callScheduleApi<any>({
+        calendar: '2026/04/01',
+        kindCode: 'A',
+        location: '',
+      });
+      return {
+        success: data?.Success,
+        gameDataLength: data?.GameDatas?.length ?? 0,
+        rawSample: typeof data === 'object' ? JSON.stringify(data).substring(0, 200) : String(data).substring(0, 200),
+      };
+    });
+    result.steps.push({ name: 'callScheduleApi', ...step3 });
+
+    return result;
+  }
+
+  /** 計時包裝器，捕捉任何 throw */
+  private async timed(
+    fn: () => Promise<any>,
+  ): Promise<{ ms: number; data?: any; error?: string }> {
+    const start = Date.now();
+    try {
+      const data = await fn();
+      return { ms: Date.now() - start, data };
+    } catch (err) {
+      return { ms: Date.now() - start, error: String(err) };
+    }
+  }
+
   /** Box 頁面 CSRF token 快取（記憶體 + Redis 雙層） */
   private csrfToken: string | null = null;
   private csrfCookies: string | null = null;
@@ -703,4 +791,14 @@ export interface CpblLiveLogEntry {
     second: string;
     third: string;
   };
+}
+
+export interface DiagnoseResult {
+  timestamp: string;
+  steps: Array<{
+    name: string;
+    ms: number;
+    data?: any;
+    error?: string;
+  }>;
 }

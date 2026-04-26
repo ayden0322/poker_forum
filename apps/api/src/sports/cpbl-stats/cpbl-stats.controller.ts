@@ -65,4 +65,16 @@ export class CpblStatsController {
     const data = await this.cpblStats.getTodayGames();
     return { success: true, data };
   }
+
+  // ============ 診斷工具 ============
+
+  @Get('debug/connectivity')
+  @ApiOperation({
+    summary: 'CPBL 官網連線診斷（B0）',
+    description: '測試 /box、/schedule、callScheduleApi 三個步驟，回傳每步耗時與錯誤詳情',
+  })
+  async diagnose() {
+    const data = await this.cpblStats.diagnose();
+    return { data };
+  }
 }
