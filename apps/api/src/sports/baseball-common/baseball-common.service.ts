@@ -237,11 +237,37 @@ export class BaseballCommonService {
 
   // ============ 單場比賽資料 ============
 
+  /**
+   * 取得單場比賽（保留 API-Sports 原始結構，但附加 nameZhTw / shortName 中文名）
+   *
+   * 不採用 normalizeAndTranslate 是為了保留 scores.innings 等前端依賴的逐局比分結構。
+   * 翻譯隊名僅是欄位「附加」，不破壞原欄位。
+   */
   async getGame(gameId: number) {
     const cacheKey = `baseball:game:${gameId}`;
     return this.cached(cacheKey, CACHE_TTL.LIVE, async () => {
       const games = await this.callApi<any[]>('/games', { id: gameId });
-      return games?.[0] ?? null;
+      const raw = games?.[0];
+      if (!raw) return null;
+
+      // 附加隊名翻譯
+      const teamIds = [raw.teams?.home?.id, raw.teams?.away?.id].filter(
+        (id): id is number => typeof id === 'number',
+      );
+      const trMap = await this.getTeamTranslations(teamIds);
+
+      if (raw.teams?.home) {
+        const tr = trMap.get(raw.teams.home.id);
+        raw.teams.home.nameZhTw = tr?.nameZhTw;
+        raw.teams.home.shortName = tr?.shortName;
+      }
+      if (raw.teams?.away) {
+        const tr = trMap.get(raw.teams.away.id);
+        raw.teams.away.nameZhTw = tr?.nameZhTw;
+        raw.teams.away.shortName = tr?.shortName;
+      }
+
+      return raw;
     });
   }
 

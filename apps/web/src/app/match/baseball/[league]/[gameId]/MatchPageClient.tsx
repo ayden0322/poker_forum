@@ -18,6 +18,14 @@ const LEAGUE_COLORS: Record<string, { from: string; to: string }> = {
   kbo: { from: 'from-emerald-700', to: 'to-emerald-900' },
 };
 
+interface BaseballTeam {
+  id: number;
+  name: string;
+  nameZhTw?: string | null;
+  shortName?: string | null;
+  logo: string;
+}
+
 interface GameData {
   id: number;
   date: string;
@@ -27,13 +35,18 @@ interface GameData {
   status: { long: string; short: string };
   league: { id: number; name: string; country: string; logo: string; season: number };
   teams: {
-    home: { id: number; name: string; logo: string };
-    away: { id: number; name: string; logo: string };
+    home: BaseballTeam;
+    away: BaseballTeam;
   };
   scores: {
     home: { hits: number | null; errors: number | null; innings: Record<string, number | null>; total: number | null };
     away: { hits: number | null; errors: number | null; innings: Record<string, number | null>; total: number | null };
   };
+}
+
+/** 球隊顯示名（優先：短名 → 中文 → 英文） */
+function teamDisplay(t: BaseballTeam): string {
+  return t.shortName ?? t.nameZhTw ?? t.name;
 }
 
 /** 台灣時間格式化 */
@@ -84,7 +97,7 @@ function InningsTable({ game }: { game: GameData }) {
           <tbody>
             {/* 客隊 */}
             <tr className="border-b border-gray-100">
-              <td className="px-3 py-2 font-medium">{game.teams.away.name}</td>
+              <td className="px-3 py-2 font-medium">{teamDisplay(game.teams.away)}</td>
               {Array.from({ length: numInnings }, (_, i) => (
                 <td key={i} className="text-center px-2 py-2 tabular-nums">
                   {awayInnings[String(i + 1)] ?? '-'}
@@ -102,7 +115,7 @@ function InningsTable({ game }: { game: GameData }) {
             </tr>
             {/* 主隊 */}
             <tr>
-              <td className="px-3 py-2 font-medium">{game.teams.home.name}</td>
+              <td className="px-3 py-2 font-medium">{teamDisplay(game.teams.home)}</td>
               {Array.from({ length: numInnings }, (_, i) => (
                 <td key={i} className="text-center px-2 py-2 tabular-nums">
                   {homeInnings[String(i + 1)] ?? '-'}
@@ -195,7 +208,7 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
               onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
             />
             <div className="text-xs opacity-70">客隊</div>
-            <div className="font-bold text-lg group-hover:underline">{game.teams.away.name}</div>
+            <div className="font-bold text-lg group-hover:underline">{teamDisplay(game.teams.away)}</div>
             <div className={`text-5xl font-black tabular-nums mt-2 ${awayScore > homeScore ? '' : 'opacity-50'}`}>
               {awayScore}
             </div>
@@ -224,7 +237,7 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
               onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')}
             />
             <div className="text-xs opacity-70">主隊</div>
-            <div className="font-bold text-lg group-hover:underline">{game.teams.home.name}</div>
+            <div className="font-bold text-lg group-hover:underline">{teamDisplay(game.teams.home)}</div>
             <div className={`text-5xl font-black tabular-nums mt-2 ${homeScore > awayScore ? '' : 'opacity-50'}`}>
               {homeScore}
             </div>
@@ -254,7 +267,7 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
             <div className="bg-gray-50 rounded-lg p-3">
               <span className="text-gray-500">勝方</span>
               <div className="font-bold text-lg mt-1">
-                {awayScore > homeScore ? game.teams.away.name : game.teams.home.name}
+                {awayScore > homeScore ? teamDisplay(game.teams.away) : teamDisplay(game.teams.home)}
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-3">
@@ -273,8 +286,8 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
           league={league}
           teamId={game.teams.away.id}
           opponentId={game.teams.home.id}
-          teamName={game.teams.away.name}
-          opponentName={game.teams.home.name}
+          teamName={teamDisplay(game.teams.away)}
+          opponentName={teamDisplay(game.teams.home)}
           limit={10}
         />
       )}
