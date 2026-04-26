@@ -626,8 +626,8 @@ export class CpblStatsService {
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
 
-      // 排名：<div class="sn">N</div>
-      const rankMatch = row.match(/<div class="sn">(\d+)<\/div>/);
+      // 排名：打者類用 <div class="sn">、投手類用 <div class="rank">
+      const rankMatch = row.match(/<div class="(?:sn|rank)">(\d+)<\/div>/);
       if (!rankMatch) continue;
       const rank = parseInt(rankMatch[1], 10);
 
@@ -1003,19 +1003,20 @@ interface LeaderCategoryConfig {
   unit?: string;
 }
 
+// CPBL 排行榜實際欄位對應（已從官網 thead 確認 data-sortby 與 td.num 順序）
 export const CPBL_LEADER_CATEGORIES = {
   // 打擊類（position=01）
-  battingAverage: { position: '01', sortBy: '01', valueIndex: 0, label: '打擊率', unit: '' },
-  hits:           { position: '01', sortBy: '07', valueIndex: 6, label: '安打', unit: '支' },
+  battingAverage: { position: '01', sortBy: '01', valueIndex: 0,  label: '打擊率', unit: '' },
+  rbi:            { position: '01', sortBy: '06', valueIndex: 5,  label: '打點',   unit: '分' },
+  hits:           { position: '01', sortBy: '07', valueIndex: 6,  label: '安打',   unit: '支' },
   homeRuns:       { position: '01', sortBy: '11', valueIndex: 10, label: '全壘打', unit: '轟' },
-  rbi:            { position: '01', sortBy: '06', valueIndex: 5, label: '打點', unit: '分' },
-  stolenBases:    { position: '01', sortBy: '20', valueIndex: 19, label: '盜壘', unit: '盜' },
-  // 投手類（position=02）
-  era:            { position: '02', sortBy: '01', valueIndex: 0, label: '防禦率', unit: '' },
-  wins:           { position: '02', sortBy: '06', valueIndex: 5, label: '勝投', unit: '勝' },
-  saves:          { position: '02', sortBy: '08', valueIndex: 7, label: '救援', unit: 'S' },
-  holds:          { position: '02', sortBy: '09', valueIndex: 8, label: '中繼', unit: 'H' },
-  strikeouts:     { position: '02', sortBy: '15', valueIndex: 14, label: '三振', unit: 'K' },
+  stolenBases:    { position: '01', sortBy: '21', valueIndex: 20, label: '盜壘',   unit: '盜' },
+  // 投手類（position=02）— sortBy/valueIndex 與打者類完全不同
+  era:            { position: '02', sortBy: '01', valueIndex: 0,  label: '防禦率', unit: '' },
+  wins:           { position: '02', sortBy: '07', valueIndex: 6,  label: '勝投',   unit: '勝' },
+  saves:          { position: '02', sortBy: '09', valueIndex: 8,  label: '救援',   unit: 'S' },
+  holds:          { position: '02', sortBy: '10', valueIndex: 9,  label: '中繼',   unit: 'H' },
+  strikeouts:     { position: '02', sortBy: '21', valueIndex: 20, label: '三振',   unit: 'K' },
 } as const satisfies Record<string, LeaderCategoryConfig>;
 
 export type CpblLeaderCategory = keyof typeof CPBL_LEADER_CATEGORIES;
