@@ -90,12 +90,24 @@ function formatDate(offsetDays: number): string {
 /** 哪些 board 的比賽可以點進去看詳情 */
 const DETAIL_SUPPORTED: Record<string, (id: number) => string> = {
   mlb: (gamePk) => `/match/mlb/${gamePk}`,
+  cpbl: (gameId) => `/match/baseball/cpbl/${gameId}`,
+  npb: (gameId) => `/match/baseball/npb/${gameId}`,
+  kbo: (gameId) => `/match/baseball/kbo/${gameId}`,
 };
 
+/** 棒球聯盟（CPBL/NPB/KBO）走新 API 路徑（已正規化、含中文翻譯） */
+const BASEBALL_LEAGUES = new Set(['cpbl', 'npb', 'kbo']);
+
 function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: string; sportType: string; label: string; icon: string }) {
+  const detailFn = DETAIL_SUPPORTED[boardSlug];
+  const isBaseball = BASEBALL_LEAGUES.has(boardSlug);
+  const apiPath = isBaseball
+    ? `/baseball/${boardSlug}/games/recent`
+    : `/sports/${boardSlug}/recent`;
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['sports-recent', boardSlug],
-    queryFn: () => apiFetch<RecentGamesResponse>(`/sports/${boardSlug}/recent`),
+    queryFn: () => apiFetch<RecentGamesResponse>(apiPath),
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
   });
@@ -112,9 +124,9 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
 
   if (isError) return null;
 
-  const yesterday = normalizeGames(data?.data.yesterday ?? [], sportType);
-  const today = normalizeGames(data?.data.today ?? [], sportType);
-  const tomorrow = normalizeGames(data?.data.tomorrow ?? [], sportType);
+  const yesterday = normalizeGames(data?.data.yesterday ?? [], sportType, isBaseball);
+  const today = normalizeGames(data?.data.today ?? [], sportType, isBaseball);
+  const tomorrow = normalizeGames(data?.data.tomorrow ?? [], sportType, isBaseball);
 
   const hasAnyGames = yesterday.length > 0 || today.length > 0 || tomorrow.length > 0;
 
@@ -153,6 +165,7 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
           emptyText="無賽事"
           bgClass="bg-gray-50"
           titleClass="text-gray-500"
+          detailFn={detailFn}
         />
 
         {/* 今日賽事 */}
@@ -163,6 +176,7 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
           bgClass="bg-blue-50"
           titleClass="text-blue-600"
           isToday
+          detailFn={detailFn}
         />
 
         {/* 明日賽程 */}
@@ -172,19 +186,21 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
           emptyText="無賽事"
           bgClass="bg-gray-50"
           titleClass="text-gray-500"
+          detailFn={detailFn}
         />
       </div>
     </div>
   );
 }
 
-function DayColumn({ title, games, emptyText, bgClass, titleClass, isToday }: {
+function DayColumn({ title, games, emptyText, bgClass, titleClass, isToday, detailFn }: {
   title: string;
   games: NormalizedGame[];
   emptyText: string;
   bgClass: string;
   titleClass: string;
   isToday?: boolean;
+  detailFn?: (id: number) => string;
 }) {
   return (
     <div className={`rounded-lg border ${isToday ? 'border-blue-200' : 'border-gray-200'} ${bgClass} p-2`}>
@@ -197,7 +213,7 @@ function DayColumn({ title, games, emptyText, bgClass, titleClass, isToday }: {
       ) : (
         <div className="space-y-2 max-h-64 overflow-y-auto">
           {games.map((game) => (
-            <GameCard key={game.id} game={game} compact />
+            <GameCard key={game.id} game={game} compact detailHref={detailFn?.(game.id)} />
           ))}
         </div>
       )}
@@ -205,13 +221,13 @@ function DayColumn({ title, games, emptyText, bgClass, titleClass, isToday }: {
   );
 }
 
-function GameCard({ game, compact }: { game: NormalizedGame; compact?: boolean }) {
+function GameCard({ game, compact, detailHref }: { game: NormalizedGame; compact?: boolean; detailHref?: string }) {
   const isLive = ['1H', '2H', 'Q1', 'Q2', 'Q3', 'Q4', 'HT', 'LIVE', 'IN1', 'IN2', 'IN3', 'IN4', 'IN5', 'IN6', 'IN7', 'IN8', 'IN9'].includes(game.status.short);
   const isFinished = ['FT', 'AET', 'PEN', 'AOT'].includes(game.status.short);
   const isNotStarted = ['NS', 'TBD', 'PST'].includes(game.status.short);
 
-  return (
-    <div className={`rounded-lg border border-gray-200 bg-white ${compact ? 'p-2' : 'p-3'} shadow-sm`}>
+  const cardContent = (
+    <>
       {/* 狀態 */}
       <div className="flex items-center justify-center mb-1.5">
         {isLive && (
@@ -244,8 +260,25 @@ function GameCard({ game, compact }: { game: NormalizedGame; compact?: boolean }
         isWinner={isFinished && game.score.home !== null && game.score.away !== null && game.score.home > game.score.away}
         compact={compact}
       />
-    </div>
+    </>
   );
+
+  // LIVE 卡片用紅色強調邊框，其餘用灰邊
+  const cardCls = `rounded-lg border bg-white ${compact ? 'p-2' : 'p-3'} shadow-sm transition-shadow ${
+    isLive
+      ? 'border-red-400 ring-2 ring-red-100'
+      : 'border-gray-200'
+  }`;
+
+  if (detailHref) {
+    return (
+      <Link href={detailHref} className={`block ${cardCls} hover:shadow-md hover:border-blue-300 transition-all`}>
+        {cardContent}
+      </Link>
+    );
+  }
+
+  return <div className={cardCls}>{cardContent}</div>;
 }
 
 function TeamRow({ team, score, isWinner, compact }: { team: GameTeam; score: number | null; isWinner: boolean; compact?: boolean }) {
@@ -267,8 +300,35 @@ function TeamRow({ team, score, isWinner, compact }: { team: GameTeam; score: nu
 }
 
 /** 將 API-Sports 不同運動的回傳格式正規化 */
-function normalizeGames(raw: unknown[], sportType: string): NormalizedGame[] {
+function normalizeGames(raw: unknown[], sportType: string, alreadyNormalized = false): NormalizedGame[] {
   if (!Array.isArray(raw)) return [];
+
+  // 棒球新 API 已正規化，直接 map 成 ScoreWidget 格式
+  if (alreadyNormalized) {
+    return raw.map((item: any) => ({
+      id: item.id ?? 0,
+      date: item.date?.slice(0, 10) ?? '',
+      time: item.timestamp ? formatTimeFromTs(item.timestamp) : '',
+      home: {
+        id: item.teams?.home?.id ?? 0,
+        name: item.teams?.home?.shortName ?? item.teams?.home?.nameZhTw ?? item.teams?.home?.name ?? '未知',
+        logo: item.teams?.home?.logo ?? '',
+      },
+      away: {
+        id: item.teams?.away?.id ?? 0,
+        name: item.teams?.away?.shortName ?? item.teams?.away?.nameZhTw ?? item.teams?.away?.name ?? '未知',
+        logo: item.teams?.away?.logo ?? '',
+      },
+      score: {
+        home: item.teams?.home?.score ?? null,
+        away: item.teams?.away?.score ?? null,
+      },
+      status: {
+        short: String(item.statusShort ?? 'NS'),
+        long: item.status ?? '',
+      },
+    })).filter((g: NormalizedGame) => g.id !== 0);
+  }
 
   return raw.map((item: any) => {
     if (sportType === 'football') {
@@ -358,6 +418,19 @@ function formatTime(dateStr?: string): string {
   try {
     const d = new Date(dateStr);
     return d.toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    return '';
+  }
+}
+
+function formatTimeFromTs(timestamp: number): string {
+  try {
+    return new Date(timestamp * 1000).toLocaleTimeString('zh-TW', {
+      timeZone: 'Asia/Taipei',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
   } catch {
     return '';
   }

@@ -10,6 +10,10 @@ import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
 import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
 import { MLBStatsPanel } from '@/components/sports/mlb/MLBStatsPanel';
+import { BaseballLeadersSidebar } from '@/components/sports/BaseballLeadersSidebar';
+import { BaseballInjuriesWidget } from '@/components/sports/BaseballInjuriesWidget';
+
+const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo']);
 
 interface PostItem {
   id: string;
@@ -302,6 +306,15 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
           <MLBGamesWidget />
           {/* 合併為單一 Tab 面板，避免並排時高度不對稱 */}
           <MLBStatsPanel />
+        </>
+      ) : NON_MLB_BASEBALL.has(board.slug) ? (
+        <>
+          <ScoreWidget boardSlug={board.slug} />
+          {/* 棒球聯盟（CPBL/NPB/KBO）：排行榜 + 傷兵動態 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <BaseballLeadersSidebar league={board.slug} />
+            <BaseballInjuriesWidget league={board.slug} />
+          </div>
         </>
       ) : (
         <ScoreWidget boardSlug={board.slug} />
