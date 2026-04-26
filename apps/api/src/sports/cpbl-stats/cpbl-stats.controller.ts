@@ -1,6 +1,6 @@
-import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
-import { CpblStatsService } from './cpbl-stats.service';
+import { CpblStatsService, CPBL_LEADER_CATEGORIES, CpblLeaderCategory } from './cpbl-stats.service';
 
 /**
  * CPBL 專屬 API（資料來源：CPBL 官方網站）
@@ -64,6 +64,47 @@ export class CpblStatsController {
   async getTodayGames() {
     const data = await this.cpblStats.getTodayGames();
     return { success: true, data };
+  }
+
+  // ============ 排行榜（B2）============
+
+  @Get('leaders/:category')
+  @ApiOperation({
+    summary: 'CPBL 賽季排行榜',
+    description: '分類：battingAverage / hits / homeRuns / rbi / stolenBases / era / wins / saves / holds / strikeouts',
+  })
+  @ApiParam({ name: 'category', description: '排行榜分類' })
+  @ApiQuery({ name: 'year', required: false, description: '西元年份（預設今年）' })
+  @ApiQuery({ name: 'kindCode', required: false, description: '比賽類型：A=例行賽（預設）' })
+  @ApiQuery({ name: 'limit', required: false, description: '回傳前 N 名（預設 10）' })
+  async getLeaders(
+    @Param('category') category: string,
+    @Query('year', new DefaultValuePipe(new Date().getFullYear()), ParseIntPipe) year: number,
+    @Query('kindCode', new DefaultValuePipe('A')) kindCode: string,
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    if (!(category in CPBL_LEADER_CATEGORIES)) {
+      const supported = Object.keys(CPBL_LEADER_CATEGORIES).join(', ');
+      throw new BadRequestException(`無效的分類「${category}」，支援：${supported}`);
+    }
+
+    const leaders = await this.cpblStats.getLeaders(
+      category as CpblLeaderCategory,
+      year,
+      kindCode,
+    );
+
+    return {
+      success: leaders !== null,
+      data: leaders ? leaders.slice(0, limit) : [],
+      meta: {
+        category,
+        year,
+        kindCode,
+        unit: CPBL_LEADER_CATEGORIES[category as CpblLeaderCategory].unit,
+        label: CPBL_LEADER_CATEGORIES[category as CpblLeaderCategory].label,
+      },
+    };
   }
 
   // ============ 診斷工具 ============

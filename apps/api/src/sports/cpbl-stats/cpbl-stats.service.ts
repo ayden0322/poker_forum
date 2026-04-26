@@ -89,6 +89,50 @@ export class CpblStatsService {
     });
     result.steps.push({ name: 'callScheduleApi', ...step3 });
 
+    // 步驟 4：測本機出口 IP（用 ipify）
+    const step4 = await this.timed(async () => {
+      const res = await fetch('https://api.ipify.org?format=json', {
+        signal: AbortSignal.timeout(5000),
+      });
+      return await res.json();
+    });
+    result.steps.push({ name: 'detect-outbound-ip', ...step4 });
+
+    // 步驟 5：試不加 www 的 cpbl.com.tw
+    const step5 = await this.timed(async () => {
+      const res = await fetch('https://cpbl.com.tw/box', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh)' },
+        signal: AbortSignal.timeout(15000),
+        redirect: 'manual',
+      });
+      return {
+        status: res.status,
+        location: res.headers.get('location'),
+        cdnHeaders: {
+          server: res.headers.get('server'),
+          cfRay: res.headers.get('cf-ray'),
+          cdn: res.headers.get('x-served-by') ?? res.headers.get('x-cdn'),
+        },
+      };
+    });
+    result.steps.push({ name: 'fetch-bare-domain', ...step5 });
+
+    // 步驟 6：試一個極簡 fetch（檢查 response headers 找線索）
+    const step6 = await this.timed(async () => {
+      const res = await fetch('https://www.cpbl.com.tw/box', {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(10000),
+      });
+      const headers: Record<string, string> = {};
+      res.headers.forEach((v, k) => { headers[k] = v; });
+      return {
+        status: res.status,
+        url: res.url,
+        headers,
+      };
+    });
+    result.steps.push({ name: 'fetch-headers-only', ...step6 });
+
     return result;
   }
 
@@ -479,6 +523,145 @@ export class CpblStatsService {
     });
   }
 
+  // ============ 排行榜（B2）============
+
+  /**
+   * 取得 CPBL 賽季排行榜
+   *
+   * 對應 CPBL 官網 /stats/recordallaction
+   * 回傳的是 HTML 片段，需要正則解析
+   *
+   * @param category 排行榜分類（見 CPBL_LEADER_CATEGORIES）
+   * @param year 西元年份
+   */
+  async getLeaders(category: CpblLeaderCategory, year?: number, kindCode = 'A') {
+    const targetYear = year ?? new Date().getFullYear();
+    const config = CPBL_LEADER_CATEGORIES[category];
+    if (!config) return null;
+
+    const cacheKey = `cpbl:leaders:${targetYear}:${kindCode}:${category}`;
+    return this.cached(cacheKey, 600, async () => {
+      try {
+        // 1) 取頁面 token
+        const pageUrl = `${this.baseUrl}/stats/recordall?kindcode=${kindCode}&position=${config.position}&sortby=${config.sortBy}`;
+        const pageRes = await fetch(pageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'text/html',
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (!pageRes.ok) {
+          this.logger.warn(`[CPBL Leaders] 頁面 ${pageRes.status}`);
+          return null;
+        }
+
+        const html = await pageRes.text();
+        const headerTokenMatch = html.match(/RequestVerificationToken['"]?\s*:\s*['"]([^'"]+)/);
+        const inputTokenMatch = html.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/);
+
+        if (!headerTokenMatch || !inputTokenMatch) {
+          this.logger.warn('[CPBL Leaders] 找不到 token');
+          return null;
+        }
+
+        const cookies = (pageRes.headers.getSetCookie?.() ?? [])
+          .map((c) => c.split(';')[0])
+          .filter(Boolean)
+          .join('; ');
+
+        // 2) 呼叫 ajax 端點
+        const formData = new URLSearchParams();
+        formData.set('Year', String(targetYear));
+        formData.set('KindCode', kindCode);
+        formData.set('Position', config.position);
+        formData.set('SortBy', config.sortBy);
+        formData.set('Page', '1');
+        formData.set('__RequestVerificationToken', inputTokenMatch[1]);
+
+        const apiRes = await fetch(`${this.baseUrl}/stats/recordallaction`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Cookie': cookies,
+            'Referer': pageUrl,
+            'X-Requested-With': 'XMLHttpRequest',
+            'RequestVerificationToken': headerTokenMatch[1],
+          },
+          body: formData.toString(),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (!apiRes.ok) {
+          this.logger.warn(`[CPBL Leaders] API ${apiRes.status}`);
+          return null;
+        }
+
+        const text = await apiRes.text();
+        return this.parseLeadersHtml(text, config);
+      } catch (err) {
+        this.logger.error(`[CPBL Leaders] 失敗：${err}`);
+        return null;
+      }
+    });
+  }
+
+  /** 解析 CPBL 排行榜 HTML 片段為結構化資料 */
+  private parseLeadersHtml(
+    html: string,
+    config: { position: string; sortBy: string; valueIndex: number; label: string },
+  ): CpblLeaderEntry[] {
+    const result: CpblLeaderEntry[] = [];
+
+    // 抓所有 <tr> ... </tr>，跳過第一個（thead）
+    const trRegex = /<tr>([\s\S]*?)<\/tr>/g;
+    const rows: string[] = [];
+    let match;
+    while ((match = trRegex.exec(html)) !== null) {
+      rows.push(match[1]);
+    }
+
+    // 第一個 tr 是 thead，跳過
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+
+      // 排名：<div class="sn">N</div>
+      const rankMatch = row.match(/<div class="sn">(\d+)<\/div>/);
+      if (!rankMatch) continue;
+      const rank = parseInt(rankMatch[1], 10);
+
+      // 球員 acnt：href="/team/person?acnt=XXXXXXXX"
+      const acntMatch = row.match(/acnt=([^"&]+)/);
+      const playerAcnt = acntMatch?.[1] ?? '';
+
+      // 球員姓名：<span class="name"><a ...>姓名</a></span>
+      const nameMatch = row.match(/<span class="name">[\s\S]*?<a[^>]*>([^<]+)<\/a>/);
+      const playerName = nameMatch?.[1]?.trim() ?? '';
+
+      // 隊名：<a href="/team?TeamNo=XXX" title="球隊名">球隊名</a>
+      const teamMatch = row.match(/<a[^>]*TeamNo=([^"&]+)[^>]*title="([^"]+)"/);
+      const teamCode = teamMatch?.[1] ?? '';
+      const teamName = teamMatch?.[2] ?? '';
+
+      // 統計值：第 N 個 <td class="num">value</td>
+      const numTdMatches = [...row.matchAll(/<td class="num">([^<]*)<\/td>/g)];
+      const value = numTdMatches[config.valueIndex]?.[1]?.trim() ?? '';
+
+      result.push({
+        rank,
+        playerAcnt,
+        playerName,
+        teamCode,
+        teamName,
+        value,
+        category: config.label,
+      });
+    }
+
+    return result;
+  }
+
   /**
    * 取得今日 CPBL 賽程（含 GameSno）
    * 用於前端比賽詳情頁的「CPBL 官方資料增強」
@@ -801,4 +984,48 @@ export interface DiagnoseResult {
     data?: any;
     error?: string;
   }>;
+}
+
+// ============ 排行榜分類定義 ============
+//
+// position：01=打者, 02=投手
+// sortBy：CPBL 內部排序代號（01=打擊率, 02=出賽數, ...）
+// valueIndex：排序欄位在 <td class="num"> 序列中的 index（從 0 開始）
+//
+// 注意：CPBL 排行榜回傳所有統計欄位，但會以選定的 sortBy 排序。
+// 我們需要把 sortBy 對應到 valueIndex 才能取出該分類的「值」。
+
+interface LeaderCategoryConfig {
+  position: '01' | '02';
+  sortBy: string;
+  valueIndex: number;
+  label: string;
+  unit?: string;
+}
+
+export const CPBL_LEADER_CATEGORIES = {
+  // 打擊類（position=01）
+  battingAverage: { position: '01', sortBy: '01', valueIndex: 0, label: '打擊率', unit: '' },
+  hits:           { position: '01', sortBy: '07', valueIndex: 6, label: '安打', unit: '支' },
+  homeRuns:       { position: '01', sortBy: '11', valueIndex: 10, label: '全壘打', unit: '轟' },
+  rbi:            { position: '01', sortBy: '06', valueIndex: 5, label: '打點', unit: '分' },
+  stolenBases:    { position: '01', sortBy: '20', valueIndex: 19, label: '盜壘', unit: '盜' },
+  // 投手類（position=02）
+  era:            { position: '02', sortBy: '01', valueIndex: 0, label: '防禦率', unit: '' },
+  wins:           { position: '02', sortBy: '06', valueIndex: 5, label: '勝投', unit: '勝' },
+  saves:          { position: '02', sortBy: '08', valueIndex: 7, label: '救援', unit: 'S' },
+  holds:          { position: '02', sortBy: '09', valueIndex: 8, label: '中繼', unit: 'H' },
+  strikeouts:     { position: '02', sortBy: '15', valueIndex: 14, label: '三振', unit: 'K' },
+} as const satisfies Record<string, LeaderCategoryConfig>;
+
+export type CpblLeaderCategory = keyof typeof CPBL_LEADER_CATEGORIES;
+
+export interface CpblLeaderEntry {
+  rank: number;
+  playerAcnt: string;
+  playerName: string;
+  teamCode: string;
+  teamName: string;
+  value: string;
+  category: string;
 }
