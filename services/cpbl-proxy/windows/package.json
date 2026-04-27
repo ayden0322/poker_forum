@@ -1,0 +1,13 @@
+{
+  "name": "cpbl-proxy",
+  "version": "1.0.0",
+  "description": "Reverse proxy to cpbl.com.tw for non-Taiwan IP backends",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
