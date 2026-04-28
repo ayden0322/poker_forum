@@ -36,19 +36,24 @@ const CPBL_CATEGORIES = [
 
 const DEFAULT_VISIBLE = 5;
 
-interface CpblLeader {
+interface BaseballLeader {
   rank: number;
-  playerAcnt: string;
   playerName: string;
   teamCode: string;
   teamName: string;
   value: string;
+  // CPBL 專有
+  playerAcnt?: string;
+  // NPB 專有
+  league?: string;
+  // KBO 專有
+  playerId?: string;
 }
 
-interface CpblLeadersResponse {
+interface BaseballLeadersResponse {
   success: boolean;
-  data: CpblLeader[];
-  meta: { category: string; year: number; label: string; unit: string };
+  data: BaseballLeader[];
+  meta: { league: string; category: string; year?: number; label: string; unit: string };
 }
 
 interface NewsItem {
@@ -64,22 +69,20 @@ interface NewsResponse {
 
 /* ─── 子元件：排行榜 ─── */
 function LeadersContent({ league }: { league: string }) {
-  const isCpbl = league === 'cpbl';
   const [activeCategory, setActiveCategory] = useState<string>('homeRuns');
   const [showAll, setShowAll] = useState(false);
   const leagueName = LEAGUE_NAMES[league] ?? league.toUpperCase();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['cpbl-leaders', activeCategory],
+    queryKey: ['baseball-leaders', league, activeCategory],
     queryFn: () =>
-      apiFetch<CpblLeadersResponse>(`/cpbl/leaders/${activeCategory}?limit=10`),
+      apiFetch<BaseballLeadersResponse>(`/baseball/${league}/leaders/${activeCategory}?limit=10`),
     staleTime: 10 * 60 * 1000,
-    enabled: isCpbl,
     retry: 1,
   });
 
   const leaders = data?.data ?? [];
-  const hasData = isCpbl && leaders.length > 0;
+  const hasData = leaders.length > 0;
 
   return (
     <>
@@ -103,18 +106,16 @@ function LeadersContent({ league }: { league: string }) {
         ))}
       </div>
 
-      {!isCpbl ? (
-        <PlaceholderContent leagueName={leagueName} kind="leaders" />
-      ) : isLoading ? (
+      {isLoading ? (
         <div className="text-center py-4 text-gray-400 text-xs">載入中...</div>
       ) : isError || !hasData ? (
-        <PlaceholderContent leagueName={leagueName} kind="leaders" cpblFallback />
+        <PlaceholderContent leagueName={leagueName} kind="leaders" />
       ) : (
         <>
           <ol className="space-y-1">
             {(showAll ? leaders : leaders.slice(0, DEFAULT_VISIBLE)).map((leader) => (
               <li
-                key={`${leader.rank}-${leader.playerAcnt}`}
+                key={`${leader.rank}-${leader.playerAcnt ?? leader.playerId ?? leader.playerName}`}
                 className="flex items-center gap-2 text-xs"
               >
                 <span
@@ -130,13 +131,25 @@ function LeadersContent({ league }: { league: string }) {
                 >
                   {leader.rank}
                 </span>
-                <Link
-                  href={`/player/baseball/cpbl/${leader.playerAcnt}`}
-                  className="flex-1 min-w-0 hover:text-blue-600 transition-colors flex items-center gap-1.5"
-                >
-                  <span className="font-medium text-gray-800 truncate">{leader.playerName}</span>
-                  <span className="text-[10px] text-gray-400 truncate">{leader.teamName}</span>
-                </Link>
+                {league === 'cpbl' && leader.playerAcnt ? (
+                  <Link
+                    href={`/player/baseball/cpbl/${leader.playerAcnt}`}
+                    className="flex-1 min-w-0 hover:text-blue-600 transition-colors flex items-center gap-1.5"
+                  >
+                    <span className="font-medium text-gray-800 truncate">{leader.playerName}</span>
+                    <span className="text-[10px] text-gray-400 truncate">{leader.teamName}</span>
+                  </Link>
+                ) : (
+                  <span className="flex-1 min-w-0 flex items-center gap-1.5">
+                    <span className="font-medium text-gray-800 truncate">{leader.playerName}</span>
+                    {leader.league && (
+                      <span className="text-[9px] bg-gray-100 text-gray-500 px-1 rounded shrink-0">
+                        {leader.league}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-gray-400 truncate">{leader.teamName}</span>
+                  </span>
+                )}
                 <span className="font-bold text-blue-600 tabular-nums shrink-0 text-xs">
                   {leader.value}
                   {data?.meta?.unit && (
@@ -154,11 +167,10 @@ function LeadersContent({ league }: { league: string }) {
               {showAll ? '收起 ▲' : '查看更多 ▼'}
             </button>
           )}
-          {data?.meta?.year && (
-            <div className="text-[10px] text-gray-400 text-center mt-2">
-              {data.meta.year} 賽季 · 資料來源：CPBL 官方
-            </div>
-          )}
+          <div className="text-[10px] text-gray-400 text-center mt-2">
+            {data?.meta?.year ? `${data.meta.year} 賽季 · ` : ''}資料來源：
+            {league === 'cpbl' ? 'CPBL 官方' : league === 'npb' ? 'NPB.jp' : 'KBO 官方'}
+          </div>
         </>
       )}
     </>
@@ -208,29 +220,24 @@ const TONE_CLS: Record<string, string> = {
 };
 
 function NewsContent({ league }: { league: string }) {
-  const isCpbl = league === 'cpbl';
   const [showAll, setShowAll] = useState(false);
   const leagueName = LEAGUE_NAMES[league] ?? league.toUpperCase();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['cpbl-news', league],
-    queryFn: () => apiFetch<NewsResponse>(`/cpbl/news?limit=20`),
+    queryKey: ['baseball-news', league],
+    queryFn: () => apiFetch<NewsResponse>(`/baseball/${league}/news?limit=20`),
     staleTime: 10 * 60 * 1000,
-    enabled: isCpbl,
     retry: 1,
   });
 
   const items = data?.data ?? [];
-  const hasData = isCpbl && items.length > 0;
+  const hasData = items.length > 0;
 
-  if (!isCpbl) {
-    return <PlaceholderContent leagueName={leagueName} kind="news" />;
-  }
   if (isLoading) {
     return <div className="text-center py-4 text-gray-400 text-xs">載入中...</div>;
   }
   if (isError || !hasData) {
-    return <PlaceholderContent leagueName={leagueName} kind="news" cpblFallback />;
+    return <PlaceholderContent leagueName={leagueName} kind="news" />;
   }
 
   const visible = showAll ? items : items.slice(0, DEFAULT_VISIBLE);
