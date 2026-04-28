@@ -299,7 +299,12 @@ function NewsContent({ league }: { league: string }) {
         </button>
       )}
       <div className="text-[10px] text-gray-400 text-center mt-2 pt-2 border-t border-gray-100">
-        資料來源：CPBL 官方新聞公告
+        資料來源：
+        {league === 'cpbl'
+          ? 'CPBL 官方新聞公告'
+          : league === 'npb'
+          ? 'NPB.jp 官方新聞'
+          : 'KBO 官方公告'}
       </div>
     </>
   );
