@@ -264,7 +264,10 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
   const awayRuns = linescore?.teams?.away?.runs ?? game?.teams?.away?.score ?? 0;
   const homeRuns = linescore?.teams?.home?.runs ?? game?.teams?.home?.score ?? 0;
   const status = game?.status?.detailedState ?? linescore?.inningState ?? '';
-  const isFinished = status === 'Final' || status === 'Game Over' || linescore?.currentInning >= 9;
+  const abstractState = game?.status?.abstractGameState;
+  const isFinished = abstractState
+    ? abstractState === 'Final'
+    : status === 'Final' || status === 'Game Over' || status === 'Completed Early';
 
   return (
     <div className="max-w-4xl mx-auto">
