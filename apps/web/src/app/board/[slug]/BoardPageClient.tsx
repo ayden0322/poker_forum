@@ -10,8 +10,8 @@ import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
 import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
 import { MLBStatsPanel } from '@/components/sports/mlb/MLBStatsPanel';
-import { BaseballLeadersSidebar } from '@/components/sports/BaseballLeadersSidebar';
-import { BaseballInjuriesWidget } from '@/components/sports/BaseballInjuriesWidget';
+import { BaseballGamesWidget } from '@/components/sports/BaseballGamesWidget';
+import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
 
 const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo']);
 
@@ -309,12 +309,9 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         </>
       ) : NON_MLB_BASEBALL.has(board.slug) ? (
         <>
-          <ScoreWidget boardSlug={board.slug} />
-          {/* 棒球聯盟（CPBL/NPB/KBO）：排行榜 + 傷兵動態 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-            <BaseballLeadersSidebar league={board.slug} />
-            <BaseballInjuriesWidget league={board.slug} />
-          </div>
+          {/* 視覺與 MLB 同步：橫向滾動賽事卡 + Tab 整合的排行榜/動態面板 */}
+          <BaseballGamesWidget league={board.slug} />
+          <BaseballStatsPanel league={board.slug} />
         </>
       ) : (
         <ScoreWidget boardSlug={board.slug} />
