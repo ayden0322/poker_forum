@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useState } from 'react';
+import Link from 'next/link';
 
 const LEAGUE_NAMES: Record<string, string> = {
   cpbl: '中華職棒',
@@ -147,14 +148,17 @@ export function BaseballLeadersSidebar({ league }: { league: string }) {
                     >
                       {leader.rank}
                     </span>
-                    <span className="flex-1 min-w-0 flex items-center gap-1.5">
-                      <span className="font-medium text-gray-800 truncate">
+                    <Link
+                      href={isCpbl ? `/player/baseball/cpbl/${leader.playerAcnt}` : '#'}
+                      className="flex-1 min-w-0 flex items-center gap-1.5 hover:text-blue-600 transition-colors"
+                    >
+                      <span className="font-medium text-gray-800 truncate hover:text-blue-600">
                         {leader.playerName}
                       </span>
                       <span className="text-[10px] text-gray-400 truncate">
                         {leader.teamName}
                       </span>
-                    </span>
+                    </Link>
                     <span className="font-bold text-blue-600 tabular-nums shrink-0 text-xs">
                       {leader.value}
                       {data?.meta?.unit && (

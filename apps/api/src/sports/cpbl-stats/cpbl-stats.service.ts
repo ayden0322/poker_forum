@@ -680,6 +680,240 @@ export class CpblStatsService {
     return result;
   }
 
+  // ============ 球員個人頁（B4）============
+
+  /**
+   * 取得球員個人資料 + 賽季成績 + 生涯成績
+   *
+   * 流程：
+   * 1. GET /team/person?acnt=X 抓基本資料 + token + cookies
+   * 2. POST /team/getbattingscore 抓打擊賽季 stats（年度別）
+   * 3. POST /team/getbattingcareerscore 抓打擊生涯 stats
+   * 4. POST /team/getpitchscore 抓投手賽季 stats
+   * 5. POST /team/getpitchcareerscore 抓投手生涯 stats
+   *
+   * 投手/打者根據 stats 是否有資料自動判斷（不依賴 position）
+   */
+  async getPlayer(acnt: string, kindCode = 'A') {
+    const cacheKey = `cpbl:player:${kindCode}:${acnt}`;
+    return this.cached(cacheKey, 600, async () => {
+      try {
+        // 1) 拿頁面 + token
+        const pageUrl = `${this.baseUrl}/team/person?acnt=${acnt}`;
+        const pageRes = await fetch(pageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'text/html',
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!pageRes.ok) {
+          this.logger.warn(`[CPBL Player] 頁面 ${pageRes.status}`);
+          return null;
+        }
+
+        const html = await pageRes.text();
+        const headerTokenMatch = html.match(/RequestVerificationToken['"]?\s*:\s*['"]([^'"]+)/);
+        const inputTokenMatch = html.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/);
+        if (!headerTokenMatch || !inputTokenMatch) {
+          this.logger.warn('[CPBL Player] 找不到 token');
+          return null;
+        }
+        const cookies = (pageRes.headers.getSetCookie?.() ?? [])
+          .map((c) => c.split(';')[0])
+          .filter(Boolean)
+          .join('; ');
+
+        // 解析基本資料
+        const profile = this.parsePlayerProfile(html);
+        if (!profile.name) {
+          this.logger.warn(`[CPBL Player] 解析不到球員姓名 acnt=${acnt}`);
+          return null;
+        }
+
+        // 2-5) 平行抓 4 個 stats endpoint
+        const [batting, battingCareer, pitching, pitchingCareer] = await Promise.all([
+          this.callPlayerStatsApi('/team/getbattingscore', acnt, kindCode, headerTokenMatch[1], inputTokenMatch[1], cookies, pageUrl),
+          this.callPlayerStatsApi('/team/getbattingcareerscore', acnt, kindCode, headerTokenMatch[1], inputTokenMatch[1], cookies, pageUrl),
+          this.callPlayerStatsApi('/team/getpitchscore', acnt, kindCode, headerTokenMatch[1], inputTokenMatch[1], cookies, pageUrl),
+          this.callPlayerStatsApi('/team/getpitchcareerscore', acnt, kindCode, headerTokenMatch[1], inputTokenMatch[1], cookies, pageUrl),
+        ]);
+
+        // 解析 BattingScore / PitchScore（內層也是 JSON 字串）
+        const battingScore = this.parseStatsField(batting, 'BattingScore');
+        const battingCareerScore = this.parseStatsField(battingCareer, 'BattingCareerScore');
+        const pitchScore = this.parseStatsField(pitching, 'PitchScore');
+        const pitchCareerScore = this.parseStatsField(pitchingCareer, 'PitchCareerScore');
+
+        // 自動判斷打者/投手：哪邊資料較多就是主類別
+        const isPitcher = (pitchScore?.length ?? 0) > (battingScore?.length ?? 0);
+
+        return {
+          acnt,
+          profile,
+          isPitcher,
+          batting: {
+            seasons: battingScore ?? [],
+            career: battingCareerScore?.[0] ?? null,
+          },
+          pitching: {
+            seasons: pitchScore ?? [],
+            career: pitchCareerScore?.[0] ?? null,
+          },
+        };
+      } catch (err) {
+        this.logger.error(`[CPBL Player] 失敗 acnt=${acnt}：${err}`);
+        return null;
+      }
+    });
+  }
+
+  /** 呼叫球員 stats AJAX 端點 */
+  private async callPlayerStatsApi(
+    endpoint: string,
+    acnt: string,
+    kindCode: string,
+    headerToken: string,
+    inputToken: string,
+    cookies: string,
+    referer: string,
+  ): Promise<any> {
+    const body = new URLSearchParams();
+    body.set('Acnt', acnt);
+    body.set('KindCode', kindCode);
+    body.set('__RequestVerificationToken', inputToken);
+
+    try {
+      const res = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Cookie': cookies,
+          'Referer': referer,
+          'X-Requested-With': 'XMLHttpRequest',
+          'RequestVerificationToken': headerToken,
+        },
+        body: body.toString(),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      this.logger.warn(`[CPBL Player] ${endpoint} 失敗：${err}`);
+      return null;
+    }
+  }
+
+  /** 解析球員 profile（從 HTML 的 PlayerBrief 區塊） */
+  private parsePlayerProfile(html: string): CpblPlayerProfile {
+    const briefIdx = html.indexOf('PlayerBrief');
+    if (briefIdx < 0) {
+      return { name: '', team: '', uniformNo: '', position: '', battingThrowing: '', height: '', weight: '', birthday: '', debut: '', education: '', nationality: '', draft: '', photoUrl: null };
+    }
+    const brief = html.substring(briefIdx, briefIdx + 4000);
+
+    const photoMatch = brief.match(/background-image:\s*url\(([^)]+)\)/);
+    const photoPath = photoMatch?.[1]?.trim();
+    const photoUrl = photoPath
+      ? (photoPath.startsWith('http') ? photoPath : `https://www.cpbl.com.tw${photoPath}`)
+      : null;
+
+    const teamMatch = brief.match(/<div class="team">([^<]+)<\/div>/);
+    const nameMatch = brief.match(/<div class="name">([^<]+)<span class="number">(\d+)<\/span>/);
+
+    const ddValue = (cls: string) => {
+      const m = brief.match(new RegExp(`<dd class="${cls}">[\\s\\S]*?<div class="desc">([\\s\\S]*?)</div>`));
+      return m?.[1]?.replace(/<[^>]+>/g, '').trim() ?? '';
+    };
+
+    const heightWeight = ddValue('ht_wt');
+    const [height = '', weight = ''] = heightWeight
+      .replace(/\(CM\)|\(KG\)/g, '')
+      .split('/')
+      .map((s) => s.trim());
+
+    return {
+      name: nameMatch?.[1]?.trim() ?? '',
+      team: teamMatch?.[1]?.trim() ?? '',
+      uniformNo: nameMatch?.[2]?.trim() ?? '',
+      position: ddValue('pos'),
+      battingThrowing: ddValue('b_t'),
+      height,
+      weight,
+      birthday: ddValue('born'),
+      debut: ddValue('debut'),
+      education: ddValue('edu'),
+      nationality: ddValue('nationality'),
+      draft: ddValue('draft'),
+      photoUrl,
+    };
+  }
+
+  /** stats endpoints 回傳的格式：{Success, BattingScore: "json string"} */
+  private parseStatsField(raw: any, key: string): any[] | null {
+    if (!raw?.Success) return null;
+    const value = raw[key];
+    if (!value) return null;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    }
+    return Array.isArray(value) ? value : null;
+  }
+
+  // ============ 公告新聞列表（B3）============
+
+  /**
+   * 取得 CPBL 最新公告（/news 頁面前 N 則）
+   *
+   * CPBL 沒有專門的傷兵分類，但「公告新聞」含合約讓渡、引退、延賽、
+   * 球員異動等球迷會關心的訊息。直接抓 /news 列表前 N 則。
+   */
+  async getNews(limit = 10) {
+    const cacheKey = `cpbl:news:list:${limit}`;
+    return this.cached(cacheKey, 600, async () => {
+      try {
+        const res = await fetch(`${this.baseUrl}/news`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'text/html',
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) return null;
+
+        const html = await res.text();
+        return this.parseNewsList(html, limit);
+      } catch (err) {
+        this.logger.error(`[CPBL News] 失敗：${err}`);
+        return null;
+      }
+    });
+  }
+
+  /** 解析 /news 頁面的列表 */
+  private parseNewsList(html: string, limit: number): CpblNewsItem[] {
+    const items: CpblNewsItem[] = [];
+
+    // <table class="rwdTable"> ... <tbody> ... <tr><td class="date">...</td><td class="title"><a href="...">...</a></td></tr>
+    const rowRegex = /<tr>\s*<td class="date"[^>]*>([^<]+)<\/td>\s*<td class="title"[^>]*>\s*<a href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+    let match;
+    while ((match = rowRegex.exec(html)) !== null) {
+      if (items.length >= limit) break;
+      const [, date, href, title] = match;
+      items.push({
+        date: date.trim(),
+        title: title.trim(),
+        url: href.startsWith('http') ? href : `https://www.cpbl.com.tw${href}`,
+      });
+    }
+
+    return items;
+  }
+
   /**
    * 取得今日 CPBL 賽程（含 GameSno）
    * 用於前端比賽詳情頁的「CPBL 官方資料增強」
@@ -764,6 +998,7 @@ export class CpblStatsService {
     if (!Array.isArray(raw)) return [];
     return raw.map((b) => ({
       name: b.HitterName ?? '',
+      acnt: b.HitterAcnt ?? '',
       uniformNo: b.HitterUniformNo ?? '',
       side: b.VisitingHomeType ?? '', // 1=客隊, 2=主隊
       roleType: b.RoleType ?? '', // 先發 / 代打
@@ -796,6 +1031,7 @@ export class CpblStatsService {
     if (!Array.isArray(raw)) return [];
     return raw.map((p) => ({
       name: p.PitcherName ?? '',
+      acnt: p.PitcherAcnt ?? '',
       uniformNo: p.PitcherUniformNo ?? '',
       team: p.TeamAbbr ?? '',
       inningsPitched: p.InningPitchedCnt ?? '',
@@ -924,6 +1160,7 @@ export interface CpblScoreboardEntry {
 
 export interface CpblBattingEntry {
   name: string;
+  acnt: string;
   uniformNo: string;
   side: string;
   roleType: string;
@@ -953,6 +1190,7 @@ export interface CpblBattingEntry {
 
 export interface CpblPitchingEntry {
   name: string;
+  acnt: string;
   uniformNo: string;
   team: string;
   inningsPitched: string;
@@ -1047,4 +1285,30 @@ export interface CpblLeaderEntry {
   teamName: string;
   value: string;
   category: string;
+}
+
+// ============ 球員頁（B4）============
+
+export interface CpblPlayerProfile {
+  name: string;
+  team: string;
+  uniformNo: string;
+  position: string;
+  battingThrowing: string;
+  height: string;
+  weight: string;
+  birthday: string;
+  debut: string;
+  education: string;
+  nationality: string;
+  draft: string;
+  photoUrl: string | null;
+}
+
+// ============ 新聞公告（B3）============
+
+export interface CpblNewsItem {
+  date: string;
+  title: string;
+  url: string;
 }

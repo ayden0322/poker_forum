@@ -107,6 +107,41 @@ export class CpblStatsController {
     };
   }
 
+  // ============ 球員個人頁（B4）============
+
+  @Get('players/:acnt')
+  @ApiOperation({
+    summary: 'CPBL 球員個人資料 + 賽季/生涯統計',
+    description: '自動判斷打者/投手，回傳對應的 stats',
+  })
+  @ApiParam({ name: 'acnt', description: 'CPBL 球員帳號（10 位數字字串）' })
+  @ApiQuery({ name: 'kindCode', required: false, description: 'A=一軍, B=二軍（預設 A）' })
+  async getPlayer(
+    @Param('acnt') acnt: string,
+    @Query('kindCode', new DefaultValuePipe('A')) kindCode: string,
+  ) {
+    const data = await this.cpblStats.getPlayer(acnt, kindCode);
+    if (!data) {
+      return { success: false, message: `找不到球員資料（acnt=${acnt}）`, data: null };
+    }
+    return { success: true, data };
+  }
+
+  // ============ CPBL 公告新聞（B3）============
+
+  @Get('news')
+  @ApiOperation({
+    summary: 'CPBL 最新公告（合約異動、延賽、引退、傷兵相關等）',
+    description: '抓 cpbl.com.tw/news 列表前 N 則',
+  })
+  @ApiQuery({ name: 'limit', required: false, description: '回傳前 N 則（預設 10）' })
+  async getNews(
+    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
+  ) {
+    const data = await this.cpblStats.getNews(limit);
+    return { success: data !== null, data: data ?? [] };
+  }
+
   // ============ 診斷工具 ============
 
   @Get('debug/connectivity')

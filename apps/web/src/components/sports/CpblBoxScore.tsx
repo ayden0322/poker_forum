@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import Link from 'next/link';
 
 // ============ 型別定義 ============
 
@@ -38,6 +39,7 @@ interface ScoreboardEntry {
 
 interface BattingEntry {
   name: string;
+  acnt: string;
   uniformNo: string;
   side: string;
   roleType: string;
@@ -66,6 +68,7 @@ interface BattingEntry {
 
 interface PitchingEntry {
   name: string;
+  acnt: string;
   uniformNo: string;
   team: string;
   inningsPitched: string;
@@ -414,9 +417,18 @@ function BattingSubTable({ batters }: { batters: BattingEntry[] }) {
                   {b.battingOrder || '-'}
                 </td>
                 <td className="px-2 py-1.5 whitespace-nowrap">
-                  <span className={`font-medium ${b.isMvp ? 'text-yellow-700' : ''}`}>
-                    {b.name}
-                  </span>
+                  {b.acnt ? (
+                    <Link
+                      href={`/player/baseball/cpbl/${b.acnt}`}
+                      className={`font-medium hover:text-blue-600 ${b.isMvp ? 'text-yellow-700' : ''}`}
+                    >
+                      {b.name}
+                    </Link>
+                  ) : (
+                    <span className={`font-medium ${b.isMvp ? 'text-yellow-700' : ''}`}>
+                      {b.name}
+                    </span>
+                  )}
                   <span className="text-gray-400 text-xs ml-1">#{b.uniformNo}</span>
                   {isSub && <span className="text-gray-400 text-xs ml-1">({b.roleType})</span>}
                   {b.isMvp && <span className="text-yellow-600 text-xs ml-1">MVP</span>}
@@ -508,7 +520,16 @@ function PitchingTable({ pitching }: { pitching: PitchingEntry[] }) {
                   className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
                 >
                   <td className="px-3 py-1.5 whitespace-nowrap">
-                    <span className="font-medium">{p.name}</span>
+                    {p.acnt ? (
+                      <Link
+                        href={`/player/baseball/cpbl/${p.acnt}`}
+                        className="font-medium hover:text-blue-600"
+                      >
+                        {p.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium">{p.name}</span>
+                    )}
                     <span className="text-gray-400 text-xs ml-1">#{p.uniformNo}</span>
                   </td>
                   <td className="text-center px-1.5 py-1.5">
