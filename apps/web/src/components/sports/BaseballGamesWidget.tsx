@@ -372,7 +372,7 @@ export function BaseballGamesWidget({ league }: { league: string }) {
 
         <div
           ref={scrollRef}
-          className="flex gap-2 overflow-x-auto scrollbar-hide pb-1"
+          className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 justify-center"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {!sorted ? (
