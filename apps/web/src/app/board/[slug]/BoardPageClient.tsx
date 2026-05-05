@@ -10,6 +10,9 @@ import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
 import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
 import { MLBStatsPanel } from '@/components/sports/mlb/MLBStatsPanel';
+import { NBAStandingsWidget } from '@/components/sports/nba/NBAStandingsWidget';
+import { NBASidePanel } from '@/components/sports/nba/NBASidePanel';
+import { NBAGamesWidget } from '@/components/sports/nba/NBAGamesWidget';
 import { BaseballGamesWidget } from '@/components/sports/BaseballGamesWidget';
 import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
 
@@ -312,6 +315,18 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
           {/* 視覺與 MLB 同步：橫向滾動賽事卡 + Tab 整合的排行榜/動態面板 */}
           <BaseballGamesWidget league={board.slug} />
           <BaseballStatsPanel league={board.slug} />
+        </>
+      ) : board.slug === 'nba' ? (
+        <>
+          <NBAGamesWidget />
+          <div className="grid md:grid-cols-3 gap-3 mb-4">
+            <div className="md:col-span-2">
+              <NBAStandingsWidget />
+            </div>
+            <div>
+              <NBASidePanel />
+            </div>
+          </div>
         </>
       ) : (
         <ScoreWidget boardSlug={board.slug} />

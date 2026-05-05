@@ -93,6 +93,8 @@ const DETAIL_SUPPORTED: Record<string, (id: number) => string> = {
   cpbl: (gameId) => `/match/baseball/cpbl/${gameId}`,
   npb: (gameId) => `/match/baseball/npb/${gameId}`,
   kbo: (gameId) => `/match/baseball/kbo/${gameId}`,
+  // NBA 用 API-Sports gameId，比賽詳情頁會自動轉成 ESPN eventId
+  nba: (gameId) => `/match/nba/apisports-${gameId}`,
 };
 
 /** 棒球聯盟（CPBL/NPB/KBO）走新 API 路徑（已正規化、含中文翻譯） */
