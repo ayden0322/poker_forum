@@ -134,6 +134,72 @@ export class TranslationAdminController {
     };
   }
 
+  @Get('counts-by-league')
+  @ApiOperation({ summary: '各聯賽 DB 實際翻譯數量（給播種卡片顯示）' })
+  async getCountsByLeague() {
+    const [mlbTeams, mlbPlayersTotal, nbaTeams, nbaPlayers, baseballByLeague] = await Promise.all([
+      // MLB 球隊：basketball=false, sport=baseball, extra.mlbStatsTeamId IS NOT NULL
+      this.prisma.translation.count({
+        where: {
+          entityType: 'team',
+          sport: 'baseball',
+          extra: { path: ['mlbStatsTeamId'], not: null as any },
+        },
+      }),
+      // MLB 球員：sport=baseball, extra.mlbTeamId IS NOT NULL
+      this.prisma.translation.count({
+        where: {
+          entityType: 'player',
+          sport: 'baseball',
+          extra: { path: ['mlbTeamId'], not: null as any },
+        },
+      }),
+      this.prisma.translation.count({
+        where: {
+          entityType: 'team',
+          sport: 'basketball',
+          extra: { path: ['espnTeamId'], not: null as any },
+        },
+      }),
+      this.prisma.translation.count({
+        where: {
+          entityType: 'player',
+          sport: 'basketball',
+        },
+      }),
+      // CPBL/NPB/KBO：用 extra.league 區分
+      this.prisma.$queryRawUnsafe<Array<{ league: string; entityType: string; cnt: bigint }>>(`
+        SELECT extra->>'league' AS league, entity_type, COUNT(*)::bigint AS cnt
+        FROM translations
+        WHERE sport = 'baseball'
+          AND extra->>'league' IN ('cpbl', 'npb', 'kbo')
+        GROUP BY extra->>'league', entity_type
+      `),
+    ]);
+
+    const baseballMap: Record<string, { teams: number; players: number }> = {
+      cpbl: { teams: 0, players: 0 },
+      npb: { teams: 0, players: 0 },
+      kbo: { teams: 0, players: 0 },
+    };
+    for (const row of baseballByLeague) {
+      if (!row.league || !baseballMap[row.league]) continue;
+      const c = Number(row.cnt);
+      if (row.entityType === 'team') baseballMap[row.league].teams = c;
+      if (row.entityType === 'player') baseballMap[row.league].players = c;
+    }
+
+    return {
+      data: {
+        mlb: { teams: mlbTeams, players: mlbPlayersTotal },
+        nba: { teams: nbaTeams, players: nbaPlayers },
+        cpbl: baseballMap.cpbl,
+        npb: baseballMap.npb,
+        kbo: baseballMap.kbo,
+      },
+    };
+  }
+
   @Get('stats')
   @ApiOperation({ summary: '翻譯品質儀表板統計' })
   async getStats() {

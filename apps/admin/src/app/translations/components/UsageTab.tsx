@@ -83,6 +83,15 @@ type SeedStatus = FlatSeedStatus | NestedSeedStatus;
 
 /* ─────────────── 聯賽配置 ─────────────── */
 
+interface LeagueCounts {
+  teams: number;
+  players: number;
+}
+
+interface CountsByLeagueResponse {
+  data: Record<string, LeagueCounts>;
+}
+
 interface SeedConfig {
   /** 唯一鍵（也是 baseball-seed 的 league key） */
   key: string;
@@ -244,6 +253,15 @@ export function UsageTab() {
   });
   const monthlyCost = nbaStatus?.data?.monthlyCost;
 
+  // DB 實際翻譯數量（每張卡片從這裡讀，不靠 in-memory 進度）
+  const { data: countsRes, refetch: refetchCounts } = useQuery({
+    queryKey: ['seed-counts-by-league'],
+    queryFn: () => adminApiFetch<CountsByLeagueResponse>('/admin/translations/counts-by-league'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const countsByLeague = countsRes?.data ?? {};
+
   return (
     <>
       {/* === Claude AI 使用量 === */}
@@ -331,7 +349,11 @@ export function UsageTab() {
           <Row gutter={[16, 16]}>
             {filteredConfigs.map((cfg) => (
               <Col xs={24} sm={12} lg={8} key={cfg.key}>
-                <SeedCard config={cfg} />
+                <SeedCard
+                  config={cfg}
+                  dbCounts={countsByLeague[cfg.key]}
+                  onRefreshCounts={() => refetchCounts()}
+                />
               </Col>
             ))}
           </Row>
@@ -343,7 +365,15 @@ export function UsageTab() {
 
 /* ─────────────── 單聯賽卡片 ─────────────── */
 
-function SeedCard({ config }: { config: SeedConfig }) {
+function SeedCard({
+  config,
+  dbCounts,
+  onRefreshCounts,
+}: {
+  config: SeedConfig;
+  dbCounts?: LeagueCounts;
+  onRefreshCounts: () => void;
+}) {
   const queryClient = useQueryClient();
   const [detailVisible, setDetailVisible] = useState(false);
 
@@ -356,7 +386,19 @@ function SeedCard({ config }: { config: SeedConfig }) {
 
   const status = statusData?.data;
   const isRunning = status?.running ?? false;
-  const counts = config.extractCounts(status);
+  // 進行中：顯示即時進度；非進行中：顯示 DB 實際翻譯數量
+  const inProgressCounts = config.extractCounts(status);
+  const counts = isRunning
+    ? inProgressCounts
+    : { teams: dbCounts?.teams ?? 0, players: dbCounts?.players ?? 0 };
+
+  // 任務完成時刷新 DB 計數
+  React.useEffect(() => {
+    if (!isRunning && status?.finishedAt) {
+      onRefreshCounts();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, status?.finishedAt]);
   const isLatestRun =
     status?.startedAt && status?.currentStep && status.currentStep !== 'idle' && status.currentStep !== '準備中';
 
