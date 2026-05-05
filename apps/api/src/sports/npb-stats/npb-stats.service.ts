@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../../common/redis.service';
+import { TranslationService } from '../../translation/translation.service';
 
 /**
  * NPB（日本職棒）官方網站包裝服務
@@ -17,7 +18,10 @@ export class NpbStatsService {
   private readonly logger = new Logger(NpbStatsService.name);
   private readonly baseUrl = 'https://npb.jp';
 
-  constructor(private redis: RedisService) {}
+  constructor(
+    private redis: RedisService,
+    private translation: TranslationService,
+  ) {}
 
   private async cached<T>(cacheKey: string, ttl: number, fetcher: () => Promise<T | null>): Promise<T | null> {
     const hit = await this.redis.get<T>(cacheKey);
@@ -49,15 +53,31 @@ export class NpbStatsService {
       ]);
 
       // 若當年無資料（季初或非賽季）→ fallback 上一年
+      let entries: NpbLeaderEntry[];
       if ((centralRows?.length ?? 0) === 0 && (pacificRows?.length ?? 0) === 0 && !year) {
         const fallback = await Promise.all([
           this.fetchLeagueRanking(targetYear - 1, config.urlSlug, 'c'),
           this.fetchLeagueRanking(targetYear - 1, config.urlSlug, 'p'),
         ]);
-        return this.mergeAndRank(fallback[0] ?? [], fallback[1] ?? [], category, targetYear - 1);
+        entries = this.mergeAndRank(fallback[0] ?? [], fallback[1] ?? [], category, targetYear - 1);
+      } else {
+        entries = this.mergeAndRank(centralRows ?? [], pacificRows ?? [], category, targetYear);
       }
 
-      return this.mergeAndRank(centralRows ?? [], pacificRows ?? [], category, targetYear);
+      // 翻譯球員姓名（日文 → 繁體中文）
+      // 失敗 fallback 回原文，不會 break 排行榜
+      try {
+        const names = entries.map((e) => e.playerName);
+        const translated = await this.translation.translateBaseballPlayerNames(names, 'ja');
+        for (const e of entries) {
+          e.playerNameZh = translated.get(e.playerName) ?? e.playerName;
+        }
+      } catch (err) {
+        this.logger.warn(`[NPB] 球員姓名翻譯失敗（fallback 原文）：${err}`);
+        for (const e of entries) e.playerNameZh = e.playerName;
+      }
+
+      return entries;
     });
   }
 
@@ -302,7 +322,8 @@ interface NpbRowRaw {
 
 export interface NpbLeaderEntry {
   rank: number;
-  playerName: string;
+  playerName: string;        // 原文（日文漢字 / 片假名）
+  playerNameZh?: string;     // 繁體中文（翻譯失敗時 fallback 為原文）
   teamCode: string;
   teamName: string;
   league: string;

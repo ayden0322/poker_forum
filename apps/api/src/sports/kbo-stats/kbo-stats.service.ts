@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../../common/redis.service';
+import { TranslationService } from '../../translation/translation.service';
 
 /**
  * KBO（韓國職棒）官方網站包裝服務
@@ -11,7 +12,7 @@ import { RedisService } from '../../common/redis.service';
  *   每個 category 從這 30 筆中按對應 data-id 排序前 10 名
  *   注意：HR 王、SB 王等可能略有偏差（前 30 名打擊率球員未必含全聯盟 HR 王）
  *   季初差異不大，季中後可能需要升級為 ASP.NET PostBack
- * - 球員姓名：純韓文顯示（暫不翻譯，避免複雜度）
+ * - 球員姓名：原文為韓文，透過 TranslationService 批次翻譯為繁體中文（playerNameZh）
  * - 隊伍縮寫：hardcoded 對照中文
  */
 @Injectable()
@@ -19,7 +20,10 @@ export class KboStatsService {
   private readonly logger = new Logger(KboStatsService.name);
   private readonly baseUrl = 'https://www.koreabaseball.com';
 
-  constructor(private redis: RedisService) {}
+  constructor(
+    private redis: RedisService,
+    private translation: TranslationService,
+  ) {}
 
   private async cached<T>(cacheKey: string, ttl: number, fetcher: () => Promise<T | null>): Promise<T | null> {
     const hit = await this.redis.get<T>(cacheKey);
@@ -42,7 +46,7 @@ export class KboStatsService {
 
       // 從 30 筆原始資料中按目標欄位排序，取前 10 名
       const sorted = this.sortByField(rows, config.dataId, ('lowerBetter' in config ? config.lowerBetter : false) as boolean);
-      return sorted.slice(0, 10).map((r, i) => ({
+      const entries: KboLeaderEntry[] = sorted.slice(0, 10).map((r, i) => ({
         rank: i + 1,
         playerName: r.playerName,
         playerId: r.playerId,
@@ -51,6 +55,21 @@ export class KboStatsService {
         value: r.fields[config.dataId] ?? '',
         category: config.label,
       }));
+
+      // 翻譯球員姓名（韓文 → 繁體中文）
+      // 失敗 fallback 回原文，不會 break 排行榜
+      try {
+        const names = entries.map((e) => e.playerName);
+        const translated = await this.translation.translateBaseballPlayerNames(names, 'ko');
+        for (const e of entries) {
+          e.playerNameZh = translated.get(e.playerName) ?? e.playerName;
+        }
+      } catch (err) {
+        this.logger.warn(`[KBO] 球員姓名翻譯失敗（fallback 原文）：${err}`);
+        for (const e of entries) e.playerNameZh = e.playerName;
+      }
+
+      return entries;
     });
   }
 
@@ -257,7 +276,8 @@ interface KboRowRaw {
 
 export interface KboLeaderEntry {
   rank: number;
-  playerName: string;
+  playerName: string;        // 原文（韓文）
+  playerNameZh?: string;     // 繁體中文（翻譯失敗時 fallback 為原文）
   playerId: string;
   teamCode: string;
   teamName: string;

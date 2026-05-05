@@ -38,7 +38,8 @@ const DEFAULT_VISIBLE = 5;
 
 interface BaseballLeader {
   rank: number;
-  playerName: string;
+  playerName: string;        // 原文（CPBL=中文 / NPB=日文 / KBO=韓文）
+  playerNameZh?: string;     // 繁體中文翻譯（NPB/KBO 才有；翻譯失敗時 service 會 fallback 為原文）
   teamCode: string;
   teamName: string;
   value: string;
@@ -113,7 +114,16 @@ function LeadersContent({ league }: { league: string }) {
       ) : (
         <>
           <ol className="space-y-1">
-            {(showAll ? leaders : leaders.slice(0, DEFAULT_VISIBLE)).map((leader) => (
+            {(showAll ? leaders : leaders.slice(0, DEFAULT_VISIBLE)).map((leader) => {
+              // 顯示優先：翻譯後中文 → 原文 fallback
+              // CPBL 本身就是中文，無 playerNameZh，會走原文分支
+              const displayName = leader.playerNameZh ?? leader.playerName;
+              // 中文與原文不同時，原文用 title 提供 tooltip 讓使用者對照（例如「ペラルタ」）
+              const nameTitle =
+                leader.playerNameZh && leader.playerNameZh !== leader.playerName
+                  ? `原文：${leader.playerName}`
+                  : undefined;
+              return (
               <li
                 key={`${leader.rank}-${leader.playerAcnt ?? leader.playerId ?? leader.playerName}`}
                 className="flex items-center gap-2 text-xs"
@@ -136,12 +146,12 @@ function LeadersContent({ league }: { league: string }) {
                     href={`/player/baseball/cpbl/${leader.playerAcnt}`}
                     className="flex-1 min-w-0 hover:text-blue-600 transition-colors flex items-center gap-1.5"
                   >
-                    <span className="font-medium text-gray-800 truncate">{leader.playerName}</span>
+                    <span className="font-medium text-gray-800 truncate" title={nameTitle}>{displayName}</span>
                     <span className="text-[10px] text-gray-400 truncate">{leader.teamName}</span>
                   </Link>
                 ) : (
                   <span className="flex-1 min-w-0 flex items-center gap-1.5">
-                    <span className="font-medium text-gray-800 truncate">{leader.playerName}</span>
+                    <span className="font-medium text-gray-800 truncate" title={nameTitle}>{displayName}</span>
                     {leader.league && (
                       <span className="text-[9px] bg-gray-100 text-gray-500 px-1 rounded shrink-0">
                         {leader.league}
@@ -157,7 +167,8 @@ function LeadersContent({ league }: { league: string }) {
                   )}
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ol>
           {leaders.length > DEFAULT_VISIBLE && (
             <button
