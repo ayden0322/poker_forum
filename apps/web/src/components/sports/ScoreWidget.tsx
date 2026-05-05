@@ -110,8 +110,9 @@ function ScoreWidgetInner({ boardSlug, sportType, label, icon }: { boardSlug: st
   const { data, isLoading, isError } = useQuery({
     queryKey: ['sports-recent', boardSlug],
     queryFn: () => apiFetch<RecentGamesResponse>(apiPath),
-    staleTime: 30 * 1000,
-    refetchInterval: 60 * 1000,
+    // 棒球已是 Pro 配額充足；籃球/足球免費 100/day 須拉長輪詢
+    staleTime: isBaseball ? 30 * 1000 : 5 * 60 * 1000,
+    refetchInterval: isBaseball ? 60 * 1000 : 5 * 60 * 1000,
   });
 
   if (isLoading) {

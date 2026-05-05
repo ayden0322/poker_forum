@@ -94,8 +94,8 @@ export function NBAGamesWidget() {
   const { data } = useQuery({
     queryKey: ['nba-recent'],
     queryFn: () => apiFetch<RecentResponse>('/sports/nba/recent'),
-    staleTime: 30 * 1000,
-    refetchInterval: 30 * 1000,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000, // 5 分鐘輪詢（API-Sports 免費 100/day 配額保護）
   });
 
   /**

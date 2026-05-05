@@ -46,9 +46,15 @@ export const LEAGUE_CONFIG: Record<string, LeagueConfig> = {
 
 export const VALID_BOARD_SLUGS = Object.keys(LEAGUE_CONFIG);
 
-/** Redis 快取 TTL（秒） */
+/** Redis 快取 TTL（秒）
+ *
+ * ⚠️ LIVE 為何拉到 600s（10 分鐘）：
+ * API-Sports basketball v1 / football v3 免費方案僅 100 req/day。
+ * 60s TTL 理論最壞 1440 次/天，10 分鐘 144 次仍會超標但已大幅降低風險。
+ * 升級 Pro 後建議在 admin 後台 SportsConfig 把 NBA 的 cacheTtl.live 改回 60。
+ */
 export const CACHE_TTL = {
-  LIVE: 60,        // 即時比分：60 秒
+  LIVE: 600,       // 即時比分：10 分鐘（免費方案配額保護）
   SCHEDULE: 300,   // 賽程：5 分鐘
   STANDINGS: 600,  // 排名：10 分鐘
   PLAYERS: 3600,   // 球員數據：1 小時

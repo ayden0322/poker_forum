@@ -105,8 +105,24 @@ export class NBASeedController {
           { headers: { 'x-apisports-key': apiKey }, signal: AbortSignal.timeout(15000) },
         );
         if (res.ok) {
-          const data = (await res.json()) as { response: any[] };
-          apiSportsTeams = data.response ?? [];
+          const json = (await res.json()) as { response: any[]; errors?: Record<string, string> | string[] };
+          // API-Sports 即使配額爆 HTTP 200 但 response=[] + errors 帶訊息
+          const errs = json.errors;
+          const errMsg = Array.isArray(errs)
+            ? null
+            : errs && typeof errs === 'object'
+              ? Object.values(errs).join('；')
+              : null;
+          if (errMsg) {
+            this.status.stats.errors.push(`Step 1: ${errMsg}`);
+            // 配額爆炸或其他 plan 限制 → 整個 seed 失敗，避免假性「完成」
+            throw new Error(`API-Sports 拒絕：${errMsg}`);
+          }
+          apiSportsTeams = json.response ?? [];
+          if (apiSportsTeams.length === 0) {
+            this.status.stats.errors.push('Step 1: API-Sports 回傳 0 隊（可能是聯賽 ID/賽季有問題）');
+            throw new Error('API-Sports 回傳 0 隊');
+          }
           const entities: TranslatableEntity[] = apiSportsTeams.map((t: any) => ({
             entityType: 'team' as const,
             apiId: t.id,
@@ -119,7 +135,8 @@ export class NBASeedController {
             this.status.stats.teamsTranslated = await this.translation.translateBatch(missing);
           }
         } else {
-          this.status.stats.errors.push(`Step 1: API-Sports ${res.status}`);
+          this.status.stats.errors.push(`Step 1: API-Sports HTTP ${res.status}`);
+          throw new Error(`API-Sports HTTP ${res.status}`);
         }
       }
 
