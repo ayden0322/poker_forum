@@ -41,6 +41,12 @@ const config: Config = {
           500: '#d97706',
         },
       },
+      fontFamily: {
+        // 世界盃 landing 專用字體系統
+        display: ['var(--font-antonio)', 'Impact', 'sans-serif'],
+        body: ['var(--font-manrope)', 'system-ui', 'sans-serif'],
+        'mono-stadium': ['var(--font-mono-stadium)', 'ui-monospace', 'monospace'],
+      },
     },
   },
   plugins: [],

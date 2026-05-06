@@ -374,6 +374,28 @@ export class LotteryService {
     // 從未開出的號碼（單獨列出，避免污染冷門統計）
     const notDrawn = frequency.filter((f) => f.count === 0).map((f) => f.number);
 
+    // 每個號碼最近一次出現的天數（給「久未中」UI 顯示）
+    // results 已按 drawDate desc 排序，第一筆是最新
+    const today = new Date();
+    const lastDrawnMap: Record<number, Date> = {};
+    for (const r of results) {
+      const nums = r.numbers as number[];
+      for (const n of nums) {
+        if (!lastDrawnMap[n]) lastDrawnMap[n] = new Date(r.drawDate);
+      }
+    }
+    const daysSinceLast = frequency.map((f) => {
+      const last = lastDrawnMap[f.number];
+      if (!last) return { number: f.number, daysSinceLast: null as number | null };
+      const days = Math.floor((today.getTime() - last.getTime()) / 86_400_000);
+      return { number: f.number, daysSinceLast: days };
+    });
+    // 久未中 TOP 10：曾出現過、按未中天數降序
+    const longestUnseen = daysSinceLast
+      .filter((d) => d.daysSinceLast !== null)
+      .sort((a, b) => (b.daysSinceLast ?? 0) - (a.daysSinceLast ?? 0))
+      .slice(0, 10);
+
     // 尾數分布
     const tailFreq: Record<number, number> = {};
     for (let i = 0; i <= 9; i++) tailFreq[i] = 0;
@@ -427,6 +449,7 @@ export class LotteryService {
       hot,
       cold,
       notDrawn,
+      longestUnseen, // 久未中 TOP 10（含 daysSinceLast）
       tailStats,
       specialFrequency,
       specialHot,

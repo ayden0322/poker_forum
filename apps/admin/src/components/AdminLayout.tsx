@@ -39,6 +39,7 @@ const menuItems = [
   { key: '/feedbacks', icon: <MessageOutlined />, label: '意見回報' },
   { key: '/sms-provider', icon: <MobileOutlined />, label: '簡訊服務商' },
   { key: '/sports-settings', icon: <TrophyOutlined />, label: '運彩 API 設定' },
+  { key: '/world-cup', icon: <TrophyOutlined />, label: '世界盃管理' },
   { key: '/translations', icon: <TranslationOutlined />, label: '翻譯管理' },
 ];
 

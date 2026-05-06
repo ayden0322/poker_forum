@@ -43,6 +43,7 @@ model User {
   feedbackReplies    FeedbackReply[]     @relation("FeedbackReplyAuthor")
   phoneVerifications PhoneVerification[]
   emailVerifications EmailVerification[]
+  lotteryPicks       UserLotteryPick[]
 
   @@map("users")
 }
@@ -287,6 +288,23 @@ model LotteryResult {
   @@map("lottery_results")
 }
 
+// 使用者收藏的「我的號碼組」
+// 開獎後與最新一期比對，計算中獎顆數
+model UserLotteryPick {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameType   String   @map("game_type") // LOTTO649 / SUPER_LOTTO / DAILY539 / LOTTO1224 / LOTTO3D / LOTTO4D
+  label      String   // 使用者自訂的組名，如「我的固定組合」
+  numbers    Json     // 主號碼陣列 [7, 12, 22, ...]
+  specialNum Json?    @map("special_num") // 特別號（大樂透/威力彩才有）
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, gameType])
+  @@map("user_lottery_picks")
+}
+
 // ===== 跑馬燈 =====
 model Marquee {
   id        String   @id @default(cuid())
@@ -462,6 +480,59 @@ model TranslationUsage {
 
   @@index([date])
   @@map("translation_usage")
+}
+
+// ===== FIFA 世界盃 2026（DB-first，資料源 GitHub openfootball/worldcup.json） =====
+// 與一般 sports 模組分離：世界盃為 4 年一次的特殊賽事，
+// 資料量小且有明確開始/結束，獨立表更易維護
+model WorldCupTeam {
+  id        Int     @id @default(autoincrement())
+  fifaCode  String  @unique @map("fifa_code")     // "MEX"
+  nameEn    String  @map("name_en")               // "Mexico"
+  nameZh    String? @map("name_zh")               // "墨西哥"（翻譯後填入）
+  flagEmoji String? @map("flag_emoji")            // "🇲🇽"
+  groupName String? @map("group_name")            // "A" ~ "L"
+  continent String?                                // "North America"
+  confed    String?                                // "CONCACAF"
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  matchesAsHome WorldCupMatch[] @relation("HomeTeam")
+  matchesAsAway WorldCupMatch[] @relation("AwayTeam")
+
+  @@index([groupName])
+  @@map("world_cup_teams")
+}
+
+model WorldCupMatch {
+  id              Int      @id @default(autoincrement())
+  matchNumber     Int      @unique @map("match_number")    // 1~104
+  round           String                                    // "Matchday 1" / "Round of 32" / "Final"
+  stage           String                                    // "group" | "knockout"
+  groupName       String?  @map("group_name")              // 小組賽才有 "Group A"
+  kickoffAt       DateTime @map("kickoff_at")              // UTC
+  venue           String
+
+  homeTeamId      Int?     @map("home_team_id")
+  awayTeamId      Int?     @map("away_team_id")
+  homeTeam        WorldCupTeam? @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam        WorldCupTeam? @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  homePlaceholder String?  @map("home_placeholder")        // 淘汰賽 "W101" 之類
+  awayPlaceholder String?  @map("away_placeholder")
+
+  homeScore       Int?     @map("home_score")
+  awayScore       Int?     @map("away_score")
+  status          String   @default("scheduled")           // scheduled | live | finished
+  liveMinute      Int?     @map("live_minute")             // 進行中的分鐘（0~90+）
+
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([kickoffAt])
+  @@index([groupName])
+  @@index([stage])
+  @@index([status])
+  @@map("world_cup_matches")
 }
 
 // ===== 體育賽事 API 設定（後台可編輯） =====

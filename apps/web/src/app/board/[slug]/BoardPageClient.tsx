@@ -15,6 +15,11 @@ import { NBASidePanel } from '@/components/sports/nba/NBASidePanel';
 import { NBAGamesWidget } from '@/components/sports/nba/NBAGamesWidget';
 import { BaseballGamesWidget } from '@/components/sports/BaseballGamesWidget';
 import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
+import { WorldCupActivityStrip } from '@/components/sports/world-cup/WorldCupActivityStrip';
+import { WorldCupMatchThreadShelf } from '@/components/sports/world-cup/WorldCupMatchThreadShelf';
+import { WorldCupTagFilter } from '@/components/sports/world-cup/WorldCupTagFilter';
+import { GameIcon } from '@/components/lottery/GameIcon';
+import { getMetaByBoardSlug } from '@/components/lottery/lottery-meta';
 
 const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo']);
 
@@ -275,7 +280,11 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       {/* 看板標題 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <span className="text-3xl">{board.icon ?? '💬'}</span>
+          {(() => {
+            const lotteryMeta = getMetaByBoardSlug(board.slug);
+            if (lotteryMeta) return <GameIcon meta={lotteryMeta} size={48} />;
+            return <span className="text-3xl">{board.icon ?? '💬'}</span>;
+          })()}
           <div>
             <h1 className="text-xl font-bold">{board.name}</h1>
             {board.description && (
@@ -328,8 +337,21 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
             </div>
           </div>
         </>
+      ) : board.slug === 'world-cup' ? (
+        <>
+          <WorldCupActivityStrip />
+          <WorldCupMatchThreadShelf posts={posts} />
+        </>
       ) : (
         <ScoreWidget boardSlug={board.slug} />
+      )}
+
+      {/* 世界盃專屬：賽事相關 tag 快速篩選 */}
+      {board.slug === 'world-cup' && (
+        <WorldCupTagFilter
+          activeTag={activeTag}
+          onChange={(slug) => { setActiveTag(slug); setPage(1); }}
+        />
       )}
 
       {/* 搜尋列 */}

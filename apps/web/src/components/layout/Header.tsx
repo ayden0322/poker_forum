@@ -20,6 +20,8 @@ interface NavItem {
   children?: (NavChild | { divider: true })[];
   /** mega menu：分欄顯示 */
   megaMenu?: { title: string; icon: string; items: NavChild[] }[];
+  /** 特殊活動入口：紅色脈衝徽章樣式（如世界盃） */
+  highlight?: { badgeText: string; emoji: string };
 }
 
 const navItems: NavItem[] = [
@@ -43,6 +45,7 @@ const navItems: NavItem[] = [
         title: '足球',
         icon: '⚽',
         items: [
+          { label: '🌍 世界盃 2026', href: '/board/world-cup' },
           { label: '英超', href: '/board/epl' },
           { label: '西甲', href: '/board/la-liga' },
           { label: '義甲', href: '/board/serie-a' },
@@ -79,8 +82,15 @@ const navItems: NavItem[] = [
     ],
   },
   {
+    label: 'FIFA 2026',
+    href: '/board/world-cup',
+    highlight: { badgeText: 'HOT', emoji: '🌍' },
+  },
+  {
     label: '台灣彩票',
     children: [
+      { label: '📊 彩券中心', href: '/lottery' },
+      { divider: true },
       { label: '大樂透', href: '/board/lotto649' },
       { label: '威力彩', href: '/board/super-lotto' },
       { label: '今彩 539', href: '/board/daily-cash' },
@@ -220,6 +230,20 @@ export function Header() {
                       )}
                     </div>
                   </div>
+                ) : item.highlight ? (
+                  // 特殊活動入口：紅色脈衝徽章
+                  <Link
+                    key={item.href}
+                    href={item.href!}
+                    className="relative text-sm font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                  >
+                    <span className="text-base leading-none">{item.highlight.emoji}</span>
+                    <span>{item.label}</span>
+                    <span className="ml-0.5 px-1.5 py-0.5 bg-white text-red-600 text-[9px] font-black rounded-full leading-none">
+                      {item.highlight.badgeText}
+                    </span>
+                    <span className="absolute inset-0 rounded-full bg-red-400/40 animate-ping pointer-events-none" />
+                  </Link>
                 ) : (
                   // 直接連結
                   <Link
@@ -356,7 +380,19 @@ export function Header() {
             <nav className="px-4 py-3 space-y-1">
               {navItems.map((item) => (
                 <div key={item.label}>
-                  {item.href ? (
+                  {item.highlight && item.href ? (
+                    <Link
+                      href={item.href}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold bg-gradient-to-r from-red-500 to-orange-500 text-white shadow"
+                      onClick={() => setShowMobileMenu(false)}
+                    >
+                      <span className="text-base">{item.highlight.emoji}</span>
+                      <span>{item.label}</span>
+                      <span className="ml-auto px-1.5 py-0.5 bg-white text-red-600 text-[9px] font-black rounded-full">
+                        {item.highlight.badgeText}
+                      </span>
+                    </Link>
+                  ) : item.href ? (
                     <Link
                       href={item.href}
                       className="block px-3 py-2 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"

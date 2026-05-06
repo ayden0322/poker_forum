@@ -7,11 +7,12 @@ import { BaseballCommonModule } from './baseball-common/baseball-common.module';
 import { CpblStatsModule } from './cpbl-stats/cpbl-stats.module';
 import { NpbStatsModule } from './npb-stats/npb-stats.module';
 import { KboStatsModule } from './kbo-stats/kbo-stats.module';
+import { WorldCupModule } from './world-cup/world-cup.module';
 
 @Module({
-  imports: [MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule],
+  imports: [MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule, WorldCupModule],
   controllers: [SportsController],
   providers: [SportsService],
-  exports: [SportsService, MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule],
+  exports: [SportsService, MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule, WorldCupModule],
 })
 export class SportsModule {}
