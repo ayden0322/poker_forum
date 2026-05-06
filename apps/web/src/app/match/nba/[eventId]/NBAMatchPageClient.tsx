@@ -89,8 +89,12 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
     queryKey: ['nba-resolve', apiSportsId],
     queryFn: () =>
       apiFetch<{ data: { espnEventId: string | null } }>(`/nba/games/resolve/${apiSportsId}`),
-    staleTime: 24 * 60 * 60 * 1000,
+    // 後端有 24h Redis 快取所以重打成本很低；前端 5 分鐘 stale 避免 null 結果被卡住一整天
+    staleTime: 5 * 60 * 1000,
+    // 失敗（null）的結果不要保留太久，下次訪問時重試
+    gcTime: 5 * 60 * 1000,
     enabled: !!apiSportsId,
+    retry: 1,
   });
 
   const espnEventId = isApiSports ? resolved?.data?.espnEventId ?? null : eventId;
