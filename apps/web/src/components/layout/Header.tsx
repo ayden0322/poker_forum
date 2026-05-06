@@ -21,7 +21,7 @@ interface NavItem {
   /** mega menu：分欄顯示 */
   megaMenu?: { title: string; icon: string; items: NavChild[] }[];
   /** 特殊活動入口：紅色脈衝徽章樣式（如世界盃） */
-  highlight?: { badgeText: string; emoji: string };
+  highlight?: { badgeText: string; emoji?: string; iconSrc?: string };
 }
 
 const navItems: NavItem[] = [
@@ -84,7 +84,7 @@ const navItems: NavItem[] = [
   {
     label: 'FIFA 2026',
     href: '/board/world-cup',
-    highlight: { badgeText: 'HOT', emoji: '🌍' },
+    highlight: { badgeText: 'HOT', iconSrc: '/images/world-cup/trophy.png' },
   },
   {
     label: '台灣彩票',
@@ -235,9 +235,19 @@ export function Header() {
                   <Link
                     key={item.href}
                     href={item.href!}
-                    className="relative text-sm font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                    className="relative text-sm font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all whitespace-nowrap shrink-0"
                   >
-                    <span className="text-base leading-none">{item.highlight.emoji}</span>
+                    {item.highlight.iconSrc ? (
+                      <Image
+                        src={item.highlight.iconSrc}
+                        alt=""
+                        width={20}
+                        height={20}
+                        className="w-5 h-5 object-contain drop-shadow"
+                      />
+                    ) : (
+                      <span className="text-base leading-none">{item.highlight.emoji}</span>
+                    )}
                     <span>{item.label}</span>
                     <span className="ml-0.5 px-1.5 py-0.5 bg-white text-red-600 text-[9px] font-black rounded-full leading-none">
                       {item.highlight.badgeText}
@@ -386,7 +396,17 @@ export function Header() {
                       className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold bg-gradient-to-r from-red-500 to-orange-500 text-white shadow"
                       onClick={() => setShowMobileMenu(false)}
                     >
-                      <span className="text-base">{item.highlight.emoji}</span>
+                      {item.highlight.iconSrc ? (
+                        <Image
+                          src={item.highlight.iconSrc}
+                          alt=""
+                          width={20}
+                          height={20}
+                          className="w-5 h-5 object-contain"
+                        />
+                      ) : (
+                        <span className="text-base">{item.highlight.emoji}</span>
+                      )}
                       <span>{item.label}</span>
                       <span className="ml-auto px-1.5 py-0.5 bg-white text-red-600 text-[9px] font-black rounded-full">
                         {item.highlight.badgeText}
