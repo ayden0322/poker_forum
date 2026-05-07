@@ -12,6 +12,7 @@
  */
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useEffect, useState } from 'react';
@@ -163,7 +164,13 @@ export function WorldCupActivityStrip() {
         <div className="absolute -right-4 -bottom-4 text-7xl opacity-10 pointer-events-none">🏆</div>
         <div className="relative flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-2xl">🌍</span>
+            <Image
+              src="/images/world-cup/trophy.png"
+              alt=""
+              width={32}
+              height={32}
+              className="w-8 h-8 object-contain drop-shadow"
+            />
             <div>
               <div className="font-bold text-base flex items-center gap-2">
                 FIFA 世界盃 2026

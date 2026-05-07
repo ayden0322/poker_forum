@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth';
@@ -283,6 +284,17 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
           {(() => {
             const lotteryMeta = getMetaByBoardSlug(board.slug);
             if (lotteryMeta) return <GameIcon meta={lotteryMeta} size={48} />;
+            if (board.slug === 'world-cup') {
+              return (
+                <Image
+                  src="/images/world-cup/trophy.png"
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="w-12 h-12 object-contain"
+                />
+              );
+            }
             return <span className="text-3xl">{board.icon ?? '💬'}</span>;
           })()}
           <div>

@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
         title: '足球',
         icon: '⚽',
         items: [
-          { label: '🌍 世界盃 2026', href: '/board/world-cup' },
+          { label: '🏆 世界盃 2026', href: '/board/world-cup' },
           { label: '英超', href: '/board/epl' },
           { label: '西甲', href: '/board/la-liga' },
           { label: '義甲', href: '/board/serie-a' },
