@@ -68,8 +68,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '取得目前登入者資訊' })
-  async me(@CurrentUser() user: { id: string; nickname: string; role: string }) {
-    return { success: true, data: user };
+  async me(@CurrentUser() user: { id: string }) {
+    const data = await this.authService.getMe(user.id);
+    return { success: true, data };
   }
 
   // ===== 忘記密碼 =====

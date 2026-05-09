@@ -15,7 +15,7 @@ function maskPhone(phone?: string | null): string {
 }
 
 export default function SettingsPage() {
-  const { user, accessToken, isLoading: authLoading, logout, openPhoneVerifyModal } = useAuth();
+  const { user, accessToken, isLoading: authLoading, logout, openPhoneVerifyModal, refreshMe } = useAuth();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -97,6 +97,7 @@ export default function SettingsPage() {
         const uploadData = await uploadRes.json() as { data: { url: string } };
         setAvatarPreview(uploadData.data.url);
         setAvatarFile(null); // 上傳成功，清除待上傳檔案
+        await refreshMe(); // 同步 AuthContext，讓 Header 等依賴 user.avatar 的元件即時更新
       }
 
       // 2. 如果有修改密碼，更新密碼

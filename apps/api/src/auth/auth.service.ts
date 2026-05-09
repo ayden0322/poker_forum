@@ -64,6 +64,25 @@ export class AuthService {
     return { user, ...tokens };
   }
 
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        nickname: true,
+        role: true,
+        avatar: true,
+        level: true,
+        phone: true,
+        phoneVerified: true,
+      },
+    });
+    if (!user) {
+      throw new UnauthorizedException('使用者不存在');
+    }
+    return user;
+  }
+
   async login(dto: LoginDto, ip?: string) {
     const user = await this.prisma.user.findUnique({
       where: { account: dto.account },
