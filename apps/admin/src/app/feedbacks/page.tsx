@@ -15,27 +15,13 @@ import { adminApiFetch } from '@/lib/api';
 
 const { TextArea } = Input;
 
-// ===== 圖片上傳工具（FormData 不能用 adminApiFetch，因為不能帶 Content-Type: json） =====
 async function uploadImage(file: File): Promise<string> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('admin_accessToken') : null;
-  if (!token) throw new Error('尚未登入，請重新整理頁面');
-
   const formData = new FormData();
   formData.append('file', file);
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api';
-  const res = await fetch(`${apiUrl}/upload/image`, {
+  const data = await adminApiFetch<{ data: { url: string } }>('/upload/image', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
     body: formData,
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: '上傳失敗' })) as { message?: string };
-    throw new Error(err.message || '上傳失敗');
-  }
-
-  const data = await res.json() as { data: { url: string } };
   return data.data.url;
 }
 
