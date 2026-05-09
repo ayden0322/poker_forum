@@ -148,7 +148,7 @@ export function Header() {
     <>
       <header className="bg-gradient-to-r from-blue-700 to-blue-900 text-white shadow-lg sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center justify-between h-16 md:h-20">
             {/* 手機版漢堡選單按鈕 */}
             <button
               className="md:hidden p-2 -ml-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -166,7 +166,7 @@ export function Header() {
 
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <Image src="/logo.png" alt="博客邦 GOBOKA" width={120} height={60} className="h-10 w-auto" priority />
+              <Image src="/logo.png" alt="博客邦 GOBOKA" width={160} height={80} className="h-10 md:h-14 w-auto" priority />
             </Link>
 
             {/* 桌面版 Nav */}
