@@ -15,6 +15,7 @@ import {
   Typography,
   Drawer,
   Descriptions,
+  Switch,
 } from 'antd';
 import {
   UserOutlined,
@@ -45,6 +46,8 @@ interface Member {
   lastLoginAt: string | null;
   phone: string | null;
   phoneVerified: boolean;
+  phoneVerificationBypass: boolean;
+  phoneVerificationBypassReason: string | null;
   loginMethods: LoginMethod[];
   postCount: number;
   replyCount: number;
@@ -117,7 +120,18 @@ export default function MembersPage() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: { role?: string; status?: string } }) =>
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: {
+        role?: string;
+        status?: string;
+        phoneVerificationBypass?: boolean;
+        phoneVerificationBypassReason?: string | null;
+      };
+    }) =>
       adminApiFetch(`/admin/members/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
@@ -146,14 +160,37 @@ export default function MembersPage() {
 
   const handleEdit = (member: Member) => {
     setEditingMember(member);
-    form.setFieldsValue({ role: member.role, status: member.status });
+    form.setFieldsValue({
+      role: member.role,
+      status: member.status,
+      phoneVerificationBypass: member.phoneVerificationBypass,
+      phoneVerificationBypassReason: member.phoneVerificationBypassReason ?? '',
+    });
   };
 
   const handleSave = () => {
-    form.validateFields().then((values: { role: string; status: string }) => {
-      if (!editingMember) return;
-      updateMutation.mutate({ id: editingMember.id, body: values });
-    });
+    form
+      .validateFields()
+      .then(
+        (values: {
+          role: string;
+          status: string;
+          phoneVerificationBypass: boolean;
+          phoneVerificationBypassReason?: string;
+        }) => {
+          if (!editingMember) return;
+          const reason = values.phoneVerificationBypassReason?.trim() || null;
+          updateMutation.mutate({
+            id: editingMember.id,
+            body: {
+              role: values.role,
+              status: values.status,
+              phoneVerificationBypass: values.phoneVerificationBypass,
+              phoneVerificationBypassReason: values.phoneVerificationBypass ? reason : null,
+            },
+          });
+        },
+      );
   };
 
   const statusTag = (status: Member['status']) => {
@@ -243,15 +280,25 @@ export default function MembersPage() {
     {
       title: '手機驗證',
       key: 'phoneVerified',
-      width: 150,
-      render: (_, record) => record.phoneVerified ? (
-        <Space size={4}>
-          <Tag color="success">已驗證</Tag>
-          <Text style={{ fontSize: 12 }}>{record.phone}</Text>
-        </Space>
-      ) : (
-        <Tag>未驗證</Tag>
-      ),
+      width: 170,
+      render: (_, record) => {
+        if (record.phoneVerified) {
+          return (
+            <Space size={4}>
+              <Tag color="success">已驗證</Tag>
+              <Text style={{ fontSize: 12 }}>{record.phone}</Text>
+            </Space>
+          );
+        }
+        if (record.phoneVerificationBypass) {
+          return (
+            <Tag color="processing" title={record.phoneVerificationBypassReason ?? ''}>
+              後台放行
+            </Tag>
+          );
+        }
+        return <Tag>未驗證</Tag>;
+      },
     },
     {
       title: '操作',
@@ -346,6 +393,31 @@ export default function MembersPage() {
           <Form.Item label="狀態" name="status" rules={[{ required: true }]}>
             <Select options={STATUS_OPTIONS} />
           </Form.Item>
+          <Form.Item
+            label="免手機驗證（後台放行）"
+            name="phoneVerificationBypass"
+            valuePropName="checked"
+            tooltip="開啟後此會員不需要完成手機驗證即可發文 / 回應。phoneVerified 真假狀態仍會保留以供稽核。"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prev, curr) =>
+              prev.phoneVerificationBypass !== curr.phoneVerificationBypass
+            }
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('phoneVerificationBypass') ? (
+                <Form.Item
+                  label="放行原因（選填，建議填寫以利稽核）"
+                  name="phoneVerificationBypassReason"
+                >
+                  <Input.TextArea rows={2} placeholder="例如：管理員帳號 / 內部測試 / 客服 …" />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -381,6 +453,15 @@ export default function MembersPage() {
                   <Space size={4}>
                     <Tag color="success">已驗證</Tag>
                     <Text>{detailMember.phone}</Text>
+                  </Space>
+                ) : detailMember.phoneVerificationBypass ? (
+                  <Space size={4} direction="vertical">
+                    <Tag color="processing">後台放行</Tag>
+                    {detailMember.phoneVerificationBypassReason && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        原因：{detailMember.phoneVerificationBypassReason}
+                      </Text>
+                    )}
                   </Space>
                 ) : (
                   <Tag>未驗證</Tag>

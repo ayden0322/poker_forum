@@ -48,7 +48,13 @@ export class AdminController {
   @Patch('members/:id')
   async updateMember(
     @Param('id') id: string,
-    @Body() body: { role?: Role; status?: UserStatus },
+    @Body()
+    body: {
+      role?: Role;
+      status?: UserStatus;
+      phoneVerificationBypass?: boolean;
+      phoneVerificationBypassReason?: string | null;
+    },
   ) {
     const data = await this.adminService.updateMember(id, body);
     return { data };

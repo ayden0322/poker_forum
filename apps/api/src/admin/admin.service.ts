@@ -47,6 +47,8 @@ export class AdminService {
           lastLoginAt: true,
           phone: true,
           phoneVerified: true,
+          phoneVerificationBypass: true,
+          phoneVerificationBypassReason: true,
           passwordHash: true,
           createdAt: true,
           oauthProviders: { select: { provider: true } },
@@ -78,14 +80,35 @@ export class AdminService {
     };
   }
 
-  async updateMember(id: string, body: { role?: Role; status?: UserStatus }) {
+  async updateMember(
+    id: string,
+    body: {
+      role?: Role;
+      status?: UserStatus;
+      phoneVerificationBypass?: boolean;
+      phoneVerificationBypassReason?: string | null;
+    },
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('找不到此會員');
 
+    // 關閉 bypass 時一併清空原因，避免遺留誤導
+    const data: Record<string, unknown> = { ...body };
+    if (body.phoneVerificationBypass === false) {
+      data.phoneVerificationBypassReason = null;
+    }
+
     return this.prisma.user.update({
       where: { id },
-      data: { ...body },
-      select: { id: true, nickname: true, role: true, status: true },
+      data,
+      select: {
+        id: true,
+        nickname: true,
+        role: true,
+        status: true,
+        phoneVerificationBypass: true,
+        phoneVerificationBypassReason: true,
+      },
     });
   }
 

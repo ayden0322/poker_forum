@@ -32,6 +32,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         status: true,
         phoneVerified: true,
+        phoneVerificationBypass: true,
         phone: true,
       },
     });

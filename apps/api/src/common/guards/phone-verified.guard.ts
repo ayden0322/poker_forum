@@ -18,7 +18,7 @@ export class PhoneVerifiedGuard implements CanActivate {
       });
     }
 
-    if (!user.phoneVerified) {
+    if (!user.phoneVerified && !user.phoneVerificationBypass) {
       throw new ForbiddenException({
         code: 'PHONE_VERIFICATION_REQUIRED',
         message: '請先完成手機驗證才能發表文章或回應',

@@ -26,6 +26,10 @@ model User {
   phoneVerified   Boolean    @default(false) @map("phone_verified")
   phoneVerifiedAt DateTime?  @map("phone_verified_at")
   phoneChangedAt  DateTime?  @map("phone_changed_at")
+  // 後台放行：勾選後等同已驗證手機，但 phoneVerified 仍為 false
+  // 用於管理員 / 內部測試帳號免簡訊驗證；保留 phoneVerified 真假狀態以供稽核
+  phoneVerificationBypass       Boolean   @default(false) @map("phone_verification_bypass")
+  phoneVerificationBypassReason String?   @map("phone_verification_bypass_reason")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
