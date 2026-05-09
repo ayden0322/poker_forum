@@ -75,6 +75,7 @@ export class AuthService {
         level: true,
         phone: true,
         phoneVerified: true,
+        phoneVerificationBypass: true,
       },
     });
     if (!user) {

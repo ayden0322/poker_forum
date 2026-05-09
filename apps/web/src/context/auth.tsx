@@ -11,6 +11,7 @@ interface AuthUser {
   level: number;
   phone?: string | null;
   phoneVerified?: boolean;
+  phoneVerificationBypass?: boolean;
 }
 
 interface AuthContextValue {
@@ -121,7 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setShowLoginModal(true);
       return false;
     }
-    if (user.phoneVerified) return true;
+    if (user.phoneVerified || user.phoneVerificationBypass) return true;
     setShowPhoneVerifyModal(true);
     return false;
   }, [user]);
