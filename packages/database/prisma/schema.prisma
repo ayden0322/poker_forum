@@ -498,6 +498,8 @@ model WorldCupTeam {
   groupName String? @map("group_name")            // "A" ~ "L"
   continent String?                                // "North America"
   confed    String?                                // "CONCACAF"
+  apiTeamId Int?    @unique @map("api_team_id")   // api-sports team ID
+  logoUrl   String? @map("logo_url")              // api-sports 隊徽 URL
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -516,6 +518,8 @@ model WorldCupMatch {
   groupName       String?  @map("group_name")              // 小組賽才有 "Group A"
   kickoffAt       DateTime @map("kickoff_at")              // UTC
   venue           String
+  venueCity       String?  @map("venue_city")              // api-sports 提供的城市
+  apiFixtureId    Int?     @unique @map("api_fixture_id")  // api-sports fixture ID
 
   homeTeamId      Int?     @map("home_team_id")
   awayTeamId      Int?     @map("away_team_id")
