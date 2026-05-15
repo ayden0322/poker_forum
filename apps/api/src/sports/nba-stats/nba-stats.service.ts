@@ -146,18 +146,78 @@ export class NBAStatsService {
     });
   }
 
+  /**
+   * 以「台灣日期」取得 NBA 賽程（ESPN scoreboard 為來源）
+   *
+   * 一個台灣日（00:00–24:00 Asia/Taipei）對應的 ESPN scoreboard 美東日期可能橫跨 2 個，
+   * 因此查 ET±1 共 3 天 scoreboard，再用比賽 ISO 時間落在台灣當日範圍內的條件過濾。
+   *
+   * @param twDate 台灣日期 YYYY-MM-DD
+   */
+  async getScheduleByTaiwanDate(twDate: string) {
+    const cacheKey = `nba:espn:scoreboard:tw:${twDate}`;
+    return this.cached(cacheKey, 30, async () => {
+      const [y, m, d] = twDate.split('-').map(Number);
+      if (!y || !m || !d) return [];
+
+      // 台灣當日的 UTC 範圍（TW=UTC+8）
+      const startUtcMs = Date.UTC(y, m - 1, d) - 8 * 3600 * 1000;
+      const endUtcMs = startUtcMs + 24 * 3600 * 1000;
+
+      // ESPN scoreboard 的 dates 參數是美東日；查 ET±1 共 3 天，覆蓋台灣日跨界
+      const candidates: string[] = [];
+      for (const offset of [-1, 0, 1]) {
+        const d2 = new Date(startUtcMs + offset * 86400_000);
+        candidates.push(d2.toISOString().slice(0, 10).replace(/-/g, ''));
+      }
+
+      const seen = new Set<string>();
+      const merged: any[] = [];
+      for (const yyyymmdd of candidates) {
+        const events = await this.getScoreboard(yyyymmdd);
+        for (const ev of events ?? []) {
+          if (!ev?.id || seen.has(ev.id)) continue;
+          const dateStr: string | undefined = ev.date;
+          if (!dateStr) continue;
+          const t = new Date(dateStr).getTime();
+          if (Number.isNaN(t) || t < startUtcMs || t >= endUtcMs) continue;
+          seen.add(ev.id);
+          merged.push(ev);
+        }
+      }
+      // 依開打時間遞增排序
+      merged.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      return merged;
+    });
+  }
+
   // ============ 數據王 (stats.nba.com) ============
 
   /**
    * NBA 數據王（PTS / REB / AST / STL / BLK / FG3M / FG_PCT / FT_PCT）
-   * stats.nba.com 對伺服器端較挑剔，需要正確的 referer + user-agent
+   *
+   * 容錯策略（stale-while-error）：
+   *   1. 命中 fresh cache（6 小時）→ 直接回，最快
+   *   2. fresh miss → 打 stats.nba.com，失敗自動 retry 1 次（短延遲）
+   *   3. 成功 → 同時寫 fresh（6h）與 stale（7d）兩份
+   *   4. 兩次都失敗 → 讀 stale cache（最多 7 天前的資料），標 `_stale: true`
+   *   5. 連 stale 都沒有 → 回 null
+   *
+   * 為什麼這樣設計：stats.nba.com 對 Referer/User-Agent 敏感，會偶發 403/429；
+   * Zeabur 大阪節點出口 IP 一旦被風控，整站排行榜不該整片掛掉。
    */
   async getLeaders(category: string, season: string = '2025-26', limit: number = 10) {
-    const cacheKey = `nba:stats:leaders:${category}:${season}:${limit}`;
-    return this.cached(cacheKey, 21600, async () => {
-      const url =
-        `https://stats.nba.com/stats/leagueleaders?LeagueID=00&PerMode=PerGame` +
-        `&Scope=S&Season=${season}&SeasonType=Regular%20Season&StatCategory=${category}`;
+    const freshKey = `nba:stats:leaders:${category}:${season}:${limit}`;
+    const staleKey = `${freshKey}:stale`;
+
+    const fresh = await this.redis.get<any[]>(freshKey);
+    if (fresh) return fresh;
+
+    const url =
+      `https://stats.nba.com/stats/leagueleaders?LeagueID=00&PerMode=PerGame` +
+      `&Scope=S&Season=${season}&SeasonType=Regular%20Season&StatCategory=${category}`;
+
+    const tryFetch = async (): Promise<any[] | null> => {
       try {
         const res = await fetch(url, {
           signal: AbortSignal.timeout(15000),
@@ -170,7 +230,7 @@ export class NBAStatsService {
           },
         });
         if (!res.ok) {
-          this.logger.error(`stats.nba.com leaders ${res.status}`);
+          this.logger.warn(`stats.nba.com leaders ${res.status}`);
           return null;
         }
         const data = (await res.json()) as any;
@@ -178,7 +238,6 @@ export class NBAStatsService {
         const headers: string[] = rs.headers ?? [];
         const rows: any[][] = rs.rowSet ?? [];
         const idx = (n: string) => headers.indexOf(n);
-
         return rows.slice(0, limit).map((r) => ({
           rank: r[idx('RANK')],
           playerId: r[idx('PLAYER_ID')],
@@ -192,10 +251,37 @@ export class NBAStatsService {
           ast: r[idx('AST')],
         }));
       } catch (err) {
-        this.logger.error(`stats.nba.com leaders 失敗：${err}`);
+        this.logger.warn(`stats.nba.com leaders 失敗：${err}`);
         return null;
       }
-    });
+    };
+
+    // 第一次嘗試
+    let result = await tryFetch();
+
+    // 偶發 429/timeout 給一次補射
+    if (!result) {
+      await new Promise((r) => setTimeout(r, 800));
+      result = await tryFetch();
+    }
+
+    if (result) {
+      // 同時寫 fresh（6h）與 stale（7d）
+      await Promise.all([
+        this.redis.set(freshKey, result, 21600),
+        this.redis.set(staleKey, result, 7 * 86400),
+      ]);
+      return result;
+    }
+
+    // 全失敗 → 用 stale，標記讓前端可選擇顯示「資料可能延遲」
+    const stale = await this.redis.get<any[]>(staleKey);
+    if (stale && Array.isArray(stale)) {
+      this.logger.warn(`stats.nba.com leaders 全部失敗，回傳 stale 資料 (${category})`);
+      return stale.map((row) => ({ ...row, _stale: true }));
+    }
+
+    return null;
   }
 
   // ============ 傷兵 ============

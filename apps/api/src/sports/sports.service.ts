@@ -180,25 +180,65 @@ export class SportsService {
     });
   }
 
-  // ============ 三日賽事（昨日 + 今日 + 明日） ============
+  // ============ 三日賽事（昨日 + 今日 + 明日，以台灣日期為基準） ============
 
+  /**
+   * 三日賽事 — bucket key 以「台灣日期」為準
+   *
+   * API-Sports 的 `/games?date=...` 用 UTC 日期過濾，但一個台灣日（TW=UTC+8）會橫跨 2 個 UTC 日；
+   * 若只查 UTC ±1 共 3 天，台灣 yesterday 00:00–08:00 與 tomorrow 16:00–24:00 邊界場次會漏掉。
+   * 因此查 UTC -2..+2 共 5 天，再按比賽 timestamp 落在台灣日的 00:00–24:00 範圍重新分桶。
+   */
   async getRecentGames(boardSlug: string) {
     const cfg = await this.getConfig(boardSlug);
     if (!cfg) return { yesterday: [], today: [], tomorrow: [] };
 
-    const [yesterday, today, tomorrow] = await Promise.all([
-      this.getGamesByDate(cfg, -1),
-      this.getGamesByDate(cfg, 0),
-      this.getGamesByDate(cfg, 1),
-    ]);
+    // 查 UTC -2..+2 共 5 天，cache 命中時不會多打 API
+    const utcOffsets = [-2, -1, 0, 1, 2];
+    const allLists = await Promise.all(
+      utcOffsets.map((o) => this.getGamesByDate(cfg, o)),
+    );
 
-    return { yesterday, today, tomorrow };
+    // 用比賽 id 去重（API-Sports 兩個相鄰 UTC date query 可能回到同一場比賽）
+    const seen = new Set<number>();
+    const allGames: any[] = [];
+    for (const list of allLists) {
+      for (const g of list) {
+        const id = g?.id;
+        if (id == null || seen.has(id)) continue;
+        seen.add(id);
+        allGames.push(g);
+      }
+    }
+
+    // 計算台灣「yesterday / today / tomorrow」的 YYYY-MM-DD（en-CA 給 ISO 格式）
+    const twToday = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    const twDateAt = (offset: number) => {
+      const base = new Date(twToday + 'T00:00:00Z');
+      base.setUTCDate(base.getUTCDate() + offset);
+      return base.toISOString().slice(0, 10);
+    };
+    const twY = twDateAt(-1);
+    const twT = twToday;
+    const twM = twDateAt(1);
+
+    const bucket = { yesterday: [] as any[], today: [] as any[], tomorrow: [] as any[] };
+    for (const g of allGames) {
+      // API-Sports 籃球/棒球 game 有 `date` ISO 字串與 `timestamp`（秒）
+      const tsMs = typeof g.timestamp === 'number' ? g.timestamp * 1000 : Date.parse(g.date ?? '');
+      if (!Number.isFinite(tsMs)) continue;
+      const twDay = new Date(tsMs).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+      if (twDay === twY) bucket.yesterday.push(g);
+      else if (twDay === twT) bucket.today.push(g);
+      else if (twDay === twM) bucket.tomorrow.push(g);
+    }
+    return bucket;
   }
 
-  /** 取得指定日期的賽事（offsetDays: -1=昨天, 0=今天, 1=明天） */
+  /** 取得指定 UTC 日期偏移的賽事（offsetDays 從今天 UTC 起算） */
   private async getGamesByDate(cfg: LeagueDbConfig, offsetDays: number) {
     const date = this.getDateString(offsetDays);
-    // 昨日/明日用較長快取（10 分鐘），今日用 60 秒
+    // 今日 UTC 用較短 TTL；其餘日期較長（10 分鐘）
     const ttl = offsetDays === 0 ? this.getTtl(cfg, 'LIVE') : 600;
     const cacheKey = `sports:${cfg.sportType}:allgames:${date}`;
 

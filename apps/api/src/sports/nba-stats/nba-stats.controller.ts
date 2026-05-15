@@ -301,6 +301,20 @@ export class NBAStatsController {
     return { data };
   }
 
+  @Get('schedule/tw')
+  @ApiOperation({
+    summary: 'NBA 賽程（以台灣日期查詢，ESPN scoreboard 為來源）',
+    description: '台灣一天橫跨 2 個美東日，後端自動查 ET±1 共 3 天並按開打時間過濾',
+  })
+  async getScheduleByTaiwanDate(@Query('date') date?: string) {
+    let twDate = date;
+    if (!twDate) {
+      twDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' });
+    }
+    const events = await this.nbaStats.getScheduleByTaiwanDate(twDate);
+    return { data: events };
+  }
+
   // ============ 傷兵 ============
 
   @Get('injuries')
