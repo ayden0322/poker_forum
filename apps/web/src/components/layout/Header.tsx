@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
         title: '足球',
         icon: '⚽',
         items: [
-          { label: '🏆 世界盃 2026', href: '/board/world-cup' },
+          { label: '世界盃 2026', href: '/board/world-cup' },
           { label: '英超', href: '/board/epl' },
           { label: '西甲', href: '/board/la-liga' },
           { label: '義甲', href: '/board/serie-a' },
@@ -194,7 +194,7 @@ export function Header() {
                               <Link
                                 key={child.href}
                                 href={child.href}
-                                className="block px-2 py-1.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded transition-colors"
+                                className="block px-2 py-1.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded transition-colors whitespace-nowrap"
                               >
                                 {child.label}
                               </Link>
