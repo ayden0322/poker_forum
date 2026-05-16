@@ -263,6 +263,24 @@ export class MLBStatsService {
   }
 
   /**
+   * 取得指定日期範圍內所有比賽的 raw schedule（含 probablePitcher + lineups hydrate）
+   * 供翻譯 cron 預先掃描用。不走 cached（cron 自己控制頻率）。
+   */
+  async getRawSchedulesWithPreview(dates: string[]): Promise<any[]> {
+    const allGames: any[] = [];
+    for (const date of dates) {
+      const data = await this.callApi<{ dates: any[] }>('/schedule', {
+        sportId: 1,
+        date,
+        hydrate: 'probablePitcher,lineups',
+      });
+      const games = (data?.dates ?? []).flatMap((d: any) => d.games ?? []);
+      allGames.push(...games);
+    }
+    return allGames;
+  }
+
+  /**
    * 賽前資訊（預計先發投手 + 先發打線）
    *
    * - probablePitcher：開賽前 1~2 天就會公布
