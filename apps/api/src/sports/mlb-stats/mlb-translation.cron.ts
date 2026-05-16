@@ -10,7 +10,7 @@ import { TranslationService, TranslatableEntity } from '../../translation/transl
  * 流程：定期掃今/明兩日所有 MLB 比賽的 probablePitcher + lineups，
  *      把尚未翻譯的球員一次送 Claude 翻譯並寫入 DB。
  *
- * 頻率：每 4 小時一次（涵蓋一天內各時段公布的打線）。
+ * 頻率：每 6 小時一次（涵蓋一天內各時段公布的打線）。
  * 成本：~$0.005~0.02 / 次（多數時段全 hit cache 時為 0）。
  */
 @Injectable()
@@ -22,8 +22,8 @@ export class MLBTranslationCron {
     private translation: TranslationService,
   ) {}
 
-  /** 每 4 小時整點執行 */
-  @Cron('0 */4 * * *', { name: 'mlb-preview-translate' })
+  /** 每 6 小時整點執行 */
+  @Cron('0 */6 * * *', { name: 'mlb-preview-translate' })
   async preTranslate() {
     const startedAt = Date.now();
     this.logger.log('[MLB Pre-Translate] 開始掃描今明 MLB 先發名單');
