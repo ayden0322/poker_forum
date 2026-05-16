@@ -23,6 +23,7 @@ import {
   CheckCircleOutlined,
   EyeOutlined,
   StopFilled,
+  KeyOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
@@ -105,7 +106,9 @@ export default function MembersPage() {
   const [detailMember, setDetailMember] = useState<Member | null>(null);
   const [banIpTarget, setBanIpTarget] = useState<{ ip: string; nickname: string } | null>(null);
   const [banReason, setBanReason] = useState('');
+  const [passwordTarget, setPasswordTarget] = useState<Member | null>(null);
   const [form] = Form.useForm();
+  const [passwordForm] = Form.useForm();
 
   const queryParams = new URLSearchParams();
   queryParams.set('page', String(page));
@@ -140,6 +143,20 @@ export default function MembersPage() {
       message.success('更新成功');
       setEditingMember(null);
       queryClient.invalidateQueries({ queryKey: ['admin-members'] });
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      adminApiFetch(`/admin/members/${id}/password`, {
+        method: 'PATCH',
+        body: JSON.stringify({ password }),
+      }),
+    onSuccess: () => {
+      message.success('密碼已更新');
+      setPasswordTarget(null);
+      passwordForm.resetFields();
     },
     onError: (err: Error) => message.error(err.message),
   });
@@ -303,14 +320,24 @@ export default function MembersPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 180,
+      width: 280,
       render: (_, record) => (
-        <Space>
+        <Space wrap>
           <Button size="small" icon={<EyeOutlined />} onClick={() => setDetailMember(record)}>
             檢視
           </Button>
           <Button size="small" onClick={() => handleEdit(record)}>
             編輯
+          </Button>
+          <Button
+            size="small"
+            icon={<KeyOutlined />}
+            onClick={() => {
+              setPasswordTarget(record);
+              passwordForm.resetFields();
+            }}
+          >
+            重設密碼
           </Button>
           {record.lastLoginIp && (
             <Button
@@ -373,7 +400,7 @@ export default function MembersPage() {
           showTotal: (total) => `共 ${total} 位會員`,
         }}
         size="middle"
-        scroll={{ x: 1000 }}
+        scroll={{ x: 1100 }}
       />
 
       {/* 編輯 Modal */}
@@ -509,6 +536,70 @@ export default function MembersPage() {
           </div>
         )}
       </Drawer>
+
+      {/* 重設密碼 Modal */}
+      <Modal
+        title={`重設密碼：${passwordTarget?.nickname}`}
+        open={!!passwordTarget}
+        onOk={() => {
+          passwordForm
+            .validateFields()
+            .then((values: { password: string }) => {
+              if (!passwordTarget) return;
+              resetPasswordMutation.mutate({
+                id: passwordTarget.id,
+                password: values.password,
+              });
+            });
+        }}
+        onCancel={() => {
+          setPasswordTarget(null);
+          passwordForm.resetFields();
+        }}
+        confirmLoading={resetPasswordMutation.isPending}
+        okText="確認更新"
+        okButtonProps={{ danger: true }}
+        cancelText="取消"
+        destroyOnClose
+      >
+        <p style={{ marginTop: 0 }}>
+          將直接覆寫帳號 <Text code>{passwordTarget?.account ?? '—'}</Text> 的登入密碼，
+          此操作無法復原。請務必透過安全管道告知會員新密碼。
+        </p>
+        <Form form={passwordForm} layout="vertical" preserve={false}>
+          <Form.Item
+            label="新密碼"
+            name="password"
+            rules={[
+              { required: true, message: '請輸入新密碼' },
+              { min: 8, message: '密碼長度至少 8 個字元' },
+              { max: 64, message: '密碼長度不可超過 64 個字元' },
+            ]}
+            hasFeedback
+          >
+            <Input.Password placeholder="至少 8 個字元" autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            label="再次輸入新密碼"
+            name="confirm"
+            dependencies={['password']}
+            hasFeedback
+            rules={[
+              { required: true, message: '請再次輸入新密碼' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('兩次輸入的密碼不一致'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password placeholder="再輸入一次以確認" autoComplete="new-password" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 封鎖 IP Modal */}
       <Modal

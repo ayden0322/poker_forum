@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
 import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
 
@@ -110,6 +111,30 @@ export class AdminService {
         phoneVerificationBypassReason: true,
       },
     });
+  }
+
+  async resetMemberPassword(id: string, newPassword: string) {
+    const password = (newPassword ?? '').trim();
+    if (password.length < 8) {
+      throw new BadRequestException('密碼長度至少 8 個字元');
+    }
+    if (password.length > 64) {
+      throw new BadRequestException('密碼長度不可超過 64 個字元');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, nickname: true, account: true },
+    });
+    if (!user) throw new NotFoundException('找不到此會員');
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash },
+    });
+
+    return { id: user.id, nickname: user.nickname, account: user.account };
   }
 
   // ===== 分類管理 =====

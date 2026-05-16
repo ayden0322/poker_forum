@@ -60,6 +60,15 @@ export class AdminController {
     return { data };
   }
 
+  @Patch('members/:id/password')
+  async resetMemberPassword(
+    @Param('id') id: string,
+    @Body() body: { password: string },
+  ) {
+    const data = await this.adminService.resetMemberPassword(id, body?.password);
+    return { data };
+  }
+
   // ===== 分類管理 =====
   @Get('categories')
   async getCategories() {
