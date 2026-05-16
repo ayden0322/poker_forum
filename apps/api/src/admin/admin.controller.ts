@@ -151,6 +151,7 @@ export class AdminController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('q') q?: string,
     @Query('boardId') boardId?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('isAnnounce') isAnnounce?: string,
   ) {
     const data = await this.adminService.getPosts({
@@ -158,6 +159,7 @@ export class AdminController {
       limit,
       q,
       boardId,
+      categoryId,
       isAnnounce: isAnnounce === 'true' ? true : isAnnounce === 'false' ? false : undefined,
     });
     return { data };

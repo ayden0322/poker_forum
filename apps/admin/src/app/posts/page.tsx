@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Table, Button, Switch, Popconfirm, message, Drawer } from 'antd';
+import React, { useMemo, useState } from 'react';
+import { Table, Button, Switch, Popconfirm, message, Drawer, TreeSelect, Tag } from 'antd';
 import { DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,26 +21,75 @@ interface PostItem {
   pushCount: number;
   createdAt: string;
   author: { id: string; nickname: string };
-  board: { id: string; name: string };
+  board: {
+    id: string;
+    name: string;
+    category?: { id: string; name: string };
+  };
 }
 
 interface PostsResponse {
   data: { items: PostItem[]; total: number; page: number; limit: number };
 }
 
+interface BoardItem {
+  id: string;
+  name: string;
+  categoryId: string;
+  category: { id: string; name: string };
+}
+
+interface BoardsResponse {
+  data: BoardItem[];
+}
+
+// TreeSelect 的 value 用前綴區分類別：cat:<id> / board:<id>
+type ScopeValue = string | undefined;
+
 export default function PostsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [scope, setScope] = useState<ScopeValue>(undefined);
   const [previewPost, setPreviewPost] = useState<PostItem | null>(null);
+
+  const { data: boardsData } = useQuery({
+    queryKey: ['admin-boards-for-posts'],
+    queryFn: () => adminApiFetch<BoardsResponse>('/admin/boards'),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const treeData = useMemo(() => {
+    const boards = boardsData?.data ?? [];
+    const groups = new Map<string, { id: string; name: string; boards: BoardItem[] }>();
+    for (const b of boards) {
+      const catId = b.category?.id ?? b.categoryId;
+      const catName = b.category?.name ?? '未分類';
+      if (!groups.has(catId)) groups.set(catId, { id: catId, name: catName, boards: [] });
+      groups.get(catId)!.boards.push(b);
+    }
+    return Array.from(groups.values()).map((g) => ({
+      title: g.name,
+      value: `cat:${g.id}`,
+      key: `cat:${g.id}`,
+      selectable: true,
+      children: g.boards.map((b) => ({
+        title: b.name,
+        value: `board:${b.id}`,
+        key: `board:${b.id}`,
+      })),
+    }));
+  }, [boardsData]);
 
   const queryParams = new URLSearchParams();
   queryParams.set('page', String(page));
   queryParams.set('limit', '20');
   if (search) queryParams.set('q', search);
+  if (scope?.startsWith('board:')) queryParams.set('boardId', scope.slice(6));
+  else if (scope?.startsWith('cat:')) queryParams.set('categoryId', scope.slice(4));
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-posts', page, search],
+    queryKey: ['admin-posts', page, search, scope],
     queryFn: () => adminApiFetch<PostsResponse>(`/admin/posts?${queryParams}`),
   });
 
@@ -72,8 +121,23 @@ export default function PostsPage() {
         <div>
           <div style={{ fontWeight: 500 }}>{title}</div>
           <div style={{ fontSize: 12, color: '#999' }}>
-            {record.author.nickname} · {record.board.name}
+            {record.author.nickname}
           </div>
+        </div>
+      ),
+    },
+    {
+      title: '區塊 / 看板',
+      key: 'board',
+      width: 200,
+      render: (_, record) => (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {record.board.category && (
+            <Tag color="blue" style={{ marginInlineEnd: 0, width: 'fit-content' }}>
+              {record.board.category.name}
+            </Tag>
+          )}
+          <span style={{ fontSize: 12 }}>{record.board.name}</span>
         </div>
       ),
     },
@@ -117,15 +181,40 @@ export default function PostsPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 'bold' }}>文章管理</h2>
-        <Input.Search
-          placeholder="搜尋標題 / 作者"
-          style={{ width: 250, maxWidth: '100%' }}
-          onSearch={(v) => { setSearch(v); setPage(1); }}
-          allowClear
-          enterButton
-        />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+          marginBottom: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <h2 style={{ fontSize: 20, fontWeight: 'bold', margin: 0 }}>文章管理</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <TreeSelect
+            placeholder="全部區塊 / 看板"
+            style={{ width: 240 }}
+            value={scope}
+            onChange={(v) => {
+              setScope(v);
+              setPage(1);
+            }}
+            treeData={treeData}
+            allowClear
+            showSearch
+            treeDefaultExpandAll
+            treeNodeFilterProp="title"
+          />
+          <Input.Search
+            placeholder="搜尋標題 / 作者"
+            style={{ width: 250, maxWidth: '100%' }}
+            onSearch={(v) => { setSearch(v); setPage(1); }}
+            allowClear
+            enterButton
+          />
+        </div>
       </div>
 
       <Table
@@ -141,7 +230,7 @@ export default function PostsPage() {
           showTotal: (total) => `共 ${total} 篇文章`,
         }}
         size="middle"
-        scroll={{ x: 900 }}
+        scroll={{ x: 1100 }}
       />
 
       {/* 文章內容預覽 Drawer */}
@@ -156,7 +245,11 @@ export default function PostsPage() {
           <div>
             <div style={{ marginBottom: 16, fontSize: 13, color: '#999' }}>
               <div>作者：{previewPost.author.nickname}</div>
-              <div>看板：{previewPost.board.name}</div>
+              <div>
+                看板：
+                {previewPost.board.category ? `${previewPost.board.category.name} / ` : ''}
+                {previewPost.board.name}
+              </div>
               <div>時間：{new Date(previewPost.createdAt).toLocaleString('zh-TW')}</div>
               <div>瀏覽 {previewPost.viewCount} · 回覆 {previewPost.replyCount} · 推 {previewPost.pushCount}</div>
             </div>

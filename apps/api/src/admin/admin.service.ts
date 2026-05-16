@@ -226,12 +226,20 @@ export class AdminService {
   }
 
   // ===== 文章管理 =====
-  async getPosts(params: { page: number; limit: number; q?: string; boardId?: string; isAnnounce?: boolean }) {
-    const { page, limit, q, boardId, isAnnounce } = params;
+  async getPosts(params: {
+    page: number;
+    limit: number;
+    q?: string;
+    boardId?: string;
+    categoryId?: string;
+    isAnnounce?: boolean;
+  }) {
+    const { page, limit, q, boardId, categoryId, isAnnounce } = params;
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
     if (boardId) where.boardId = boardId;
+    else if (categoryId) where.board = { categoryId };
     if (isAnnounce !== undefined) where.isAnnounce = isAnnounce;
     if (q) {
       where.OR = [
@@ -258,7 +266,13 @@ export class AdminService {
           pushCount: true,
           createdAt: true,
           author: { select: { id: true, nickname: true } },
-          board: { select: { id: true, name: true } },
+          board: {
+            select: {
+              id: true,
+              name: true,
+              category: { select: { id: true, name: true } },
+            },
+          },
         },
       }),
       this.prisma.post.count({ where }),
