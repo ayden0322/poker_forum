@@ -1,7 +1,8 @@
-import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common';
+import { Controller, Get, Param, Query, ParseIntPipe, DefaultValuePipe, Logger } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { MLBStatsService } from './mlb-stats.service';
 import { PrismaService } from '../../common/prisma.service';
+import { TranslationService, TranslatableEntity } from '../../translation/translation.service';
 import { parseTransaction, ParsedTransaction } from './mlb-injury-dict';
 
 /**
@@ -11,9 +12,12 @@ import { parseTransaction, ParsedTransaction } from './mlb-injury-dict';
 @ApiTags('MLB')
 @Controller('mlb')
 export class MLBStatsController {
+  private readonly logger = new Logger(MLBStatsController.name);
+
   constructor(
     private mlbStats: MLBStatsService,
     private prisma: PrismaService,
+    private translation: TranslationService,
   ) {}
 
   // ============ 球員 ============
@@ -526,6 +530,42 @@ export class MLBStatsController {
         })
       : [];
     const playerMap = new Map(playerTranslations.map((t) => [t.apiId, t]));
+
+    // 找出尚未翻譯的球員（含投手＋打線），即時補翻避免主/客隊一邊有中文一邊沒有
+    const missingPlayers: TranslatableEntity[] = [];
+    for (const side of ['home', 'away'] as const) {
+      const mlbTeamId = preview.teams[side]?.id;
+      const collect = (p: any) => {
+        if (!p?.id || playerMap.has(p.id)) return;
+        if (missingPlayers.some((m) => m.apiId === p.id)) return;
+        missingPlayers.push({
+          entityType: 'player',
+          apiId: p.id,
+          nameEn: p.fullName,
+          sport: 'baseball',
+          extra: mlbTeamId ? { mlbTeamId } : undefined,
+        });
+      };
+      collect(preview.probablePitchers[side]);
+      for (const p of preview.lineups[side]) collect(p);
+    }
+
+    if (missingPlayers.length > 0) {
+      try {
+        await this.translation.translateBatch(missingPlayers, { triggeredBy: 'manual' });
+        // 重抓剛寫入的翻譯
+        const fresh = await this.prisma.translation.findMany({
+          where: {
+            entityType: 'player',
+            sport: 'baseball',
+            apiId: { in: missingPlayers.map((m) => m.apiId) },
+          },
+        });
+        for (const t of fresh) playerMap.set(t.apiId, t);
+      } catch (err) {
+        this.logger.warn(`preview 即時翻譯失敗（gamePk=${gamePk}）：${err}`);
+      }
+    }
 
     // 批次查球隊翻譯（透過 extra.mlbStatsTeamId）
     const allTeamTranslations = await this.prisma.translation.findMany({
