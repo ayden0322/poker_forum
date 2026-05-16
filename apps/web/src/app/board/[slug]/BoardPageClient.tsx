@@ -16,6 +16,8 @@ import { NBASidePanel } from '@/components/sports/nba/NBASidePanel';
 import { NBAGamesWidget } from '@/components/sports/nba/NBAGamesWidget';
 import { BaseballGamesWidget } from '@/components/sports/BaseballGamesWidget';
 import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
+import { CpblStandingsWidget } from '@/components/sports/cpbl/CpblStandingsWidget';
+import { CpblInjuriesWidget } from '@/components/sports/cpbl/CpblInjuriesWidget';
 import { WorldCupActivityStrip } from '@/components/sports/world-cup/WorldCupActivityStrip';
 import { WorldCupMatchThreadShelf } from '@/components/sports/world-cup/WorldCupMatchThreadShelf';
 import { WorldCupTagFilter } from '@/components/sports/world-cup/WorldCupTagFilter';
@@ -335,6 +337,13 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         <>
           {/* 視覺與 MLB 同步：橫向滾動賽事卡 + Tab 整合的排行榜/動態面板 */}
           <BaseballGamesWidget league={board.slug} />
+          {/* CPBL 專屬：戰績排行榜 + 傷兵動態（其他聯賽資料源稀缺，先不顯示） */}
+          {board.slug === 'cpbl' && (
+            <>
+              <CpblStandingsWidget />
+              <CpblInjuriesWidget />
+            </>
+          )}
           <BaseballStatsPanel league={board.slug} />
         </>
       ) : board.slug === 'nba' ? (

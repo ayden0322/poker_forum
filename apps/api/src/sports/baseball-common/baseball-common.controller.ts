@@ -81,6 +81,27 @@ export class BaseballCommonController {
     return { success: false, data: [], meta: { message: '不支援的聯盟' } };
   }
 
+  @Get(':league/injuries')
+  @ApiOperation({
+    summary: '聯盟傷兵 / 回歸 / 球員異動（目前 CPBL 由官方新聞分類）',
+  })
+  async getInjuries(
+    @Param('league') league: string,
+    @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
+  ) {
+    if (league === 'cpbl') {
+      const data = await this.cpblStats.getInjuries(limit);
+      const summary = {
+        total: data.length,
+        injuries: data.filter((d) => d.type === 'injury').length,
+        activations: data.filter((d) => d.type === 'activation').length,
+        transactions: data.filter((d) => d.type === 'transaction').length,
+      };
+      return { success: true, data, summary };
+    }
+    return { success: false, data: [], summary: { total: 0, injuries: 0, activations: 0, transactions: 0 } };
+  }
+
   @Get(':league/news')
   @ApiOperation({ summary: '聯盟最新公告動態（cpbl=cpbl.com.tw/news、npb=npb.jp/news）' })
   async getNews(

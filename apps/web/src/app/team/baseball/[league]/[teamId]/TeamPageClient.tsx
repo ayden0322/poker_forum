@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useState } from 'react';
 import { BaseballInjuriesWidget } from '@/components/sports/BaseballInjuriesWidget';
+import { CpblInjuriesWidget } from '@/components/sports/cpbl/CpblInjuriesWidget';
 
 const LEAGUE_NAMES: Record<string, string> = {
   cpbl: '中華職棒',
@@ -319,7 +320,11 @@ export default function TeamPageClient({ league, teamId }: { league: string; tea
         {/* 傷兵 */}
         {activeTab === 'injuries' && (
           <div className="p-3">
-            <BaseballInjuriesWidget league={league} teamId={teamId} />
+            {league === 'cpbl' ? (
+              <CpblInjuriesWidget defaultExpanded />
+            ) : (
+              <BaseballInjuriesWidget league={league} teamId={teamId} />
+            )}
           </div>
         )}
       </div>

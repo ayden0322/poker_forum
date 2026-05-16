@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import CpblBoxScore from '@/components/sports/CpblBoxScore';
 import { BaseballHeadToHeadBlock } from '@/components/sports/BaseballHeadToHeadBlock';
+import { CpblStartingLineupCard } from '@/components/sports/cpbl/CpblStartingLineupCard';
 
 const LEAGUE_NAMES: Record<string, string> = {
   cpbl: '中華職棒',
@@ -292,8 +293,15 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
         />
       )}
 
-      {/* CPBL 官方 Box Score（僅 CPBL 聯賽顯示） */}
-      {league === 'cpbl' && <CpblBoxScoreSection game={game} />}
+      {/* CPBL 官方 Box Score + 先發名單（僅 CPBL 聯賽顯示） */}
+      {league === 'cpbl' && (
+        <CpblBoxScoreSection
+          game={game}
+          isFinished={isFinished}
+          awayName={teamDisplay(game.teams.away)}
+          homeName={teamDisplay(game.teams.home)}
+        />
+      )}
 
       <div className="text-xs text-gray-400 text-center mt-6 pb-4">
         資料來源：API-Sports · {leagueName}
@@ -304,10 +312,20 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
 }
 
 /**
- * CPBL 官方 Box Score 區塊
+ * CPBL 官方 Box Score + 先發名單區塊
  * 自動從 CPBL 官方賽程中找到對應的 GameSno，然後載入 Box Score
  */
-function CpblBoxScoreSection({ game }: { game: GameData }) {
+function CpblBoxScoreSection({
+  game,
+  isFinished,
+  awayName,
+  homeName,
+}: {
+  game: GameData;
+  isFinished: boolean;
+  awayName: string;
+  homeName: string;
+}) {
   // 從比賽日期計算月份，查 CPBL 官方賽程
   const gameDate = game.date; // YYYY-MM-DD
   const [yearStr, monthStr] = gameDate?.split('-') ?? [];
@@ -330,18 +348,28 @@ function CpblBoxScoreSection({ game }: { game: GameData }) {
   }
 
   return (
-    <div className="mt-6">
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-1 h-6 bg-red-600 rounded-full" />
-        <h2 className="text-lg font-bold text-gray-800">CPBL 官方 Box Score</h2>
-        <Link
-          href={`/match/baseball/cpbl/box/${gameSno}`}
-          className="text-xs text-blue-500 hover:text-blue-700 ml-auto"
-        >
-          獨立頁面 →
-        </Link>
+    <div className="mt-6 space-y-6">
+      {/* 先發名單（賽前 / 賽中皆顯示，比 Box Score 早一步可用） */}
+      <CpblStartingLineupCard
+        gameSno={gameSno}
+        awayName={awayName}
+        homeName={homeName}
+        isFinished={isFinished}
+      />
+
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-6 bg-red-600 rounded-full" />
+          <h2 className="text-lg font-bold text-gray-800">CPBL 官方 Box Score</h2>
+          <Link
+            href={`/match/baseball/cpbl/box/${gameSno}`}
+            className="text-xs text-blue-500 hover:text-blue-700 ml-auto"
+          >
+            獨立頁面 →
+          </Link>
+        </div>
+        <CpblBoxScore gameSno={gameSno} year={year} />
       </div>
-      <CpblBoxScore gameSno={gameSno} year={year} />
     </div>
   );
 }

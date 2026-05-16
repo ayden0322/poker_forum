@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import CpblBoxScore from '@/components/sports/CpblBoxScore';
+import { CpblStartingLineupCard } from '@/components/sports/cpbl/CpblStartingLineupCard';
 
 interface BoxScoreResponse {
   success: boolean;
@@ -115,6 +116,14 @@ export default function CpblBoxPageClient({ gameSno }: { gameSno: number }) {
           </div>
         </div>
       </div>
+
+      {/* 先發名單（賽前 + 賽中皆顯示） */}
+      <CpblStartingLineupCard
+        gameSno={gameSno}
+        awayName={detail?.visitingTeam ?? '客隊'}
+        homeName={detail?.homeTeam ?? '主隊'}
+        isFinished={isFinished}
+      />
 
       {/* Box Score 元件 */}
       <CpblBoxScore gameSno={gameSno} />

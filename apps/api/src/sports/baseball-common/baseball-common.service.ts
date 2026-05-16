@@ -182,10 +182,30 @@ export class BaseballCommonService {
 
     const cacheKey = `baseball:${league}:standings:${cfg.season}`;
     return this.cached(cacheKey, CACHE_TTL.STANDINGS, async () => {
-      return this.callApi('/standings', {
+      const raw = await this.callApi<any>('/standings', {
         league: cfg.leagueId,
         season: cfg.season,
       });
+      if (!raw) return null;
+
+      // ApiSports standings 是巢狀陣列：[[team1, team2, ...]]，先攤平蒐集隊伍 id
+      const flatRows: any[] = Array.isArray(raw)
+        ? (Array.isArray(raw[0]) ? (raw as any[][]).flat() : raw)
+        : [];
+      const teamIds = flatRows.map((r) => r?.team?.id).filter((id): id is number => typeof id === 'number');
+      const trMap = await this.getTeamTranslations(teamIds);
+
+      // 把 nameZhTw / shortName 附加到 team 上（保留原始結構，方便前端共用）
+      for (const row of flatRows) {
+        if (!row?.team) continue;
+        const tr = trMap.get(row.team.id);
+        if (tr) {
+          row.team.nameZhTw = tr.nameZhTw;
+          row.team.shortName = tr.shortName;
+        }
+      }
+
+      return raw;
     });
   }
 

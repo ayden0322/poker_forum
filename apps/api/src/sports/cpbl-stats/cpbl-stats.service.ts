@@ -932,6 +932,163 @@ export class CpblStatsService {
     return schedule.filter((g: any) => g.date === todayStr);
   }
 
+  // ============ 傷兵動態（從新聞分類）============
+
+  /**
+   * 從 CPBL 官網新聞篩選並分類「傷兵 / 回歸 / 異動」項目
+   *
+   * CPBL 沒有專屬傷兵 API，但官方新聞會張貼：
+   *   - 傷兵：受傷、不適、手術、登錄傷兵、註銷一軍、休養
+   *   - 回歸：歸隊、復出、登錄一軍、回到一軍、啟用
+   *   - 異動：合約讓渡、釋出、簽約、續約、引退、退休、交易
+   *
+   * 回傳結構模仿 MLB injuries 端點，方便前端共用 UI pattern。
+   */
+  async getInjuries(limit = 30): Promise<CpblInjuryItem[]> {
+    const news = await this.getNews(Math.max(limit, 30));
+    if (!news) return [];
+
+    const items: CpblInjuryItem[] = [];
+    for (const n of news) {
+      const cls = classifyCpblNews(n.title);
+      if (!cls) continue; // 不屬於傷兵相關就跳過
+
+      const team = extractCpblTeam(n.title);
+      const player = extractCpblPlayer(n.title);
+
+      items.push({
+        type: cls.type,
+        date: n.date,
+        team,
+        player,
+        category: cls.label,
+        title: n.title,
+        url: n.url,
+      });
+    }
+
+    return items;
+  }
+
+  // ============ 先發名單（賽前 / 賽中）============
+
+  /**
+   * 取得單場賽前 / 賽中先發名單
+   *
+   * 策略：
+   *   1) 優先從 Box Score 抓（已開賽會有完整 batting/pitching 含 roleType='先發'）
+   *   2) Fallback 從當月 Schedule 抓 HomePitcherAcnt / VisitingPitcherAcnt 與名稱
+   *
+   * 回傳結構模仿 MLB preview 端點。
+   */
+  async getLineup(gameSno: number, year?: number, kindCode = 'A'): Promise<CpblLineupResult | null> {
+    const targetYear = year ?? new Date().getFullYear();
+    const box = await this.getBoxScore(gameSno, targetYear, kindCode);
+
+    // 已開賽 → 用 Box Score 的 batting / pitching 還原先發名單
+    if (box?.batting && box.batting.length > 0) {
+      // CPBL 的 battingOrder 偶爾是 0；用 order(Seq) 當第二順位
+      const orderKey = (b: any) => b.battingOrder || b.order || 999;
+      const visitingStarters = box.batting
+        .filter((b) => b.side === '1' && b.roleType === '先發')
+        .sort((a, b) => orderKey(a) - orderKey(b));
+      const homeStarters = box.batting
+        .filter((b) => b.side === '2' && b.roleType === '先發')
+        .sort((a, b) => orderKey(a) - orderKey(b));
+
+      // 先發投手：投球清單第一位通常是先發（多數情況），或用 detail 名稱比對
+      const pitchers = box.pitching ?? [];
+      const visitingPitcher =
+        pitchers.find((p) => p.name === box.gameDetail?.visitingStarter) ?? pitchers[0] ?? null;
+      const homePitcher =
+        pitchers.find((p) => p.name === box.gameDetail?.homeStarter) ??
+        pitchers.find((p) => p !== visitingPitcher) ?? null;
+
+      return {
+        gameSno,
+        year: targetYear,
+        kindCode,
+        status: 'live',
+        gameDetail: box.gameDetail,
+        probablePitchers: {
+          visiting: visitingPitcher
+            ? {
+                name: visitingPitcher.name,
+                acnt: visitingPitcher.acnt,
+                uniformNo: visitingPitcher.uniformNo,
+              }
+            : box.gameDetail?.visitingStarter
+            ? { name: box.gameDetail.visitingStarter, acnt: '', uniformNo: '' }
+            : null,
+          home: homePitcher
+            ? {
+                name: homePitcher.name,
+                acnt: homePitcher.acnt,
+                uniformNo: homePitcher.uniformNo,
+              }
+            : box.gameDetail?.homeStarter
+            ? { name: box.gameDetail.homeStarter, acnt: '', uniformNo: '' }
+            : null,
+        },
+        lineups: {
+          visiting: visitingStarters.map((b, idx) => ({
+            name: b.name,
+            acnt: b.acnt,
+            uniformNo: b.uniformNo,
+            order: b.battingOrder || idx + 1,
+          })),
+          home: homeStarters.map((b, idx) => ({
+            name: b.name,
+            acnt: b.acnt,
+            uniformNo: b.uniformNo,
+            order: b.battingOrder || idx + 1,
+          })),
+        },
+        lineupsPosted: {
+          visiting: visitingStarters.length > 0,
+          home: homeStarters.length > 0,
+        },
+      };
+    }
+
+    // 未開賽 → 從 Schedule 抓先發投手（名字與 acnt）
+    // 嘗試從當月與下個月各撈一次，避免月底跨月
+    const tw = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Taipei' }));
+    const months = [tw.getMonth() + 1, tw.getMonth() + 2];
+    for (const month of months) {
+      if (month < 1 || month > 12) continue;
+      const schedule = await this.getSchedule(targetYear, month, kindCode);
+      const game = schedule?.find((g: any) => g.gameSno === gameSno);
+      if (!game) continue;
+
+      return {
+        gameSno,
+        year: targetYear,
+        kindCode,
+        status: 'scheduled',
+        gameDetail: null,
+        probablePitchers: {
+          visiting: game.awayStarterAcnt
+            ? { name: '', acnt: game.awayStarterAcnt, uniformNo: '' }
+            : null,
+          home: game.homeStarterAcnt
+            ? { name: '', acnt: game.homeStarterAcnt, uniformNo: '' }
+            : null,
+        },
+        lineups: { visiting: [], home: [] },
+        lineupsPosted: { visiting: false, home: false },
+        scheduledDate: game.date,
+        scheduledTime: game.time,
+        homeTeam: game.homeTeam,
+        awayTeam: game.awayTeam,
+        homeTeamCode: game.homeTeamCode,
+        awayTeamCode: game.awayTeamCode,
+      };
+    }
+
+    return null;
+  }
+
   // ============ 資料正規化 ============
 
   private normalizeGameDetail(raw: any): CpblGameDetail | null {
@@ -1311,4 +1468,95 @@ export interface CpblNewsItem {
   date: string;
   title: string;
   url: string;
+}
+
+// ============ 傷兵動態（從新聞分類）============
+
+export type CpblInjuryType = 'injury' | 'activation' | 'transaction';
+
+export interface CpblInjuryItem {
+  type: CpblInjuryType;
+  date: string;
+  team: string | null;
+  player: string | null;
+  category: string;
+  title: string;
+  url: string;
+}
+
+// ============ 先發名單 ============
+
+export interface CpblLineupPlayer {
+  name: string;
+  acnt: string;
+  uniformNo: string;
+  order?: number;
+}
+
+export interface CpblLineupResult {
+  gameSno: number;
+  year: number;
+  kindCode: string;
+  status: 'scheduled' | 'live';
+  gameDetail: CpblGameDetail | null;
+  probablePitchers: {
+    visiting: CpblLineupPlayer | null;
+    home: CpblLineupPlayer | null;
+  };
+  lineups: {
+    visiting: CpblLineupPlayer[];
+    home: CpblLineupPlayer[];
+  };
+  lineupsPosted: {
+    visiting: boolean;
+    home: boolean;
+  };
+  scheduledDate?: string;
+  scheduledTime?: string;
+  homeTeam?: string;
+  awayTeam?: string;
+  homeTeamCode?: string | null;
+  awayTeamCode?: string | null;
+}
+
+// ============ 傷兵 / 新聞分類輔助函式 ============
+
+const CPBL_TEAM_KEYWORDS = [
+  '中信兄弟',
+  '富邦悍將',
+  '味全龍',
+  '樂天桃猿',
+  '統一獅',
+  '統一7-ELEVEn獅',
+  '台鋼雄鷹',
+] as const;
+
+function extractCpblTeam(title: string): string | null {
+  for (const t of CPBL_TEAM_KEYWORDS) {
+    if (title.includes(t)) {
+      // 統一7-ELEVEn獅 → 顯示為「統一獅」
+      return t === '統一7-ELEVEn獅' ? '統一獅' : t;
+    }
+  }
+  return null;
+}
+
+function extractCpblPlayer(title: string): string | null {
+  // 常見格式：「郭嚴文選手合約讓渡公告」「李育朋選手懲處公告」
+  const m = title.match(/([一-龥··]{2,5})選手/);
+  if (m) return m[1];
+  return null;
+}
+
+function classifyCpblNews(title: string): { type: CpblInjuryType; label: string } | null {
+  if (/(受傷|不適|手術|休養|缺陣|登錄傷兵|註銷一軍|二軍調整)/.test(title)) {
+    return { type: 'injury', label: '傷兵' };
+  }
+  if (/(歸隊|復出|登錄一軍|回到一軍|啟用|回歸|重返一軍)/.test(title)) {
+    return { type: 'activation', label: '回歸' };
+  }
+  if (/(讓渡|釋出|簽約|續約|加盟|引退|退休|交易|懲處)/.test(title)) {
+    return { type: 'transaction', label: '異動' };
+  }
+  return null;
 }

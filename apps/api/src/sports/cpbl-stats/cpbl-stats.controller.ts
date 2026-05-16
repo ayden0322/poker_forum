@@ -142,6 +142,49 @@ export class CpblStatsController {
     return { success: data !== null, data: data ?? [] };
   }
 
+  // ============ 先發名單（賽前 / 賽中）============
+
+  @Get('games/:gameSno/lineup')
+  @ApiOperation({
+    summary: '取得單場 CPBL 先發名單（先發投手 + 先發打線）',
+    description: '已開賽 → 從 Box Score 抓；未開賽 → 從 Schedule 抓先發投手',
+  })
+  @ApiParam({ name: 'gameSno', description: 'CPBL 比賽序號' })
+  @ApiQuery({ name: 'year', required: false })
+  @ApiQuery({ name: 'kindCode', required: false })
+  async getLineup(
+    @Param('gameSno', ParseIntPipe) gameSno: number,
+    @Query('year', new DefaultValuePipe(new Date().getFullYear()), ParseIntPipe) year: number,
+    @Query('kindCode', new DefaultValuePipe('A')) kindCode: string,
+  ) {
+    const data = await this.cpblStats.getLineup(gameSno, year, kindCode);
+    if (!data) {
+      return { success: false, message: `找不到先發名單（GameSno=${gameSno}）`, data: null };
+    }
+    return { success: true, data };
+  }
+
+  // ============ 傷兵動態 ============
+
+  @Get('injuries')
+  @ApiOperation({
+    summary: 'CPBL 傷兵 / 回歸 / 球員異動列表（由官方新聞分類）',
+    description: '從 cpbl.com.tw/news 抓最新公告並依關鍵字分類',
+  })
+  @ApiQuery({ name: 'limit', required: false })
+  async getInjuries(
+    @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
+  ) {
+    const data = await this.cpblStats.getInjuries(limit);
+    const summary = {
+      total: data.length,
+      injuries: data.filter((d) => d.type === 'injury').length,
+      activations: data.filter((d) => d.type === 'activation').length,
+      transactions: data.filter((d) => d.type === 'transaction').length,
+    };
+    return { success: true, data, summary };
+  }
+
   // ============ 診斷工具 ============
 
   @Get('debug/connectivity')
