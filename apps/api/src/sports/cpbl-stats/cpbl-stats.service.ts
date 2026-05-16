@@ -1061,6 +1061,26 @@ export class CpblStatsService {
       const game = schedule?.find((g: any) => g.gameSno === gameSno);
       if (!game) continue;
 
+      // CPBL 賽前 schedule 常常 PitcherName 為空字串，只有 acnt
+      // 平行打 getPlayer(acnt) 拿球員姓名與背號（getPlayer 有 10 分鐘快取）
+      const [visitingPlayer, homePlayer] = await Promise.all([
+        game.awayStarterAcnt && !game.awayStarterName
+          ? this.getPlayer(game.awayStarterAcnt, kindCode).catch(() => null)
+          : Promise.resolve(null),
+        game.homeStarterAcnt && !game.homeStarterName
+          ? this.getPlayer(game.homeStarterAcnt, kindCode).catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const buildPitcher = (acnt: string | null, fallbackName: string | null, lookup: any): CpblLineupPlayer | null => {
+        if (!acnt) return null;
+        return {
+          name: fallbackName || lookup?.profile?.name || '',
+          acnt,
+          uniformNo: lookup?.profile?.uniformNo || '',
+        };
+      };
+
       return {
         gameSno,
         year: targetYear,
@@ -1068,12 +1088,8 @@ export class CpblStatsService {
         status: 'scheduled',
         gameDetail: null,
         probablePitchers: {
-          visiting: game.awayStarterAcnt
-            ? { name: '', acnt: game.awayStarterAcnt, uniformNo: '' }
-            : null,
-          home: game.homeStarterAcnt
-            ? { name: '', acnt: game.homeStarterAcnt, uniformNo: '' }
-            : null,
+          visiting: buildPitcher(game.awayStarterAcnt, game.awayStarterName, visitingPlayer),
+          home: buildPitcher(game.homeStarterAcnt, game.homeStarterName, homePlayer),
         },
         lineups: { visiting: [], home: [] },
         lineupsPosted: { visiting: false, home: false },
@@ -1265,6 +1281,9 @@ export class CpblStatsService {
       // 先發投手帳號（用於後續查找）
       homeStarterAcnt: raw.HomePitcherAcnt ?? null,
       awayStarterAcnt: raw.VisitingPitcherAcnt ?? null,
+      // 先發投手姓名（CPBL 官方賽前通常為空字串，賽後才回填）
+      homeStarterName: raw.HomePitcherName ?? null,
+      awayStarterName: raw.VisitingPitcherName ?? null,
     };
   }
 
