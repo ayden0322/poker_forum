@@ -43,10 +43,13 @@ interface PreviewResponse {
   } | null;
 }
 
-/** 取得球員顯示名 */
+/** 取得球員顯示名：中文（英文）；無中文則只顯示英文 */
 function name(p: Player | null | undefined): string {
   if (!p) return '未公布';
-  return p.shortName ?? p.nameZhTw ?? p.fullName ?? '未公布';
+  const en = p.fullName ?? p.shortName ?? '';
+  const zh = p.nameZhTw;
+  if (zh && en && zh !== en) return `${zh}（${en}）`;
+  return zh ?? en ?? '未公布';
 }
 
 /** 位置縮寫中文化 */
