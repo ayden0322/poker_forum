@@ -78,14 +78,50 @@ export class UsersService {
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, passwordHash: true },
+      select: {
+        id: true,
+        nickname: true,
+        passwordHash: true,
+        nicknameChangedAt: true,
+      },
     });
     if (!user) throw new NotFoundException('用戶不存在');
 
-    const data: { avatar?: string; passwordHash?: string } = {};
+    const data: {
+      avatar?: string;
+      passwordHash?: string;
+      nickname?: string;
+      nicknameChangedAt?: Date;
+    } = {};
 
     if (dto.avatar !== undefined) {
       data.avatar = dto.avatar;
+    }
+
+    if (dto.nickname !== undefined) {
+      const newNickname = dto.nickname.trim();
+      if (!newNickname) {
+        throw new BadRequestException('暱稱不能為空');
+      }
+      if (newNickname !== user.nickname) {
+        if (user.nicknameChangedAt) {
+          const cooldownMs = 7 * 24 * 60 * 60 * 1000;
+          const nextAllowedAt = user.nicknameChangedAt.getTime() + cooldownMs;
+          if (Date.now() < nextAllowedAt) {
+            const daysLeft = Math.ceil((nextAllowedAt - Date.now()) / (24 * 60 * 60 * 1000));
+            throw new BadRequestException(`暱稱每 7 天可更改一次，請於 ${daysLeft} 天後再試`);
+          }
+        }
+        const existing = await this.prisma.user.findUnique({
+          where: { nickname: newNickname },
+          select: { id: true },
+        });
+        if (existing && existing.id !== userId) {
+          throw new BadRequestException('此暱稱已被使用');
+        }
+        data.nickname = newNickname;
+        data.nicknameChangedAt = new Date();
+      }
     }
 
     if (dto.newPassword) {
@@ -103,7 +139,14 @@ export class UsersService {
     return this.prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, nickname: true, avatar: true, level: true, role: true },
+      select: {
+        id: true,
+        nickname: true,
+        avatar: true,
+        level: true,
+        role: true,
+        nicknameChangedAt: true,
+      },
     });
   }
 

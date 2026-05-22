@@ -12,6 +12,7 @@ interface AuthUser {
   phone?: string | null;
   phoneVerified?: boolean;
   phoneVerificationBypass?: boolean;
+  nicknameChangedAt?: string | null;
 }
 
 interface AuthContextValue {

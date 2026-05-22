@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api';
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const NICKNAME_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
 function maskPhone(phone?: string | null): string {
   if (!phone) return '—';
@@ -26,6 +27,10 @@ export default function SettingsPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [nicknameEditing, setNicknameEditing] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [nicknameError, setNicknameError] = useState('');
+  const [nicknameSaving, setNicknameSaving] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -40,6 +45,61 @@ export default function SettingsPage() {
   if (authLoading || !user) {
     return <div className="text-center py-20 text-gray-400">載入中...</div>;
   }
+
+  const nicknameChangedAt = user.nicknameChangedAt ? new Date(user.nicknameChangedAt) : null;
+  const nextNicknameChangeAt = nicknameChangedAt
+    ? new Date(nicknameChangedAt.getTime() + NICKNAME_COOLDOWN_MS)
+    : null;
+  const nicknameCooldownActive = !!nextNicknameChangeAt && nextNicknameChangeAt.getTime() > Date.now();
+  const nicknameDaysLeft = nicknameCooldownActive && nextNicknameChangeAt
+    ? Math.ceil((nextNicknameChangeAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    : 0;
+
+  const startEditNickname = () => {
+    setNicknameInput(user.nickname);
+    setNicknameError('');
+    setNicknameEditing(true);
+  };
+
+  const cancelEditNickname = () => {
+    setNicknameEditing(false);
+    setNicknameInput('');
+    setNicknameError('');
+  };
+
+  const handleSaveNickname = async () => {
+    const trimmed = nicknameInput.trim();
+    setNicknameError('');
+    if (!trimmed) {
+      setNicknameError('暱稱不能為空');
+      return;
+    }
+    if (trimmed.length > 8) {
+      setNicknameError('暱稱最多 8 個字元');
+      return;
+    }
+    if (trimmed === user.nickname) {
+      cancelEditNickname();
+      return;
+    }
+
+    setNicknameSaving(true);
+    try {
+      await apiFetch('/users/me', {
+        method: 'PATCH',
+        token: accessToken ?? undefined,
+        body: JSON.stringify({ nickname: trimmed }),
+      });
+      await refreshMe();
+      setNicknameEditing(false);
+      setNicknameInput('');
+      setMessage('暱稱已更新');
+    } catch (err) {
+      setNicknameError(err instanceof Error ? err.message : '暱稱更新失敗');
+    } finally {
+      setNicknameSaving(false);
+    }
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -132,10 +192,64 @@ export default function SettingsPage() {
         <div className="mb-6 pb-6 border-b border-gray-100">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">帳號資訊</h2>
           <div className="space-y-2 text-sm">
-            <div className="flex">
-              <span className="w-20 text-gray-500">暱稱</span>
-              <span className="font-medium text-gray-900">{user.nickname}</span>
-              <span className="ml-2 text-xs text-gray-400">（不可更改）</span>
+            <div>
+              <div className="flex items-center">
+                <span className="w-20 text-gray-500 shrink-0">暱稱</span>
+                {nicknameEditing ? (
+                  <div className="flex flex-1 items-center gap-2">
+                    <input
+                      type="text"
+                      value={nicknameInput}
+                      onChange={(e) => setNicknameInput(e.target.value)}
+                      maxLength={8}
+                      placeholder="1-8 字"
+                      className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      disabled={nicknameSaving}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveNickname}
+                      disabled={nicknameSaving}
+                      className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {nicknameSaving ? '儲存中...' : '儲存'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={cancelEditNickname}
+                      disabled={nicknameSaving}
+                      className="px-3 py-1 text-xs text-gray-600 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="font-medium text-gray-900">{user.nickname}</span>
+                    {nicknameCooldownActive ? (
+                      <span className="ml-2 text-xs text-gray-400">
+                        （{nicknameDaysLeft} 天後可再次更改）
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={startEditNickname}
+                        className="ml-auto text-xs text-blue-600 hover:underline"
+                      >
+                        更改暱稱
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+              {nicknameEditing && (
+                <p className="ml-20 mt-1 text-xs text-gray-400">
+                  暱稱每 7 天可更改一次，最多 8 個字元
+                </p>
+              )}
+              {nicknameError && (
+                <p className="ml-20 mt-1 text-xs text-red-600">{nicknameError}</p>
+              )}
             </div>
             <div className="flex">
               <span className="w-20 text-gray-500">等級</span>
