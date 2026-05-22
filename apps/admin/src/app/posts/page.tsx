@@ -1,18 +1,64 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { Table, Button, Switch, Popconfirm, message, Drawer, TreeSelect, Tag } from 'antd';
-import { DeleteOutlined, EyeOutlined } from '@ant-design/icons';
-import { Input } from 'antd';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Table,
+  Button,
+  Switch,
+  Popconfirm,
+  message,
+  Drawer,
+  TreeSelect,
+  Tag,
+  Segmented,
+  Input,
+  Space,
+  Badge,
+  Dropdown,
+  Typography,
+  Tooltip,
+} from 'antd';
+import {
+  DeleteOutlined,
+  EyeOutlined,
+  EditOutlined,
+  CheckCircleOutlined,
+  SaveOutlined,
+  PushpinOutlined,
+  NotificationOutlined,
+  LockOutlined,
+  MoreOutlined,
+  FileTextOutlined,
+} from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
+import {
+  EditorProvider,
+  Editor,
+  Toolbar,
+  BtnBold,
+  BtnItalic,
+  BtnUnderline,
+  BtnStrikeThrough,
+  BtnBulletList,
+  BtnNumberedList,
+  BtnLink,
+  BtnClearFormatting,
+  BtnUndo,
+  BtnRedo,
+  HtmlButton,
+  Separator,
+} from 'react-simple-wysiwyg';
 
 import { adminApiFetch } from '@/lib/api';
+
+type PostStatus = 'DRAFT' | 'PUBLISHED';
 
 interface PostItem {
   id: string;
   title: string;
   content: string;
+  status: PostStatus;
   isPinned: boolean;
   isLocked: boolean;
   isAnnounce: boolean;
@@ -43,15 +89,91 @@ interface BoardsResponse {
   data: BoardItem[];
 }
 
-// TreeSelect 的 value 用前綴區分類別：cat:<id> / board:<id>
 type ScopeValue = string | undefined;
+type StatusFilter = 'ALL' | PostStatus;
+
+// 從外部網站貼進編輯器時，清掉不必要的 inline style / class / 廣告連結
+// 後端 SanitizeRichHtml 已做最終把關，這層只是 UX 改善（編輯時看到的就是乾淨的）
+const ALLOWED_TAGS = new Set([
+  'P', 'BR', 'STRONG', 'EM', 'U', 'S', 'DEL', 'B', 'I',
+  'H2', 'H3', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'PRE', 'CODE',
+  'A', 'IMG', 'HR', 'SPAN', 'DIV',
+]);
+const ALLOWED_ATTRS = new Set(['href', 'src', 'alt', 'target', 'rel']);
+
+function sanitizePastedHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const walk = (node: Element) => {
+    // 不在白名單的 tag → 用 span 取代（保留內文）
+    if (!ALLOWED_TAGS.has(node.tagName)) {
+      const replacement = doc.createElement('span');
+      replacement.innerHTML = node.innerHTML;
+      node.replaceWith(replacement);
+      return;
+    }
+    // 移除非白名單屬性（含 class / style / data-* / id 等）
+    Array.from(node.attributes).forEach((attr) => {
+      if (!ALLOWED_ATTRS.has(attr.name.toLowerCase())) {
+        node.removeAttribute(attr.name);
+      }
+    });
+    // 連結強制加 rel="noopener noreferrer"
+    if (node.tagName === 'A' && node.getAttribute('href')) {
+      node.setAttribute('rel', 'noopener noreferrer');
+      node.setAttribute('target', '_blank');
+    }
+    Array.from(node.children).forEach((child) => walk(child as Element));
+  };
+  Array.from(doc.body.children).forEach((child) => walk(child as Element));
+  return doc.body.innerHTML;
+}
+
+function handleEditorPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+  const html = e.clipboardData.getData('text/html');
+  if (!html) return; // 純文字直接讓瀏覽器處理
+  e.preventDefault();
+  const cleaned = sanitizePastedHtml(html);
+  // execCommand 仍是 contentEditable 場景下最相容的 insertHTML 做法
+  document.execCommand('insertHTML', false, cleaned);
+}
+
+// 將相對時間轉成人話（審稿時看「3 分鐘前」比看日期直覺）
+function formatRelativeTime(iso: string): string {
+  const date = new Date(iso);
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return '剛剛';
+  if (diffMin < 60) return `${diffMin} 分鐘前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} 小時前`;
+  const diffDay = Math.floor(diffHour / 24);
+  if (diffDay < 7) return `${diffDay} 天前`;
+  return date.toLocaleDateString('zh-TW');
+}
 
 export default function PostsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [scope, setScope] = useState<ScopeValue>(undefined);
-  const [previewPost, setPreviewPost] = useState<PostItem | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('DRAFT');
+
+  // 預覽 / 編輯狀態
+  const [selectedPost, setSelectedPost] = useState<PostItem | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editContent, setEditContent] = useState('');
+
+  // 開啟 drawer 時，DRAFT 預設進入編輯模式；PUBLISHED 預設預覽
+  useEffect(() => {
+    if (selectedPost) {
+      setEditTitle(selectedPost.title);
+      setEditContent(selectedPost.content);
+      setEditMode(selectedPost.status === 'DRAFT');
+    } else {
+      setEditMode(false);
+    }
+  }, [selectedPost]);
 
   const { data: boardsData } = useQuery({
     queryKey: ['admin-boards-for-posts'],
@@ -87,134 +209,320 @@ export default function PostsPage() {
   if (search) queryParams.set('q', search);
   if (scope?.startsWith('board:')) queryParams.set('boardId', scope.slice(6));
   else if (scope?.startsWith('cat:')) queryParams.set('categoryId', scope.slice(4));
+  if (statusFilter !== 'ALL') queryParams.set('status', statusFilter);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-posts', page, search, scope],
+    queryKey: ['admin-posts', page, search, scope, statusFilter],
     queryFn: () => adminApiFetch<PostsResponse>(`/admin/posts?${queryParams}`),
   });
 
+  // 給草稿列表用：抓 DRAFT 總數，當作 badge 顯示
+  const { data: draftCountData } = useQuery({
+    queryKey: ['admin-posts-draft-count'],
+    queryFn: () =>
+      adminApiFetch<PostsResponse>('/admin/posts?status=DRAFT&page=1&limit=1'),
+    refetchInterval: 60_000,
+  });
+  const draftCount = draftCountData?.data.total ?? 0;
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, boolean> }) =>
-      adminApiFetch(`/admin/posts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+      adminApiFetch(`/admin/posts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
     },
     onError: (err: Error) => message.error(err.message),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { title?: string; content?: string; status?: PostStatus };
+    }) =>
+      adminApiFetch(`/admin/posts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, variables) => {
+      message.success(
+        variables.body.status === 'PUBLISHED' ? '已發布' : '已儲存',
+      );
+      queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-posts-draft-count'] });
+      setSelectedPost(null);
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => adminApiFetch(`/admin/posts/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) =>
+      adminApiFetch(`/admin/posts/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       message.success('刪除成功');
       queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-posts-draft-count'] });
     },
     onError: (err: Error) => message.error(err.message),
   });
 
   const columns: ColumnsType<PostItem> = [
     {
-      title: '標題',
-      dataIndex: 'title',
+      title: '文章',
       key: 'title',
-      ellipsis: true,
-      render: (title, record) => (
-        <div>
-          <div style={{ fontWeight: 500 }}>{title}</div>
-          <div style={{ fontSize: 12, color: '#999' }}>
-            {record.author.nickname}
+      render: (_, record) => {
+        const flags: React.ReactNode[] = [];
+        if (record.isPinned)
+          flags.push(
+            <Tooltip key="p" title="置頂">
+              <PushpinOutlined style={{ color: '#fa8c16' }} />
+            </Tooltip>,
+          );
+        if (record.isAnnounce)
+          flags.push(
+            <Tooltip key="a" title="公告">
+              <NotificationOutlined style={{ color: '#1677ff' }} />
+            </Tooltip>,
+          );
+        if (record.isLocked)
+          flags.push(
+            <Tooltip key="l" title="鎖定">
+              <LockOutlined style={{ color: '#999' }} />
+            </Tooltip>,
+          );
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {record.status === 'DRAFT' ? (
+                <Tag color="orange" style={{ marginInlineEnd: 0 }}>
+                  草稿
+                </Tag>
+              ) : (
+                <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                  已發布
+                </Tag>
+              )}
+              <Typography.Text
+                strong
+                style={{ fontSize: 14 }}
+                ellipsis={{ tooltip: record.title }}
+              >
+                {record.title}
+              </Typography.Text>
+              {flags.length > 0 && (
+                <span style={{ display: 'inline-flex', gap: 6, marginLeft: 4 }}>
+                  {flags}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: '#8c8c8c', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <span>{record.author.nickname}</span>
+              <span style={{ color: '#d9d9d9' }}>·</span>
+              {record.board.category && (
+                <>
+                  <span>{record.board.category.name} / {record.board.name}</span>
+                  <span style={{ color: '#d9d9d9' }}>·</span>
+                </>
+              )}
+              <Tooltip title={new Date(record.createdAt).toLocaleString('zh-TW')}>
+                <span>{formatRelativeTime(record.createdAt)}</span>
+              </Tooltip>
+              {record.status === 'PUBLISHED' && (
+                <>
+                  <span style={{ color: '#d9d9d9' }}>·</span>
+                  <span>
+                    瀏覽 {record.viewCount} · 回 {record.replyCount} · 推 {record.pushCount}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      ),
+        );
+      },
     },
     {
-      title: '區塊 / 看板',
-      key: 'board',
+      title: '操作',
+      key: 'actions',
       width: 200,
+      align: 'right' as const,
       render: (_, record) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {record.board.category && (
-            <Tag color="blue" style={{ marginInlineEnd: 0, width: 'fit-content' }}>
-              {record.board.category.name}
-            </Tag>
-          )}
-          <span style={{ fontSize: 12 }}>{record.board.name}</span>
-        </div>
-      ),
-    },
-    { title: '瀏覽', dataIndex: 'viewCount', key: 'viewCount', width: 70 },
-    { title: '回覆', dataIndex: 'replyCount', key: 'replyCount', width: 70 },
-    { title: '推', dataIndex: 'pushCount', key: 'pushCount', width: 60 },
-    {
-      title: '置頂', key: 'isPinned', width: 70,
-      render: (_, record) => (
-        <Switch size="small" checked={record.isPinned} onChange={(v) => toggleMutation.mutate({ id: record.id, body: { isPinned: v } })} />
-      ),
-    },
-    {
-      title: '公告', key: 'isAnnounce', width: 70,
-      render: (_, record) => (
-        <Switch size="small" checked={record.isAnnounce} onChange={(v) => toggleMutation.mutate({ id: record.id, body: { isAnnounce: v } })} />
-      ),
-    },
-    {
-      title: '鎖定', key: 'isLocked', width: 70,
-      render: (_, record) => (
-        <Switch size="small" checked={record.isLocked} onChange={(v) => toggleMutation.mutate({ id: record.id, body: { isLocked: v } })} />
-      ),
-    },
-    {
-      title: '時間', dataIndex: 'createdAt', key: 'createdAt', width: 110,
-      render: (d) => new Date(d).toLocaleDateString('zh-TW'),
-    },
-    {
-      title: '操作', key: 'actions', width: 140,
-      render: (_, record) => (
-        <span style={{ display: 'flex', gap: 4 }}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setPreviewPost(record)}>檢視</Button>
-          <Popconfirm title="確定要刪除此文章？" onConfirm={() => deleteMutation.mutate(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />}>刪除</Button>
-          </Popconfirm>
-        </span>
+        <Space size={4}>
+          <Button
+            size="small"
+            type={record.status === 'DRAFT' ? 'primary' : 'default'}
+            icon={record.status === 'DRAFT' ? <EditOutlined /> : <EyeOutlined />}
+            onClick={() => setSelectedPost(record)}
+          >
+            {record.status === 'DRAFT' ? '審稿' : '檢視'}
+          </Button>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'pin',
+                  label: record.isPinned ? '取消置頂' : '置頂',
+                  icon: <PushpinOutlined />,
+                  onClick: () =>
+                    toggleMutation.mutate({
+                      id: record.id,
+                      body: { isPinned: !record.isPinned },
+                    }),
+                },
+                {
+                  key: 'announce',
+                  label: record.isAnnounce ? '取消公告' : '設為公告',
+                  icon: <NotificationOutlined />,
+                  onClick: () =>
+                    toggleMutation.mutate({
+                      id: record.id,
+                      body: { isAnnounce: !record.isAnnounce },
+                    }),
+                },
+                {
+                  key: 'lock',
+                  label: record.isLocked ? '解除鎖定' : '鎖定回覆',
+                  icon: <LockOutlined />,
+                  onClick: () =>
+                    toggleMutation.mutate({
+                      id: record.id,
+                      body: { isLocked: !record.isLocked },
+                    }),
+                },
+                { type: 'divider' as const },
+                {
+                  key: 'delete',
+                  danger: true,
+                  label: (
+                    <Popconfirm
+                      title={
+                        record.status === 'DRAFT'
+                          ? '確定要刪除此草稿？'
+                          : '確定要刪除此文章？'
+                      }
+                      onConfirm={() => deleteMutation.mutate(record.id)}
+                    >
+                      <span style={{ display: 'block' }}>刪除</span>
+                    </Popconfirm>
+                  ),
+                  icon: <DeleteOutlined />,
+                },
+              ],
+            }}
+            trigger={['click']}
+          >
+            <Button size="small" icon={<MoreOutlined />} />
+          </Dropdown>
+        </Space>
       ),
     },
   ];
 
   return (
     <div>
+      {/* 頁首：標題 + 草稿提醒 */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           gap: 12,
-          marginBottom: 16,
+          marginBottom: 20,
           flexWrap: 'wrap',
         }}
       >
-        <h2 style={{ fontSize: 20, fontWeight: 'bold', margin: 0 }}>文章管理</h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <TreeSelect
-            placeholder="全部區塊 / 看板"
-            style={{ width: 240 }}
-            value={scope}
-            onChange={(v) => {
-              setScope(v);
-              setPage(1);
-            }}
-            treeData={treeData}
-            allowClear
-            showSearch
-            treeDefaultExpandAll
-            treeNodeFilterProp="title"
-          />
-          <Input.Search
-            placeholder="搜尋標題 / 作者"
-            style={{ width: 250, maxWidth: '100%' }}
-            onSearch={(v) => { setSearch(v); setPage(1); }}
-            allowClear
-            enterButton
-          />
+        <div>
+          <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0, lineHeight: 1.4 }}>
+            文章管理
+          </h2>
+          <div style={{ marginTop: 6, fontSize: 13, color: '#8c8c8c' }}>
+            {draftCount > 0 ? (
+              <>
+                <Badge status="warning" />
+                目前有 <b style={{ color: '#fa8c16' }}>{draftCount}</b> 篇草稿等待審稿
+              </>
+            ) : (
+              <>
+                <Badge status="success" />
+                所有 agent 產出的草稿都已審完
+              </>
+            )}
+          </div>
         </div>
+      </div>
+
+      {/* 工具列 */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          marginBottom: 16,
+          padding: 12,
+          background: '#fafafa',
+          borderRadius: 8,
+          border: '1px solid #f0f0f0',
+        }}
+      >
+        <Segmented<StatusFilter>
+          value={statusFilter}
+          onChange={(v) => {
+            setStatusFilter(v);
+            setPage(1);
+          }}
+          options={[
+            {
+              label: (
+                <span>
+                  待審稿
+                  {draftCount > 0 && (
+                    <Badge
+                      count={draftCount}
+                      size="small"
+                      style={{
+                        marginLeft: 6,
+                        backgroundColor: '#fa8c16',
+                      }}
+                    />
+                  )}
+                </span>
+              ),
+              value: 'DRAFT',
+            },
+            { label: '已發布', value: 'PUBLISHED' },
+            { label: '全部', value: 'ALL' },
+          ]}
+        />
+        <TreeSelect
+          placeholder="全部區塊 / 看板"
+          style={{ width: 240 }}
+          value={scope}
+          onChange={(v) => {
+            setScope(v);
+            setPage(1);
+          }}
+          treeData={treeData}
+          allowClear
+          showSearch
+          treeDefaultExpandAll
+          treeNodeFilterProp="title"
+        />
+        <Input.Search
+          placeholder="搜尋標題 / 作者"
+          style={{ width: 250, maxWidth: '100%' }}
+          onSearch={(v) => {
+            setSearch(v);
+            setPage(1);
+          }}
+          allowClear
+          enterButton
+        />
       </div>
 
       <Table
@@ -222,40 +530,276 @@ export default function PostsPage() {
         dataSource={data?.data.items}
         rowKey="id"
         loading={isLoading}
+        locale={{
+          emptyText: (
+            <div style={{ padding: '48px 0', textAlign: 'center' }}>
+              <FileTextOutlined style={{ fontSize: 32, color: '#d9d9d9' }} />
+              <div style={{ marginTop: 12, color: '#8c8c8c' }}>
+                {statusFilter === 'DRAFT'
+                  ? '目前沒有待審稿件，等 agent 產出新文章'
+                  : statusFilter === 'PUBLISHED'
+                  ? '目前沒有已發布文章'
+                  : '沒有符合條件的文章'}
+              </div>
+            </div>
+          ),
+        }}
         pagination={{
           current: page,
           pageSize: 20,
           total: data?.data.total ?? 0,
           onChange: setPage,
-          showTotal: (total) => `共 ${total} 篇文章`,
+          showTotal: (total) => `共 ${total} 篇`,
+          showSizeChanger: false,
         }}
         size="middle"
-        scroll={{ x: 1100 }}
+        rowClassName={(record) =>
+          record.status === 'DRAFT' ? 'post-row-draft' : ''
+        }
       />
 
-      {/* 文章內容預覽 Drawer */}
+      {/* 給草稿列加微底色，視覺辨識「這需要你處理」 */}
+      <style>{`
+        .post-row-draft > td {
+          background-color: #fff7e6 !important;
+        }
+        .post-row-draft:hover > td {
+          background-color: #ffe7ba !important;
+        }
+      `}</style>
+
+      {/* 預覽 / 編輯 Drawer */}
       <Drawer
-        title={previewPost?.title}
-        open={!!previewPost}
-        onClose={() => setPreviewPost(null)}
-        width={520}
-        styles={{ wrapper: { maxWidth: '100vw' } }}
-      >
-        {previewPost && (
-          <div>
-            <div style={{ marginBottom: 16, fontSize: 13, color: '#999' }}>
-              <div>作者：{previewPost.author.nickname}</div>
-              <div>
-                看板：
-                {previewPost.board.category ? `${previewPost.board.category.name} / ` : ''}
-                {previewPost.board.name}
+        title={
+          <Space>
+            {selectedPost?.status === 'DRAFT' ? (
+              <Tag color="orange">草稿</Tag>
+            ) : (
+              <Tag color="green">已發布</Tag>
+            )}
+            <span>{editMode ? '編輯文章' : '檢視文章'}</span>
+          </Space>
+        }
+        open={!!selectedPost}
+        onClose={() => setSelectedPost(null)}
+        width={820}
+        styles={{ wrapper: { maxWidth: '100vw' }, body: { paddingTop: 16 } }}
+        extra={
+          selectedPost && !editMode ? (
+            <Button icon={<EditOutlined />} onClick={() => setEditMode(true)}>
+              編輯
+            </Button>
+          ) : selectedPost && editMode && selectedPost.status === 'PUBLISHED' ? (
+            <Button onClick={() => setEditMode(false)}>取消編輯</Button>
+          ) : null
+        }
+        footer={
+          selectedPost && editMode ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                {selectedPost.status === 'DRAFT'
+                  ? '審稿完成後按「發布」讓玩家看到'
+                  : '已發布文章，修改會立即生效'}
               </div>
-              <div>時間：{new Date(previewPost.createdAt).toLocaleString('zh-TW')}</div>
-              <div>瀏覽 {previewPost.viewCount} · 回覆 {previewPost.replyCount} · 推 {previewPost.pushCount}</div>
+              <Space>
+                <Button
+                  icon={<SaveOutlined />}
+                  loading={updateMutation.isPending}
+                  onClick={() =>
+                    updateMutation.mutate({
+                      id: selectedPost.id,
+                      body: { title: editTitle, content: editContent },
+                    })
+                  }
+                >
+                  儲存
+                </Button>
+                {selectedPost.status === 'DRAFT' && (
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<CheckCircleOutlined />}
+                    loading={updateMutation.isPending}
+                    onClick={() =>
+                      updateMutation.mutate({
+                        id: selectedPost.id,
+                        body: {
+                          title: editTitle,
+                          content: editContent,
+                          status: 'PUBLISHED',
+                        },
+                      })
+                    }
+                  >
+                    儲存並發布
+                  </Button>
+                )}
+                {selectedPost.status === 'PUBLISHED' && (
+                  <Popconfirm
+                    title="退回為草稿？"
+                    description="退回後玩家將看不到這篇文章。"
+                    onConfirm={() =>
+                      updateMutation.mutate({
+                        id: selectedPost.id,
+                        body: {
+                          title: editTitle,
+                          content: editContent,
+                          status: 'DRAFT',
+                        },
+                      })
+                    }
+                  >
+                    <Button danger>退回草稿</Button>
+                  </Popconfirm>
+                )}
+              </Space>
             </div>
-            <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
-              {previewPost.content}
+          ) : null
+        }
+      >
+        {selectedPost && (
+          <div>
+            {/* Meta 卡片 */}
+            <div
+              style={{
+                padding: 12,
+                background: '#fafafa',
+                borderRadius: 8,
+                marginBottom: 20,
+                fontSize: 13,
+                color: '#595959',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: '8px 16px',
+              }}
+            >
+              <div>
+                <span style={{ color: '#8c8c8c' }}>作者　</span>
+                {selectedPost.author.nickname}
+              </div>
+              <div>
+                <span style={{ color: '#8c8c8c' }}>看板　</span>
+                {selectedPost.board.category
+                  ? `${selectedPost.board.category.name} / `
+                  : ''}
+                {selectedPost.board.name}
+              </div>
+              <div>
+                <span style={{ color: '#8c8c8c' }}>時間　</span>
+                {new Date(selectedPost.createdAt).toLocaleString('zh-TW')}
+              </div>
+              {selectedPost.status === 'PUBLISHED' && (
+                <div>
+                  <span style={{ color: '#8c8c8c' }}>數據　</span>
+                  瀏覽 {selectedPost.viewCount} · 回覆 {selectedPost.replyCount}
+                  {' · '}推 {selectedPost.pushCount}
+                </div>
+              )}
             </div>
+
+            {editMode ? (
+              <>
+                <div
+                  style={{
+                    marginBottom: 8,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: '#262626',
+                  }}
+                >
+                  標題
+                </div>
+                <Input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  maxLength={100}
+                  showCount
+                  size="large"
+                  style={{ marginBottom: 20, fontWeight: 500 }}
+                />
+                <div
+                  style={{
+                    marginBottom: 8,
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: '#262626',
+                  }}
+                >
+                  內文
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontWeight: 400,
+                      color: '#8c8c8c',
+                      fontSize: 12,
+                    }}
+                  >
+                    所見即所得；點右上「&lt;/&gt;」可切換到 HTML 原始碼編輯
+                  </span>
+                </div>
+                <div className="news-agent-rte">
+                  <EditorProvider>
+                    <Editor
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      onPaste={handleEditorPaste}
+                      containerProps={{
+                        style: {
+                          minHeight: 360,
+                          maxHeight: 600,
+                          overflowY: 'auto',
+                          fontSize: 15,
+                          lineHeight: 1.8,
+                          background: '#fff',
+                          borderRadius: 6,
+                        },
+                      }}
+                    >
+                      <Toolbar>
+                        <BtnUndo />
+                        <BtnRedo />
+                        <Separator />
+                        <BtnBold />
+                        <BtnItalic />
+                        <BtnUnderline />
+                        <BtnStrikeThrough />
+                        <Separator />
+                        <BtnBulletList />
+                        <BtnNumberedList />
+                        <Separator />
+                        <BtnLink />
+                        <BtnClearFormatting />
+                        <Separator />
+                        <HtmlButton />
+                      </Toolbar>
+                    </Editor>
+                  </EditorProvider>
+                </div>
+              </>
+            ) : (
+              <>
+                <Typography.Title level={3} style={{ marginTop: 0, marginBottom: 16 }}>
+                  {selectedPost.title}
+                </Typography.Title>
+                <div
+                  style={{
+                    lineHeight: 1.85,
+                    fontSize: 15,
+                    color: '#262626',
+                  }}
+                  // 預覽以玩家視角呈現：渲染 agent 產出的 HTML
+                  // 注意：所有內容皆來自後台 agent 受信任來源，未開放外部使用者直寫
+                  dangerouslySetInnerHTML={{ __html: selectedPost.content }}
+                />
+              </>
+            )}
           </div>
         )}
       </Drawer>

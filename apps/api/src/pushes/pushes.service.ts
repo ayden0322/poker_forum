@@ -1,13 +1,16 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class PushesService {
   constructor(private prisma: PrismaService) {}
 
-  /** 推文章 */
+  /** 推文章（僅 PUBLISHED） */
   async pushPost(postId: string, userId: string) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, status: PostStatus.PUBLISHED },
+    });
     if (!post) throw new NotFoundException('找不到此文章');
 
     const existing = await this.prisma.push.findUnique({

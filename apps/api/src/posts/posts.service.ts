@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../common/prisma.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
-import { Role } from '@betting-forum/database';
+import { Role, PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class PostsService {
@@ -19,6 +19,7 @@ export class PostsService {
         authorId,
         title: dto.title,
         content: dto.content,
+        ...(dto.status && { status: dto.status }),
         tags: dto.tagIds?.length
           ? { create: dto.tagIds.map((tagId) => ({ tagId })) }
           : undefined,
@@ -36,10 +37,10 @@ export class PostsService {
     return post;
   }
 
-  /** 取得文章詳情 */
+  /** 取得文章詳情（僅公開的 PUBLISHED 文章；DRAFT 草稿不對外） */
   async findById(id: string) {
-    const post = await this.prisma.post.findUnique({
-      where: { id },
+    const post = await this.prisma.post.findFirst({
+      where: { id, status: PostStatus.PUBLISHED },
       include: {
         author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
         board: { select: { id: true, name: true, slug: true, category: { select: { id: true, name: true } } } },
@@ -58,9 +59,11 @@ export class PostsService {
     return { ...post, viewCount: post.viewCount + 1 };
   }
 
-  /** 編輯文章 */
+  /** 編輯文章（僅 PUBLISHED；DRAFT 編輯走 admin endpoint） */
   async update(id: string, userId: string, userRole: Role, dto: UpdatePostDto) {
-    const post = await this.prisma.post.findUnique({ where: { id } });
+    const post = await this.prisma.post.findFirst({
+      where: { id, status: PostStatus.PUBLISHED },
+    });
     if (!post) throw new NotFoundException('找不到此文章');
 
     if (post.authorId !== userId && userRole === Role.USER) {
@@ -94,9 +97,11 @@ export class PostsService {
     });
   }
 
-  /** 刪除文章 */
+  /** 刪除文章（僅 PUBLISHED；DRAFT 刪除走 admin endpoint） */
   async remove(id: string, userId: string, userRole: Role) {
-    const post = await this.prisma.post.findUnique({ where: { id } });
+    const post = await this.prisma.post.findFirst({
+      where: { id, status: PostStatus.PUBLISHED },
+    });
     if (!post) throw new NotFoundException('找不到此文章');
 
     if (post.authorId !== userId && userRole === Role.USER) {
@@ -114,6 +119,7 @@ export class PostsService {
     const skip = (page - 1) * limit;
 
     const where = {
+      status: PostStatus.PUBLISHED,
       ...(boardId && { boardId }),
       OR: [
         { title: { contains: q, mode: 'insensitive' as const } },
@@ -140,9 +146,11 @@ export class PostsService {
     return { items, total, page, limit };
   }
 
-  /** 重新計算使用者等級 */
+  /** 重新計算使用者等級（DRAFT 不計入發文數） */
   private async recalculateLevel(userId: string) {
-    const count = await this.prisma.post.count({ where: { authorId: userId } });
+    const count = await this.prisma.post.count({
+      where: { authorId: userId, status: PostStatus.PUBLISHED },
+    });
     let level = 1;
     if (count >= 500) level = 6;
     else if (count >= 200) level = 5;

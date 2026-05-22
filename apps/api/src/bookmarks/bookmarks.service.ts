@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class BookmarksService {
@@ -8,9 +9,15 @@ export class BookmarksService {
   async getUserBookmarks(userId: string, page: number, limit: number) {
     const skip = (page - 1) * limit;
 
+    // 過濾掉指向 DRAFT 的收藏（不對外顯示草稿）
+    const where = {
+      userId,
+      post: { status: PostStatus.PUBLISHED },
+    };
+
     const [items, total] = await Promise.all([
       this.prisma.bookmark.findMany({
-        where: { userId },
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -28,14 +35,16 @@ export class BookmarksService {
           },
         },
       }),
-      this.prisma.bookmark.count({ where: { userId } }),
+      this.prisma.bookmark.count({ where }),
     ]);
 
     return { items, total, page, limit };
   }
 
   async addBookmark(userId: string, postId: string) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, status: PostStatus.PUBLISHED },
+    });
     if (!post) throw new NotFoundException('找不到此文章');
 
     const existing = await this.prisma.bookmark.findUnique({

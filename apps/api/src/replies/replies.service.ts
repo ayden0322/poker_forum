@@ -1,15 +1,17 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { CreateReplyDto } from './dto/create-reply.dto';
-import { Role } from '@betting-forum/database';
+import { Role, PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class RepliesService {
   constructor(private prisma: PrismaService) {}
 
-  /** 取得文章的回覆列表 */
+  /** 取得文章的回覆列表（DRAFT 草稿不對外）*/
   async findByPostId(postId: string, page: number, limit: number) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, status: PostStatus.PUBLISHED },
+    });
     if (!post) throw new NotFoundException('找不到此文章');
 
     const skip = (page - 1) * limit;
@@ -39,9 +41,11 @@ export class RepliesService {
     return { items, total, page, limit };
   }
 
-  /** 新增回覆 */
+  /** 新增回覆（僅 PUBLISHED 文章可留言） */
   async create(postId: string, authorId: string, dto: CreateReplyDto) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId } });
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, status: PostStatus.PUBLISHED },
+    });
     if (!post) throw new NotFoundException('找不到此文章');
     if (post.isLocked) throw new ForbiddenException('此文章已鎖定，無法回覆');
 

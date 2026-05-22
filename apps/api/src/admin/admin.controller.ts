@@ -153,6 +153,7 @@ export class AdminController {
     @Query('boardId') boardId?: string,
     @Query('categoryId') categoryId?: string,
     @Query('isAnnounce') isAnnounce?: string,
+    @Query('status') status?: 'DRAFT' | 'PUBLISHED',
   ) {
     const data = await this.adminService.getPosts({
       page,
@@ -161,6 +162,7 @@ export class AdminController {
       boardId,
       categoryId,
       isAnnounce: isAnnounce === 'true' ? true : isAnnounce === 'false' ? false : undefined,
+      status,
     });
     return { data };
   }
@@ -168,7 +170,15 @@ export class AdminController {
   @Patch('posts/:id')
   async updatePost(
     @Param('id') id: string,
-    @Body() body: { isPinned?: boolean; isLocked?: boolean; isAnnounce?: boolean },
+    @Body()
+    body: {
+      isPinned?: boolean;
+      isLocked?: boolean;
+      isAnnounce?: boolean;
+      status?: 'DRAFT' | 'PUBLISHED';
+      title?: string;
+      content?: string;
+    },
   ) {
     const data = await this.adminService.updatePost(id, body);
     return { data };

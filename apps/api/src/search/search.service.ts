@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class SearchService {
@@ -53,6 +54,7 @@ export class SearchService {
       }),
       this.prisma.post.findMany({
         where: {
+          status: PostStatus.PUBLISHED,
           OR: [
             { title: { contains: query, ...insensitive } },
             { content: { contains: query, ...insensitive } },
@@ -70,6 +72,7 @@ export class SearchService {
       }),
       this.prisma.post.count({
         where: {
+          status: PostStatus.PUBLISHED,
           OR: [
             { title: { contains: query, ...insensitive } },
             { content: { contains: query, ...insensitive } },

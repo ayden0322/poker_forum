@@ -233,14 +233,16 @@ export class AdminService {
     boardId?: string;
     categoryId?: string;
     isAnnounce?: boolean;
+    status?: 'DRAFT' | 'PUBLISHED';
   }) {
-    const { page, limit, q, boardId, categoryId, isAnnounce } = params;
+    const { page, limit, q, boardId, categoryId, isAnnounce, status } = params;
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
     if (boardId) where.boardId = boardId;
     else if (categoryId) where.board = { categoryId };
     if (isAnnounce !== undefined) where.isAnnounce = isAnnounce;
+    if (status) where.status = status;
     if (q) {
       where.OR = [
         { title: { contains: q, mode: 'insensitive' } },
@@ -258,6 +260,7 @@ export class AdminService {
           id: true,
           title: true,
           content: true,
+          status: true,
           isPinned: true,
           isLocked: true,
           isAnnounce: true,
@@ -281,9 +284,21 @@ export class AdminService {
     return { items, total, page, limit };
   }
 
+  /**
+   * Admin 更新文章。
+   * status: 'DRAFT' → 'PUBLISHED' 即「發布草稿」動作。
+   * title / content 提供 admin 直接編輯草稿內文。
+   */
   async updatePost(
     id: string,
-    data: { isPinned?: boolean; isLocked?: boolean; isAnnounce?: boolean },
+    data: {
+      isPinned?: boolean;
+      isLocked?: boolean;
+      isAnnounce?: boolean;
+      status?: 'DRAFT' | 'PUBLISHED';
+      title?: string;
+      content?: string;
+    },
   ) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) throw new NotFoundException('找不到此文章');

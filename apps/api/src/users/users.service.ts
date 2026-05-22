@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, ForbiddenException 
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class UsersService {
@@ -19,7 +20,7 @@ export class UsersService {
         createdAt: true,
         _count: {
           select: {
-            posts: true,
+            posts: { where: { status: PostStatus.PUBLISHED } },
             followers: true,
             following: true,
           },
@@ -56,7 +57,7 @@ export class UsersService {
 
     const [posts, total] = await Promise.all([
       this.prisma.post.findMany({
-        where: { authorId: user.id },
+        where: { authorId: user.id, status: PostStatus.PUBLISHED },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -69,7 +70,9 @@ export class UsersService {
           createdAt: true,
         },
       }),
-      this.prisma.post.count({ where: { authorId: user.id } }),
+      this.prisma.post.count({
+        where: { authorId: user.id, status: PostStatus.PUBLISHED },
+      }),
     ]);
 
     return { items: posts, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
@@ -197,7 +200,13 @@ export class UsersService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        select: { id: true, nickname: true, avatar: true, level: true, _count: { select: { posts: true } } },
+        select: {
+          id: true,
+          nickname: true,
+          avatar: true,
+          level: true,
+          _count: { select: { posts: { where: { status: PostStatus.PUBLISHED } } } },
+        },
       }),
       this.prisma.user.count({
         where: { nickname: { contains: query, mode: 'insensitive' } },
@@ -211,7 +220,7 @@ export class UsersService {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const results = await this.prisma.post.groupBy({
       by: ['authorId'],
-      where: { createdAt: { gte: since } },
+      where: { createdAt: { gte: since }, status: PostStatus.PUBLISHED },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
       take: limit,
@@ -303,9 +312,11 @@ export class UsersService {
     return { items, total, page, pageSize };
   }
 
-  // 自動更新等級（可由其他 service 呼叫）
+  // 自動更新等級（可由其他 service 呼叫；DRAFT 不計入發文數）
   async recalculateLevel(userId: string) {
-    const postCount = await this.prisma.post.count({ where: { authorId: userId } });
+    const postCount = await this.prisma.post.count({
+      where: { authorId: userId, status: PostStatus.PUBLISHED },
+    });
     let level = 1;
     if (postCount >= 500) level = 6;
     else if (postCount >= 200) level = 5;

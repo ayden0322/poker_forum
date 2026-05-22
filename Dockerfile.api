@@ -27,6 +27,9 @@ ENV NODE_ENV=production
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/database ./packages/database
+COPY --from=builder /app/apps/api/scripts/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 EXPOSE 8080
-CMD ["node", "dist/main.js"]
+# 啟動前自動跑 prisma migrate deploy（含 baseline resolve）
+CMD ["./entrypoint.sh"]

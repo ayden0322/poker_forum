@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { PostStatus } from '@betting-forum/database';
 
 @Injectable()
 export class BoardsService {
@@ -23,7 +24,9 @@ export class BoardsService {
           where: { isActive: true },
           orderBy: { sortOrder: 'asc' },
           include: {
-            _count: { select: { posts: true } },
+            _count: {
+              select: { posts: { where: { status: PostStatus.PUBLISHED } } },
+            },
           },
         },
       },
@@ -38,7 +41,9 @@ export class BoardsService {
       where: { slug },
       include: {
         category: true,
-        _count: { select: { posts: true } },
+        _count: {
+          select: { posts: { where: { status: PostStatus.PUBLISHED } } },
+        },
       },
     });
     if (!board || !board.isActive) throw new NotFoundException('找不到此看板');
@@ -56,7 +61,10 @@ export class BoardsService {
     const { page, limit, sort, tag, search } = params;
     const skip = (page - 1) * limit;
 
-    const where: Record<string, unknown> = { boardId: board.id };
+    const where: Record<string, unknown> = {
+      boardId: board.id,
+      status: PostStatus.PUBLISHED,
+    };
 
     if (tag) {
       where.tags = { some: { tag: { slug: tag } } };

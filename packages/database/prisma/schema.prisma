@@ -104,24 +104,30 @@ model Board {
 }
 
 // ===== 文章 =====
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
 model Post {
-  id          String    @id @default(cuid())
-  boardId     String    @map("board_id")
-  board       Board     @relation(fields: [boardId], references: [id])
-  authorId    String    @map("author_id")
-  author      User      @relation(fields: [authorId], references: [id])
+  id          String     @id @default(cuid())
+  boardId     String     @map("board_id")
+  board       Board      @relation(fields: [boardId], references: [id])
+  authorId    String     @map("author_id")
+  author      User       @relation(fields: [authorId], references: [id])
   title       String
-  content     String    @db.Text
-  isPinned    Boolean   @default(false) @map("is_pinned")
-  isLocked    Boolean   @default(false) @map("is_locked")
-  isAnnounce  Boolean   @default(false) @map("is_announce")
-  viewCount   Int       @default(0) @map("view_count")
-  replyCount  Int       @default(0) @map("reply_count")
-  pushCount   Int       @default(0) @map("push_count")
-  lastReplyAt DateTime? @map("last_reply_at")
-  lastReplyBy String?   @map("last_reply_by")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  content     String     @db.Text
+  status      PostStatus @default(PUBLISHED)
+  isPinned    Boolean    @default(false) @map("is_pinned")
+  isLocked    Boolean    @default(false) @map("is_locked")
+  isAnnounce  Boolean    @default(false) @map("is_announce")
+  viewCount   Int        @default(0) @map("view_count")
+  replyCount  Int        @default(0) @map("reply_count")
+  pushCount   Int        @default(0) @map("push_count")
+  lastReplyAt DateTime?  @map("last_reply_at")
+  lastReplyBy String?    @map("last_reply_by")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   replies   Reply[]
   pushes    Push[]
@@ -131,6 +137,7 @@ model Post {
 
   @@index([boardId, createdAt])
   @@index([boardId, lastReplyAt])
+  @@index([boardId, status])
   @@index([authorId])
   @@map("posts")
 }
@@ -499,8 +506,10 @@ model WorldCupTeam {
   groupName String? @map("group_name")            // "A" ~ "L"
   continent String?                                // "North America"
   confed    String?                                // "CONCACAF"
-  apiTeamId Int?    @unique @map("api_team_id")   // api-sports team ID
-  logoUrl   String? @map("logo_url")              // api-sports 隊徽 URL
+  // ⚠️ 2026-05-18 暫時註解（schema 加了但 DB 沒同步，造成 migration drift）
+  //    待 World Cup api-sports 整合 feature 動工時，再連同 seed-world-cup-from-apisports.ts 一起恢復
+  // apiTeamId Int?    @unique @map("api_team_id")   // api-sports team ID
+  // logoUrl   String? @map("logo_url")              // api-sports 隊徽 URL
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -519,8 +528,10 @@ model WorldCupMatch {
   groupName       String?  @map("group_name")              // 小組賽才有 "Group A"
   kickoffAt       DateTime @map("kickoff_at")              // UTC
   venue           String
-  venueCity       String?  @map("venue_city")              // api-sports 提供的城市
-  apiFixtureId    Int?     @unique @map("api_fixture_id")  // api-sports fixture ID
+  // ⚠️ 2026-05-18 暫時註解（schema 加了但 DB 沒同步，造成 migration drift）
+  //    待 World Cup api-sports 整合 feature 動工時，再連同 seed-world-cup-from-apisports.ts 一起恢復
+  // venueCity       String?  @map("venue_city")              // api-sports 提供的城市
+  // apiFixtureId    Int?     @unique @map("api_fixture_id")  // api-sports fixture ID
 
   homeTeamId      Int?     @map("home_team_id")
   awayTeamId      Int?     @map("away_team_id")
