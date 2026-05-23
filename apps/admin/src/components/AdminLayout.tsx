@@ -31,7 +31,7 @@ const menuItems = [
   { key: '/boards', icon: <AppstoreOutlined />, label: '看板管理' },
   { key: '/categories', icon: <AppstoreOutlined />, label: '分類管理' },
   { key: '/tags', icon: <TagOutlined />, label: '標籤管理' },
-  { key: '/announcements', icon: <NotificationOutlined />, label: '公告管理' },
+  { key: '/announcements', icon: <NotificationOutlined />, label: '站方推送' },
   { key: '/marquee', icon: <ColumnWidthOutlined />, label: '跑馬燈管理' },
   { key: '/reports', icon: <FlagOutlined />, label: '檢舉管理' },
   { key: '/banned-ips', icon: <StopOutlined />, label: '封鎖 IP' },

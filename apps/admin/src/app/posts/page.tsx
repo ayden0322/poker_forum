@@ -53,15 +53,16 @@ import {
 import { adminApiFetch } from '@/lib/api';
 
 type PostStatus = 'DRAFT' | 'PUBLISHED';
+type PostSection = 'FEATURED' | 'DISCUSSION';
 
 interface PostItem {
   id: string;
   title: string;
   content: string;
   status: PostStatus;
+  section: PostSection;
   isPinned: boolean;
   isLocked: boolean;
-  isAnnounce: boolean;
   viewCount: number;
   replyCount: number;
   pushCount: number;
@@ -226,7 +227,13 @@ export default function PostsPage() {
   const draftCount = draftCountData?.data.total ?? 0;
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, boolean> }) =>
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: Record<string, boolean | PostSection>;
+    }) =>
       adminApiFetch(`/admin/posts/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(body),
@@ -283,10 +290,10 @@ export default function PostsPage() {
               <PushpinOutlined style={{ color: '#fa8c16' }} />
             </Tooltip>,
           );
-        if (record.isAnnounce)
+        if (record.section === 'FEATURED')
           flags.push(
-            <Tooltip key="a" title="公告">
-              <NotificationOutlined style={{ color: '#1677ff' }} />
+            <Tooltip key="f" title="站方推送（板塊頁上半部）">
+              <NotificationOutlined style={{ color: '#fa541c' }} />
             </Tooltip>,
           );
         if (record.isLocked)
@@ -375,13 +382,21 @@ export default function PostsPage() {
                     }),
                 },
                 {
-                  key: 'announce',
-                  label: record.isAnnounce ? '取消公告' : '設為公告',
+                  key: 'section',
+                  label:
+                    record.section === 'FEATURED'
+                      ? '改為玩家討論'
+                      : '改為站方推送',
                   icon: <NotificationOutlined />,
                   onClick: () =>
                     toggleMutation.mutate({
                       id: record.id,
-                      body: { isAnnounce: !record.isAnnounce },
+                      body: {
+                        section:
+                          record.section === 'FEATURED'
+                            ? 'DISCUSSION'
+                            : 'FEATURED',
+                      },
                     }),
                 },
                 {

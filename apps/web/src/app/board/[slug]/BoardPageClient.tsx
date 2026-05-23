@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth';
 import { useRouter } from 'next/navigation';
+import { FeaturedPostCard, FEATURED_MOBILE_PREVIEW } from '@/components/board/FeaturedPostCard';
 import { LotteryBanner } from '@/components/lottery/LotteryBanner';
 import { ScoreWidget } from '@/components/sports/ScoreWidget';
 import { MLBGamesWidget } from '@/components/sports/mlb/MLBGamesWidget';
@@ -26,12 +27,13 @@ import { getMetaByBoardSlug } from '@/components/lottery/lottery-meta';
 
 const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo']);
 
-interface PostItem {
+export interface PostItem {
   id: string;
   title: string;
+  content?: string;
   isPinned: boolean;
   isLocked: boolean;
-  isAnnounce: boolean;
+  section?: 'FEATURED' | 'DISCUSSION';
   viewCount: number;
   replyCount: number;
   pushCount: number;
@@ -50,10 +52,13 @@ interface PostItem {
 
 interface BoardPostsResponse {
   data: {
-    items: PostItem[];
-    total: number;
-    page: number;
-    limit: number;
+    featured: PostItem[];
+    discussion: {
+      items: PostItem[];
+      total: number;
+      page: number;
+      limit: number;
+    };
   };
 }
 
@@ -129,11 +134,6 @@ function PostRow({ post }: { post: PostItem }) {
             {post.isPinned && (
               <span className="text-[11px] bg-red-500 text-white px-2 py-0.5 rounded-full font-medium">
                 📌 置頂
-              </span>
-            )}
-            {post.isAnnounce && (
-              <span className="text-[11px] bg-yellow-400 text-yellow-900 px-2 py-0.5 rounded-full font-medium">
-                📣 公告
               </span>
             )}
             {isHot && !post.isPinned && (
@@ -243,11 +243,15 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       ),
   });
 
-  const posts = data?.data.items ?? [];
-  const total = data?.data.total ?? 0;
+  const featured = data?.data.featured ?? [];
+  const posts = data?.data.discussion.items ?? [];
+  const total = data?.data.discussion.total ?? 0;
   const totalPages = Math.ceil(total / 20);
 
-  // 分離置頂與一般文章
+  // 行動裝置上 featured 預設只顯示前 N 篇，點「展開全部」才看更多
+  const [featuredExpanded, setFeaturedExpanded] = useState(false);
+
+  // 下半部討論區內的「置頂」文章（未來啟用 in-section pinning 時生效；目前都是 false）
   const { pinnedPosts, normalPosts } = useMemo(() => {
     const pinned = posts.filter((p) => p.isPinned);
     const normal = posts.filter((p) => !p.isPinned);
@@ -257,11 +261,11 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
   // 收集所有出現的 tag（用於篩選按鈕）
   const allTags = useMemo(() => {
     const tagMap = new Map<string, { id: string; name: string; slug: string }>();
-    posts.forEach((p) =>
+    [...featured, ...posts].forEach((p) =>
       p.tags.forEach((t) => tagMap.set(t.tag.slug, t.tag))
     );
     return Array.from(tagMap.values());
-  }, [posts]);
+  }, [featured, posts]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -441,16 +445,58 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         </span>
       </div>
 
-      {/* 文章列表 */}
+      {/* === 上半部：站方推送（0 篇隱藏整區） === */}
+      {featured.length > 0 && (
+        <section className="mb-6">
+          {/* Desktop：全顯示。Mobile：預設只顯示前 N 篇，點按鈕展開 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {featured
+              .slice(0, featuredExpanded ? featured.length : Number.POSITIVE_INFINITY)
+              .map((post, i) => (
+                <div
+                  key={post.id}
+                  className={
+                    !featuredExpanded && i >= FEATURED_MOBILE_PREVIEW
+                      ? 'hidden md:block'
+                      : ''
+                  }
+                >
+                  <FeaturedPostCard post={post} />
+                </div>
+              ))}
+          </div>
+
+          {/* 行動裝置展開按鈕：超過預設篇數才顯示 */}
+          {featured.length > FEATURED_MOBILE_PREVIEW && !featuredExpanded && (
+            <button
+              onClick={() => setFeaturedExpanded(true)}
+              className="md:hidden mt-2 w-full py-2 text-xs text-slate-500 hover:text-slate-700 border border-dashed border-slate-300 rounded-lg"
+            >
+              展開全部站方推送（還有 {featured.length - FEATURED_MOBILE_PREVIEW} 篇）
+            </button>
+          )}
+
+          {/* 區塊分隔：極小灰字 label，不放分隔線、不放大標題 */}
+          <div className="mt-6 mb-2 text-[11px] text-gray-400 px-1">
+            以下為玩家討論
+          </div>
+        </section>
+      )}
+
+      {/* === 下半部：玩家討論 === */}
       {isLoading ? (
         <div className="text-center py-20 text-gray-400">載入中...</div>
       ) : posts.length === 0 ? (
         <div className="text-center py-20 text-gray-400">
-          {searchQuery || activeTag ? '找不到符合條件的文章' : '此看板尚無文章，來發表第一篇吧！'}
+          {searchQuery || activeTag
+            ? '找不到符合條件的文章'
+            : featured.length > 0
+              ? '目前還沒有玩家討論，來發表第一篇吧！'
+              : '此看板尚無文章，來發表第一篇吧！'}
         </div>
       ) : (
         <>
-          {/* 置頂文章 */}
+          {/* 討論區內的置頂（保留未來擴充） */}
           {pinnedPosts.length > 0 && (
             <div className="space-y-2 mb-3">
               {pinnedPosts.map((post) => (
@@ -459,7 +505,7 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
             </div>
           )}
 
-          {/* 一般文章 */}
+          {/* 一般討論 */}
           <div className="space-y-2">
             {normalPosts.map((post) => (
               <PostRow key={post.id} post={post} />
