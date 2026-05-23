@@ -3,7 +3,7 @@ import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
-  @ApiProperty({ description: '暱稱（最多 8 字，不可更改）', example: '小明' })
+  @ApiProperty({ description: '暱稱（最多 8 字，每 7 天可更改一次）', example: '小明' })
   @IsString({ message: '暱稱格式不正確' })
   @MinLength(1, { message: '暱稱不能為空' })
   @MaxLength(8, { message: '暱稱最多 8 個字元' })

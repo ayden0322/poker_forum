@@ -77,7 +77,7 @@ export default function RegisterPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              暱稱 <span className="text-gray-400 font-normal">（最多 8 字，註冊後不可更改）</span>
+              暱稱 <span className="text-gray-400 font-normal">（最多 8 字，註冊後每 7 天可更改一次）</span>
             </label>
             <input
               name="nickname"
