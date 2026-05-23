@@ -8,6 +8,8 @@ export interface JwtPayload {
   sub: string;
   nickname: string;
   role: string;
+  /** 若此 token 是管理員代登入產生的，記錄發起代登入的管理員 ID */
+  impersonatedBy?: string;
 }
 
 @Injectable()
@@ -39,6 +41,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || user.status !== 'ACTIVE') {
       throw new UnauthorizedException('帳號已停用或不存在');
     }
-    return user;
+    return { ...user, impersonatedBy: payload.impersonatedBy };
   }
 }

@@ -316,4 +316,55 @@ export class AuthService {
 
     return { accessToken, refreshToken };
   }
+
+  /**
+   * 簽發「管理員代登入」用的短效 token。
+   * - access / refresh 都帶 impersonatedBy，前後端可從 token 還原原管理員身分
+   * - access TTL 固定 1 小時、refresh TTL 1 小時（不允許比 access 久）
+   * - 不更新目標會員的 lastLoginAt / lastLoginIp，避免污染會員登入紀錄
+   */
+  async generateImpersonationTokens(
+    targetUserId: string,
+    targetNickname: string,
+    targetRole: string,
+    adminUserId: string,
+  ) {
+    const payload = {
+      sub: targetUserId,
+      nickname: targetNickname,
+      role: targetRole,
+      impersonatedBy: adminUserId,
+    };
+
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload, { expiresIn: '1h' }),
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        expiresIn: '1h',
+      }),
+    ]);
+
+    return { accessToken, refreshToken };
+  }
+
+  /**
+   * 結束代登入：用當前 token 內的 impersonatedBy 還原為原管理員身分。
+   * 簽發一般的長效 token（access + 7 天 refresh）。
+   */
+  async stopImpersonation(adminUserId: string) {
+    const admin = await this.prisma.user.findUnique({
+      where: { id: adminUserId },
+      select: { id: true, nickname: true, role: true, status: true },
+    });
+
+    if (!admin || admin.status !== 'ACTIVE') {
+      throw new UnauthorizedException('原管理員帳號已不可用');
+    }
+
+    if (admin.role !== 'ADMIN') {
+      throw new UnauthorizedException('原帳號已非管理員，無法還原');
+    }
+
+    return this.generateTokens(admin.id, admin.nickname, admin.role);
+  }
 }

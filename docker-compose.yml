@@ -101,6 +101,7 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:4010/api
       - API_URL=http://api:4010/api
+      - NEXT_PUBLIC_ADMIN_URL=http://localhost:3011
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -122,6 +123,7 @@ services:
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:4010/api
       - API_URL=http://api:4010/api
+      - NEXT_PUBLIC_WEB_URL=http://localhost:3010
     volumes:
       - .:/app
       - node_modules:/app/node_modules

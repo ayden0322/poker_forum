@@ -24,6 +24,7 @@ import {
   EyeOutlined,
   StopFilled,
   KeyOutlined,
+  LoginOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
@@ -107,6 +108,8 @@ export default function MembersPage() {
   const [banIpTarget, setBanIpTarget] = useState<{ ip: string; nickname: string } | null>(null);
   const [banReason, setBanReason] = useState('');
   const [passwordTarget, setPasswordTarget] = useState<Member | null>(null);
+  const [impersonateTarget, setImpersonateTarget] = useState<Member | null>(null);
+  const [impersonateReason, setImpersonateReason] = useState('');
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
@@ -158,6 +161,32 @@ export default function MembersPage() {
       message.success('密碼已更新');
       setPasswordTarget(null);
       passwordForm.resetFields();
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
+  const impersonateMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      adminApiFetch<{
+        data: {
+          accessToken: string;
+          refreshToken: string;
+          target: { id: string; nickname: string; role: string };
+        };
+      }>(`/admin/members/${id}/impersonate`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: (res) => {
+      const { accessToken, refreshToken } = res.data;
+      // 開新分頁進入前台 OAuth callback 既有的 token 接收流程
+      // 用 query string 而非 hash：前台 callback 頁面已用 useSearchParams 讀取
+      const webUrl = process.env.NEXT_PUBLIC_WEB_URL || 'http://localhost:3010';
+      const url = `${webUrl}/auth/callback?accessToken=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+      message.success(`已開啟新分頁以「${res.data.target.nickname}」身分登入`);
+      setImpersonateTarget(null);
+      setImpersonateReason('');
     },
     onError: (err: Error) => message.error(err.message),
   });
@@ -346,6 +375,19 @@ export default function MembersPage() {
           >
             重設密碼
           </Button>
+          {record.role !== 'ADMIN' && record.status !== 'BANNED' && (
+            <Button
+              size="small"
+              icon={<LoginOutlined />}
+              style={{ background: '#fff7e6', borderColor: '#fa8c16', color: '#d46b08' }}
+              onClick={() => {
+                setImpersonateTarget(record);
+                setImpersonateReason('');
+              }}
+            >
+              代登入
+            </Button>
+          )}
           {record.lastLoginIp && (
             <Button
               size="small"
@@ -620,6 +662,52 @@ export default function MembersPage() {
             ]}
           >
             <Input.Password placeholder="再輸入一次以確認" autoComplete="new-password" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 代登入確認 Modal */}
+      <Modal
+        title={`以「${impersonateTarget?.nickname}」身分登入`}
+        open={!!impersonateTarget}
+        onOk={() => {
+          if (!impersonateTarget) return;
+          impersonateMutation.mutate({
+            id: impersonateTarget.id,
+            reason: impersonateReason.trim() || undefined,
+          });
+        }}
+        onCancel={() => {
+          setImpersonateTarget(null);
+          setImpersonateReason('');
+        }}
+        confirmLoading={impersonateMutation.isPending}
+        okText="確認代登入"
+        okButtonProps={{ danger: true, icon: <LoginOutlined /> }}
+        cancelText="取消"
+      >
+        <div style={{ background: '#fff7e6', border: '1px solid #ffd591', padding: 12, borderRadius: 4, marginBottom: 12 }}>
+          <Text strong style={{ color: '#d46b08' }}>⚠️ 高權限操作</Text>
+          <ul style={{ margin: '8px 0 0', paddingLeft: 20, color: '#874d00' }}>
+            <li>會在新分頁以該會員身分開啟前台，token 有效 1 小時</li>
+            <li>所有操作將以該會員身分留下紀錄（發文 / 推文 / 檢舉等）</li>
+            <li>本次代登入會寫入後台稽核紀錄，含你的管理員 ID</li>
+            <li>除錯完畢請從前台警示列點「結束代登入」回到管理員身分</li>
+          </ul>
+        </div>
+        <Form layout="vertical">
+          <Form.Item
+            label="代登入原因（選填，建議填寫以利稽核）"
+            tooltip="例如：協助 user 重現無法發文問題 #1234"
+          >
+            <Input.TextArea
+              rows={3}
+              maxLength={500}
+              value={impersonateReason}
+              onChange={(e) => setImpersonateReason(e.target.value)}
+              placeholder="例如：協助會員重現無法發文問題"
+              showCount
+            />
           </Form.Item>
         </Form>
       </Modal>

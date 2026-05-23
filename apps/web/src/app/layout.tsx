@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
+import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner';
 import { Providers } from './providers';
 
 export const viewport: Viewport = {
@@ -44,6 +45,7 @@ export default function RootLayout({
     <html lang="zh-TW">
       <body className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
         <Providers>
+          <ImpersonationBanner />
           <Header />
           <main className="flex-1 w-full max-w-7xl mx-auto px-4 py-6">
             {children}

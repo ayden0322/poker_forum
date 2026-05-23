@@ -13,6 +13,8 @@ interface AuthUser {
   phoneVerified?: boolean;
   phoneVerificationBypass?: boolean;
   nicknameChangedAt?: string | null;
+  /** 若此 session 是管理員代登入產生的，後端會回填發起代登入的管理員 ID；否則為 null */
+  impersonatedBy?: string | null;
 }
 
 interface AuthContextValue {
@@ -33,6 +35,8 @@ interface AuthContextValue {
   closePhoneVerifyModal: () => void;
   /** 驗證成功後由 Modal 呼叫，重新載入使用者狀態 */
   refreshMe: () => Promise<void>;
+  /** 結束管理員代登入，還原為原管理員身分（會把 token 換成管理員 token 並導回後台） */
+  stopImpersonation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -136,6 +140,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (token) await fetchMe(token);
   }, [fetchMe]);
 
+  const stopImpersonation = useCallback(async () => {
+    const res = await apiFetch<{ success: boolean; data?: { accessToken: string; refreshToken: string } }>(
+      '/auth/stop-impersonation',
+      { method: 'POST' },
+    );
+    if (res.success && res.data) {
+      // 換成原管理員 token，並導回後台
+      localStorage.setItem('accessToken', res.data.accessToken);
+      localStorage.setItem('refreshToken', res.data.refreshToken);
+      const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL || 'http://localhost:3011';
+      window.location.href = `${adminUrl}/auth/callback?accessToken=${encodeURIComponent(res.data.accessToken)}&refreshToken=${encodeURIComponent(res.data.refreshToken)}`;
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -153,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         openPhoneVerifyModal,
         closePhoneVerifyModal,
         refreshMe,
+        stopImpersonation,
       }}
     >
       {children}

@@ -23,6 +23,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
 import { getClientIp } from '../common/get-client-ip.util';
+import { PrismaService } from '../common/prisma.service';
 
 @ApiTags('認證')
 @Controller('auth')
@@ -30,6 +31,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post('register')
@@ -68,9 +70,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '取得目前登入者資訊' })
-  async me(@CurrentUser() user: { id: string }) {
+  async me(@CurrentUser() user: { id: string; impersonatedBy?: string }) {
     const data = await this.authService.getMe(user.id);
-    return { success: true, data };
+    // 若當前 session 是管理員代登入，附帶 impersonatedBy 供前端顯示警示橫條
+    return { success: true, data: { ...data, impersonatedBy: user.impersonatedBy ?? null } };
   }
 
   // ===== 忘記密碼 =====
@@ -91,6 +94,53 @@ export class AuthController {
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto.token, dto.newPassword);
     return { success: true, message: '密碼已重設，請使用新密碼登入' };
+  }
+
+  /**
+   * 結束代登入：當前 token 必須帶有 impersonatedBy 才能呼叫。
+   * 回傳原管理員的長效 token，前端用此 token 還原 admin session。
+   */
+  @Post('stop-impersonation')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '結束管理員代登入，還原為原管理員身分' })
+  async stopImpersonation(
+    @CurrentUser()
+    user: {
+      id: string;
+      nickname: string;
+      impersonatedBy?: string;
+    },
+    @Req() req: Request,
+  ) {
+    if (!user.impersonatedBy) {
+      return {
+        success: false,
+        message: '此 session 不是代登入狀態',
+      };
+    }
+
+    const tokens = await this.authService.stopImpersonation(user.impersonatedBy);
+
+    // 直接用 prisma 寫 audit log（避免循環依賴 AdminService）
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          actorAdminId: user.impersonatedBy,
+          actorNickname: '(stop-impersonation)',
+          action: 'IMPERSONATE_STOP',
+          targetUserId: user.id,
+          targetNickname: user.nickname,
+          ip: getClientIp(req) ?? null,
+          userAgent: req.headers['user-agent']?.slice(0, 500) ?? null,
+        },
+      });
+    } catch {
+      // audit 寫入失敗不阻擋還原流程
+    }
+
+    return { success: true, data: tokens };
   }
 
   // ===== OAuth 回導目標判斷 =====
