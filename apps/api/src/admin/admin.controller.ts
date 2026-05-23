@@ -10,18 +10,14 @@ import {
   UseGuards,
   ParseIntPipe,
   DefaultValuePipe,
-  Req,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { Request } from 'express';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
-import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
-import { getClientIp } from '../common/get-client-ip.util';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -29,10 +25,7 @@ import { getClientIp } from '../common/get-client-ip.util';
 @Roles(Role.ADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(
-    private adminService: AdminService,
-    private authService: AuthService,
-  ) {}
+  constructor(private adminService: AdminService) {}
 
   @Get('stats')
   async getStats() {
@@ -75,54 +68,6 @@ export class AdminController {
   ) {
     const data = await this.adminService.resetMemberPassword(id, body?.password);
     return { data };
-  }
-
-  /**
-   * 管理員代登入會員（Impersonation）
-   * - 需 ADMIN 角色
-   * - 不可代登入其他 ADMIN，亦不可代登入 BANNED 會員
-   * - 簽發 1 小時短效 token，並寫入 audit log
-   * - 回傳的 token 由 admin 端開新分頁帶到前台使用
-   */
-  @Post('members/:id/impersonate')
-  @ApiOperation({ summary: '管理員代登入會員' })
-  async impersonateMember(
-    @Param('id') targetUserId: string,
-    @CurrentUser() admin: { id: string; nickname: string },
-    @Req() req: Request,
-    @Body() body: { reason?: string } = {},
-  ) {
-    const target = await this.adminService.getMemberForImpersonation(targetUserId, admin.id);
-
-    const tokens = await this.authService.generateImpersonationTokens(
-      target.id,
-      target.nickname,
-      target.role,
-      admin.id,
-    );
-
-    await this.adminService.writeAuditLog({
-      actorAdminId: admin.id,
-      actorNickname: admin.nickname,
-      action: 'IMPERSONATE_START',
-      targetUserId: target.id,
-      targetNickname: target.nickname,
-      metadata: body?.reason ? { reason: body.reason.slice(0, 500) } : undefined,
-      ip: getClientIp(req),
-      userAgent: req.headers['user-agent']?.slice(0, 500) ?? null,
-    });
-
-    return {
-      data: {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        target: {
-          id: target.id,
-          nickname: target.nickname,
-          role: target.role,
-        },
-      },
-    };
   }
 
   // ===== 分類管理 =====
@@ -208,7 +153,7 @@ export class AdminController {
     @Query('q') q?: string,
     @Query('boardId') boardId?: string,
     @Query('categoryId') categoryId?: string,
-    @Query('section') section?: 'FEATURED' | 'DISCUSSION',
+    @Query('isAnnounce') isAnnounce?: string,
     @Query('status') status?: 'DRAFT' | 'PUBLISHED',
   ) {
     const data = await this.adminService.getPosts({
@@ -217,7 +162,7 @@ export class AdminController {
       q,
       boardId,
       categoryId,
-      section: section === 'FEATURED' || section === 'DISCUSSION' ? section : undefined,
+      isAnnounce: isAnnounce === 'true' ? true : isAnnounce === 'false' ? false : undefined,
       status,
     });
     return { data };
@@ -230,7 +175,7 @@ export class AdminController {
     body: {
       isPinned?: boolean;
       isLocked?: boolean;
-      section?: 'FEATURED' | 'DISCUSSION';
+      isAnnounce?: boolean;
       status?: 'DRAFT' | 'PUBLISHED';
       title?: string;
       content?: string;

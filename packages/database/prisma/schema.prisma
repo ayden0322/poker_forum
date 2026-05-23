@@ -109,31 +109,25 @@ enum PostStatus {
   PUBLISHED
 }
 
-// 板塊頁分區：FEATURED = 站方推送（上半部）、DISCUSSION = 玩家討論（下半部）
-enum PostSection {
-  FEATURED
-  DISCUSSION
-}
-
 model Post {
-  id          String      @id @default(cuid())
-  boardId     String      @map("board_id")
-  board       Board       @relation(fields: [boardId], references: [id])
-  authorId    String      @map("author_id")
-  author      User        @relation(fields: [authorId], references: [id])
+  id          String     @id @default(cuid())
+  boardId     String     @map("board_id")
+  board       Board      @relation(fields: [boardId], references: [id])
+  authorId    String     @map("author_id")
+  author      User       @relation(fields: [authorId], references: [id])
   title       String
-  content     String      @db.Text
-  status      PostStatus  @default(PUBLISHED)
-  section     PostSection @default(DISCUSSION)
-  isPinned    Boolean     @default(false) @map("is_pinned")
-  isLocked    Boolean     @default(false) @map("is_locked")
-  viewCount   Int         @default(0) @map("view_count")
-  replyCount  Int         @default(0) @map("reply_count")
-  pushCount   Int         @default(0) @map("push_count")
-  lastReplyAt DateTime?   @map("last_reply_at")
-  lastReplyBy String?     @map("last_reply_by")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  content     String     @db.Text
+  status      PostStatus @default(PUBLISHED)
+  isPinned    Boolean    @default(false) @map("is_pinned")
+  isLocked    Boolean    @default(false) @map("is_locked")
+  isAnnounce  Boolean    @default(false) @map("is_announce")
+  viewCount   Int        @default(0) @map("view_count")
+  replyCount  Int        @default(0) @map("reply_count")
+  pushCount   Int        @default(0) @map("push_count")
+  lastReplyAt DateTime?  @map("last_reply_at")
+  lastReplyBy String?    @map("last_reply_by")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
 
   replies   Reply[]
   pushes    Push[]
@@ -144,7 +138,6 @@ model Post {
   @@index([boardId, createdAt])
   @@index([boardId, lastReplyAt])
   @@index([boardId, status])
-  @@index([boardId, section])
   @@index([authorId])
   @@map("posts")
 }
@@ -560,27 +553,6 @@ model WorldCupMatch {
   @@index([stage])
   @@index([status])
   @@map("world_cup_matches")
-}
-
-// ===== 管理員操作稽核日誌 =====
-// 紀錄管理員執行的敏感操作，例如代登入會員、密碼重設等
-// 動作分類用 string 而非 enum，方便未來新增動作不需 migration
-model AuditLog {
-  id            String   @id @default(cuid())
-  actorAdminId  String   @map("actor_admin_id")  // 執行動作的管理員 ID
-  actorNickname String   @map("actor_nickname")  // 快照當下的暱稱，避免 admin 改名後失真
-  action        String                            // IMPERSONATE_START | IMPERSONATE_STOP | RESET_PASSWORD | ...
-  targetUserId  String?  @map("target_user_id")   // 被操作的目標會員 ID（可為 null，例如系統設定變更）
-  targetNickname String? @map("target_nickname")
-  metadata      Json?                             // 額外資訊（IP、reason、tokenJti…）
-  ip            String?
-  userAgent     String?  @map("user_agent")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  @@index([actorAdminId, createdAt])
-  @@index([targetUserId, createdAt])
-  @@index([action, createdAt])
-  @@map("audit_logs")
 }
 
 // ===== 體育賽事 API 設定（後台可編輯） =====

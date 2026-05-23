@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
 import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
@@ -156,62 +151,6 @@ export class AdminService {
     return { id: user.id, nickname: user.nickname, account: user.account };
   }
 
-  // ===== 管理員代登入（Impersonation） =====
-  /**
-   * 取得目標會員，並驗證是否允許被代登入。
-   * - 不允許代登入 ADMIN 角色（防止管理員互踩 / 權限提升）
-   * - BANNED 的會員不允許代登入（無意義且會違反停用語意）
-   */
-  async getMemberForImpersonation(targetUserId: string, actorAdminId: string) {
-    if (targetUserId === actorAdminId) {
-      throw new BadRequestException('不能對自己發起代登入');
-    }
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: { id: true, nickname: true, role: true, status: true },
-    });
-    if (!user) throw new NotFoundException('找不到此會員');
-
-    if (user.role === Role.ADMIN) {
-      throw new ForbiddenException('不能代登入其他管理員帳號');
-    }
-    if (user.status === UserStatus.BANNED) {
-      throw new ForbiddenException('會員已被封禁，無法代登入');
-    }
-
-    return user;
-  }
-
-  /** 寫入操作稽核紀錄。任何失敗都不會 throw，避免影響主流程。 */
-  async writeAuditLog(params: {
-    actorAdminId: string;
-    actorNickname: string;
-    action: string;
-    targetUserId?: string | null;
-    targetNickname?: string | null;
-    metadata?: Record<string, unknown>;
-    ip?: string | null;
-    userAgent?: string | null;
-  }) {
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          actorAdminId: params.actorAdminId,
-          actorNickname: params.actorNickname,
-          action: params.action,
-          targetUserId: params.targetUserId ?? null,
-          targetNickname: params.targetNickname ?? null,
-          metadata: params.metadata ? (params.metadata as object) : undefined,
-          ip: params.ip ?? null,
-          userAgent: params.userAgent ?? null,
-        },
-      });
-    } catch {
-      // audit 寫入失敗不影響使用者操作；正式環境應接 logger
-    }
-  }
-
   // ===== 分類管理 =====
   async getCategories() {
     return this.prisma.category.findMany({
@@ -307,16 +246,16 @@ export class AdminService {
     q?: string;
     boardId?: string;
     categoryId?: string;
-    section?: 'FEATURED' | 'DISCUSSION';
+    isAnnounce?: boolean;
     status?: 'DRAFT' | 'PUBLISHED';
   }) {
-    const { page, limit, q, boardId, categoryId, section, status } = params;
+    const { page, limit, q, boardId, categoryId, isAnnounce, status } = params;
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
     if (boardId) where.boardId = boardId;
     else if (categoryId) where.board = { categoryId };
-    if (section) where.section = section;
+    if (isAnnounce !== undefined) where.isAnnounce = isAnnounce;
     if (status) where.status = status;
     if (q) {
       where.OR = [
@@ -336,9 +275,9 @@ export class AdminService {
           title: true,
           content: true,
           status: true,
-          section: true,
           isPinned: true,
           isLocked: true,
+          isAnnounce: true,
           viewCount: true,
           replyCount: true,
           pushCount: true,
@@ -362,7 +301,6 @@ export class AdminService {
   /**
    * Admin 更新文章。
    * status: 'DRAFT' → 'PUBLISHED' 即「發布草稿」動作。
-   * section: 'FEATURED' / 'DISCUSSION' 切換板塊頁上下半部分區。
    * title / content 提供 admin 直接編輯草稿內文。
    */
   async updatePost(
@@ -370,7 +308,7 @@ export class AdminService {
     data: {
       isPinned?: boolean;
       isLocked?: boolean;
-      section?: 'FEATURED' | 'DISCUSSION';
+      isAnnounce?: boolean;
       status?: 'DRAFT' | 'PUBLISHED';
       title?: string;
       content?: string;

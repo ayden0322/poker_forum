@@ -8,7 +8,7 @@ interface PostData {
   content: string;
   isPinned: boolean;
   isLocked: boolean;
-  section?: 'FEATURED' | 'DISCUSSION';
+  isAnnounce: boolean;
   viewCount: number;
   replyCount: number;
   pushCount: number;
