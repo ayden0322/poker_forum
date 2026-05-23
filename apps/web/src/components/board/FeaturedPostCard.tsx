@@ -61,35 +61,35 @@ export function FeaturedPostCard({ post }: { post: FeaturedPostItem }) {
   return (
     <Link
       href={`/post/${post.id}`}
-      className="group relative flex gap-3 bg-slate-900 hover:bg-slate-800 transition-all rounded-lg overflow-hidden border-l-2 border-orange-500 p-3 shadow-sm hover:shadow-md"
+      className="group relative flex gap-3 bg-slate-50 hover:bg-white transition-all rounded-lg overflow-hidden border border-slate-200 border-l-[3px] border-l-orange-500 p-3 shadow-sm hover:shadow-md"
     >
-      {/* 縮圖：有圖就放圖，沒圖放品牌色塊 + 推送圖示 */}
-      <div className="w-16 h-16 shrink-0 rounded-md overflow-hidden bg-gradient-to-br from-orange-500/20 to-red-500/20 flex items-center justify-center">
+      {/* 縮圖：有圖就放圖，沒圖放中性灰底 + 橘色推送 icon */}
+      <div className="w-16 h-16 shrink-0 rounded-md overflow-hidden bg-slate-100 flex items-center justify-center">
         {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={cover} alt="" className="w-full h-full object-cover" />
         ) : (
-          <span className="text-2xl opacity-80" aria-hidden>📣</span>
+          <span className="text-xl text-orange-500" aria-hidden>📣</span>
         )}
       </div>
 
       {/* 文字區 */}
-      <div className="flex-1 min-w-0 text-white">
-        <h3 className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-orange-300 transition-colors">
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold leading-snug line-clamp-2 text-slate-900 group-hover:text-orange-600 transition-colors">
           {post.title}
         </h3>
         {summary && (
-          <p className="text-xs text-slate-300 mt-1 line-clamp-2 leading-relaxed">
+          <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
             {summary}
           </p>
         )}
-        <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-400">
+        <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
           <span>{post.author.nickname}</span>
-          <span className="text-slate-600">·</span>
+          <span className="text-slate-300">·</span>
           <span>{formatRelativeTime(post.createdAt)}</span>
           {post._count.replies > 0 && (
             <>
-              <span className="text-slate-600">·</span>
+              <span className="text-slate-300">·</span>
               <span>💬 {post._count.replies}</span>
             </>
           )}
