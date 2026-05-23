@@ -88,7 +88,19 @@ export class AuthService {
   async login(dto: LoginDto, ip?: string) {
     const user = await this.prisma.user.findUnique({
       where: { account: dto.account },
-      select: { id: true, nickname: true, role: true, status: true, passwordHash: true, avatar: true, level: true },
+      select: {
+        id: true,
+        nickname: true,
+        role: true,
+        status: true,
+        passwordHash: true,
+        avatar: true,
+        level: true,
+        phone: true,
+        phoneVerified: true,
+        phoneVerificationBypass: true,
+        nicknameChangedAt: true,
+      },
     });
 
     if (!user || !user.passwordHash) {
@@ -124,7 +136,22 @@ export class AuthService {
     // 找是否已有此 OAuth 綁定
     const existing = await this.prisma.oAuthProvider.findUnique({
       where: { provider_providerId: { provider, providerId } },
-      include: { user: { select: { id: true, nickname: true, role: true, status: true, avatar: true, level: true } } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            nickname: true,
+            role: true,
+            status: true,
+            avatar: true,
+            level: true,
+            phone: true,
+            phoneVerified: true,
+            phoneVerificationBypass: true,
+            nicknameChangedAt: true,
+          },
+        },
+      },
     });
 
     if (existing) {
@@ -146,7 +173,18 @@ export class AuthService {
         await this.recordLoginMeta(userByEmail.id, ip);
         const tokens = await this.generateTokens(userByEmail.id, userByEmail.nickname, userByEmail.role);
         return {
-          user: { id: userByEmail.id, nickname: userByEmail.nickname, role: userByEmail.role, avatar: userByEmail.avatar, level: userByEmail.level, status: userByEmail.status },
+          user: {
+            id: userByEmail.id,
+            nickname: userByEmail.nickname,
+            role: userByEmail.role,
+            avatar: userByEmail.avatar,
+            level: userByEmail.level,
+            status: userByEmail.status,
+            phone: userByEmail.phone,
+            phoneVerified: userByEmail.phoneVerified,
+            phoneVerificationBypass: userByEmail.phoneVerificationBypass,
+            nicknameChangedAt: userByEmail.nicknameChangedAt,
+          },
           ...tokens,
         };
       }
@@ -166,7 +204,18 @@ export class AuthService {
         avatar: profile.avatar ?? null,
         oauthProviders: { create: { provider, providerId } },
       },
-      select: { id: true, nickname: true, role: true, avatar: true, level: true, status: true },
+      select: {
+        id: true,
+        nickname: true,
+        role: true,
+        avatar: true,
+        level: true,
+        status: true,
+        phone: true,
+        phoneVerified: true,
+        phoneVerificationBypass: true,
+        nicknameChangedAt: true,
+      },
     });
 
     await this.recordLoginMeta(newUser.id, ip);
