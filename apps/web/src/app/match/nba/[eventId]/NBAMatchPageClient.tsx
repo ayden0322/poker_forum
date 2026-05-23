@@ -74,7 +74,7 @@ interface SummaryData {
     awayScore?: number;
     team?: { id?: string };
   }[];
-  seasonseries?: { summary?: string }[];
+  seasonseries?: { type?: string; summary?: string }[];
   leaders?: any[];
 }
 
@@ -157,7 +157,9 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
   const status = comp.status?.type;
   const completed = status?.completed ?? false;
   const inProgress = status?.state === 'in';
-  const seasonSeriesRaw = summary.seasonseries?.[0]?.summary;
+  // 優先取季後賽系列（type='playoff'），避免季後賽期間誤顯示常規賽對戰紀錄
+  const playoffSeries = summary.seasonseries?.find((s) => s.type === 'playoff');
+  const seasonSeriesRaw = playoffSeries?.summary;
   const seasonSeries = seasonSeriesRaw ? translateSeriesSummary(seasonSeriesRaw, zhByAbbr) : undefined;
   const statusDescZh = status?.description ? (STATUS_ZH[status.description] ?? status.description) : '—';
   const homeAbbr = home?.team?.abbreviation;
