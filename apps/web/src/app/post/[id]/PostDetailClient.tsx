@@ -18,7 +18,7 @@ interface PostData {
   content: string;
   isPinned: boolean;
   isLocked: boolean;
-  isAnnounce: boolean;
+  section?: 'FEATURED' | 'DISCUSSION';
   viewCount: number;
   replyCount: number;
   pushCount: number;
@@ -207,11 +207,11 @@ export default function PostDetailClient({ post }: { post: PostData }) {
         {/* 標題列 */}
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {post.section === 'FEATURED' && (
+              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-medium">📣 站方推送</span>
+            )}
             {post.isPinned && (
               <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">置頂</span>
-            )}
-            {post.isAnnounce && (
-              <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded font-medium">公告</span>
             )}
             {post.isLocked && (
               <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">鎖定</span>
