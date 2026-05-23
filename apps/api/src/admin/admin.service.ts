@@ -86,6 +86,7 @@ export class AdminService {
     body: {
       role?: Role;
       status?: UserStatus;
+      phoneVerified?: boolean;
       phoneVerificationBypass?: boolean;
       phoneVerificationBypassReason?: string | null;
     },
@@ -99,6 +100,18 @@ export class AdminService {
       data.phoneVerificationBypassReason = null;
     }
 
+    // 禁止後台直接將未驗證會員偽造為已驗證，若要繞過驗證請改用「後台放行」
+    if (body.phoneVerified === true && !user.phoneVerified) {
+      throw new BadRequestException(
+        '無法直接將會員設為已驗證，如需繞過驗證請改用「後台放行」',
+      );
+    }
+
+    // 取消驗證時同步清空驗證時間，下次發文 / 回應需重新跑 SMS 驗證
+    if (body.phoneVerified === false) {
+      data.phoneVerifiedAt = null;
+    }
+
     return this.prisma.user.update({
       where: { id },
       data,
@@ -107,6 +120,7 @@ export class AdminService {
         nickname: true,
         role: true,
         status: true,
+        phoneVerified: true,
         phoneVerificationBypass: true,
         phoneVerificationBypassReason: true,
       },

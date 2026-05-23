@@ -131,6 +131,7 @@ export default function MembersPage() {
       body: {
         role?: string;
         status?: string;
+        phoneVerified?: boolean;
         phoneVerificationBypass?: boolean;
         phoneVerificationBypassReason?: string | null;
       };
@@ -180,6 +181,7 @@ export default function MembersPage() {
     form.setFieldsValue({
       role: member.role,
       status: member.status,
+      phoneVerified: member.phoneVerified,
       phoneVerificationBypass: member.phoneVerificationBypass,
       phoneVerificationBypassReason: member.phoneVerificationBypassReason ?? '',
     });
@@ -192,16 +194,21 @@ export default function MembersPage() {
         (values: {
           role: string;
           status: string;
+          phoneVerified: boolean;
           phoneVerificationBypass: boolean;
           phoneVerificationBypassReason?: string;
         }) => {
           if (!editingMember) return;
           const reason = values.phoneVerificationBypassReason?.trim() || null;
+          // 只有「從已驗證取消為未驗證」時才送 phoneVerified，避免不必要更新與後端誤判
+          const phoneVerifiedChanged =
+            editingMember.phoneVerified && values.phoneVerified === false;
           updateMutation.mutate({
             id: editingMember.id,
             body: {
               role: values.role,
               status: values.status,
+              ...(phoneVerifiedChanged ? { phoneVerified: false } : {}),
               phoneVerificationBypass: values.phoneVerificationBypass,
               phoneVerificationBypassReason: values.phoneVerificationBypass ? reason : null,
             },
@@ -419,6 +426,22 @@ export default function MembersPage() {
           </Form.Item>
           <Form.Item label="狀態" name="status" rules={[{ required: true }]}>
             <Select options={STATUS_OPTIONS} />
+          </Form.Item>
+          <Form.Item
+            label="電話已驗證"
+            name="phoneVerified"
+            valuePropName="checked"
+            tooltip={
+              editingMember?.phoneVerified
+                ? '關閉後將清除此會員的手機驗證紀錄，下次發文 / 回應需重新完成 SMS 驗證。'
+                : '此會員目前未通過 SMS 驗證。後台無法直接設為已驗證，如需放行請改用下方「後台放行」。'
+            }
+          >
+            <Switch
+              disabled={!editingMember?.phoneVerified}
+              checkedChildren="已驗證"
+              unCheckedChildren="未驗證"
+            />
           </Form.Item>
           <Form.Item
             label="免手機驗證（後台放行）"

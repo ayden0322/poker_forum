@@ -52,6 +52,7 @@ export class AdminController {
     body: {
       role?: Role;
       status?: UserStatus;
+      phoneVerified?: boolean;
       phoneVerificationBypass?: boolean;
       phoneVerificationBypassReason?: string | null;
     },
