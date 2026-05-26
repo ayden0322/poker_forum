@@ -45,10 +45,10 @@ export class PostsController {
   @UseGuards(JwtAuthGuard, PhoneVerifiedGuard)
   @ApiBearerAuth()
   async create(
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; role: string },
     @Body() dto: CreatePostDto,
   ) {
-    const data = await this.postsService.create(user.id, dto);
+    const data = await this.postsService.create(user.id, user.role, dto);
     return { data };
   }
 

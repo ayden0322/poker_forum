@@ -4,14 +4,20 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { Role, PostStatus } from '@betting-forum/database';
 
+// 新聞 Agent 自動發文預設置頂時長
+export const AUTO_POST_PIN_HOURS = 24;
+
 @Injectable()
 export class PostsService {
   constructor(private prisma: PrismaService) {}
 
   /** 建立文章 */
-  async create(authorId: string, dto: CreatePostDto) {
+  async create(authorId: string, userRole: string, dto: CreatePostDto) {
     const board = await this.prisma.board.findUnique({ where: { id: dto.boardId } });
     if (!board || !board.isActive) throw new NotFoundException('看板不存在或已停用');
+
+    // 只有 ADMIN 能標自己是自動發文；其他角色傳 true 也忽略
+    const isAutoPosted = dto.isAutoPosted === true && userRole === Role.ADMIN;
 
     const post = await this.prisma.post.create({
       data: {
@@ -20,6 +26,7 @@ export class PostsService {
         title: dto.title,
         content: dto.content,
         ...(dto.status && { status: dto.status }),
+        isAutoPosted,
         tags: dto.tagIds?.length
           ? { create: dto.tagIds.map((tagId) => ({ tagId })) }
           : undefined,

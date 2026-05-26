@@ -132,6 +132,11 @@ model Post {
   pushCount   Int         @default(0) @map("push_count")
   lastReplyAt DateTime?   @map("last_reply_at")
   lastReplyBy String?     @map("last_reply_by")
+  // 新聞 Agent 自動發文標記：true 表示走「24h 自動退置頂 + 無互動回 DRAFT」生命週期
+  // 彩券自動發文維持 false，不受相關 cron 影響
+  isAutoPosted Boolean    @default(false) @map("is_auto_posted")
+  // 置頂到期時間；到了 cron 會自動 unpin。null 表示永久置頂或未置頂
+  pinnedUntil DateTime?   @map("pinned_until")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -146,6 +151,8 @@ model Post {
   @@index([boardId, status])
   @@index([boardId, section])
   @@index([authorId])
+  @@index([isAutoPosted, isPinned, pinnedUntil])
+  @@index([isAutoPosted, status, createdAt])
   @@map("posts")
 }
 

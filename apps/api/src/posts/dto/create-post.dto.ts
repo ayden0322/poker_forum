@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray, IsEnum, IsBoolean, MaxLength } from 'class-validator';
 import { PostStatus } from '@betting-forum/database';
 import { SanitizeHtml, SanitizeRichHtml } from '../../common/sanitize';
 
@@ -30,4 +30,13 @@ export class CreatePostDto {
   @IsOptional()
   @IsEnum(PostStatus)
   status?: PostStatus;
+
+  /**
+   * 新聞 Agent 自動發文標記。
+   * 傳 true 代表這篇走「24h 自動退置頂 + 無互動回 DRAFT」的生命週期。
+   * 只有 ADMIN 角色能設為 true（service 層會驗證），玩家帶上會被忽略。
+   */
+  @IsOptional()
+  @IsBoolean()
+  isAutoPosted?: boolean;
 }

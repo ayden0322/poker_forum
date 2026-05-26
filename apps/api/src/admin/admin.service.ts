@@ -339,6 +339,8 @@ export class AdminService {
           section: true,
           isPinned: true,
           isLocked: true,
+          isAutoPosted: true,
+          pinnedUntil: true,
           viewCount: true,
           replyCount: true,
           pushCount: true,
@@ -364,6 +366,11 @@ export class AdminService {
    * status: 'DRAFT' → 'PUBLISHED' 即「發布草稿」動作。
    * section: 'FEATURED' / 'DISCUSSION' 切換板塊頁上下半部分區。
    * title / content 提供 admin 直接編輯草稿內文。
+   *
+   * pinnedUntil 自動處理規則（僅 isAutoPosted=true 的文章）：
+   * - 切換成 isPinned=true → 自動補 pinnedUntil = now + 24h
+   * - 切換成 isPinned=false → 自動清空 pinnedUntil
+   * 非自動發文（玩家手寫 / 彩券公告）不受影響，行為與原本一致。
    */
   async updatePost(
     id: string,
@@ -378,7 +385,16 @@ export class AdminService {
   ) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) throw new NotFoundException('找不到此文章');
-    return this.prisma.post.update({ where: { id }, data });
+
+    const pinnedUntilPatch =
+      post.isAutoPosted && typeof data.isPinned === 'boolean'
+        ? { pinnedUntil: data.isPinned ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null }
+        : {};
+
+    return this.prisma.post.update({
+      where: { id },
+      data: { ...data, ...pinnedUntilPatch },
+    });
   }
 
   async deletePost(id: string) {

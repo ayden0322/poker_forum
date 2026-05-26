@@ -63,6 +63,8 @@ interface PostItem {
   section: PostSection;
   isPinned: boolean;
   isLocked: boolean;
+  isAutoPosted: boolean;
+  pinnedUntil: string | null;
   viewCount: number;
   replyCount: number;
   pushCount: number;
@@ -284,6 +286,18 @@ export default function PostsPage() {
       key: 'title',
       render: (_, record) => {
         const flags: React.ReactNode[] = [];
+        if (record.isAutoPosted) {
+          const pinnedUntilTip = record.pinnedUntil
+            ? `置頂到 ${new Date(record.pinnedUntil).toLocaleString('zh-TW', { hour12: false })} 自動退置頂`
+            : '新聞 Agent 自動發文：24h 內無人回覆會自動退回草稿';
+          flags.push(
+            <Tooltip key="a" title={pinnedUntilTip}>
+              <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                🤖 自動發文
+              </Tag>
+            </Tooltip>,
+          );
+        }
         if (record.isPinned)
           flags.push(
             <Tooltip key="p" title="置頂">
