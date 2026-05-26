@@ -423,6 +423,18 @@ export default function PostsPage() {
                       body: { isLocked: !record.isLocked },
                     }),
                 },
+                {
+                  key: 'autoPosted',
+                  label: record.isAutoPosted
+                    ? '取消自動發文標記'
+                    : '標為自動發文',
+                  icon: <span style={{ display: 'inline-block', width: 14 }}>🤖</span>,
+                  onClick: () =>
+                    toggleMutation.mutate({
+                      id: record.id,
+                      body: { isAutoPosted: !record.isAutoPosted },
+                    }),
+                },
                 { type: 'divider' as const },
                 {
                   key: 'delete',
