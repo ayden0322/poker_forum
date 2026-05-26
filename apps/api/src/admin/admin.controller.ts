@@ -234,6 +234,7 @@ export class AdminController {
       status?: 'DRAFT' | 'PUBLISHED';
       title?: string;
       content?: string;
+      isAutoPosted?: boolean;
     },
   ) {
     const data = await this.adminService.updatePost(id, body);

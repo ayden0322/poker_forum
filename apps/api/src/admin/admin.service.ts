@@ -381,15 +381,21 @@ export class AdminService {
       status?: 'DRAFT' | 'PUBLISHED';
       title?: string;
       content?: string;
+      isAutoPosted?: boolean;
     },
   ) {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) throw new NotFoundException('找不到此文章');
 
+    // pinnedUntil 自動處理：以更新後的 isAutoPosted 狀態為準
+    const willBeAutoPosted =
+      typeof data.isAutoPosted === 'boolean' ? data.isAutoPosted : post.isAutoPosted;
     const pinnedUntilPatch =
-      post.isAutoPosted && typeof data.isPinned === 'boolean'
+      willBeAutoPosted && typeof data.isPinned === 'boolean'
         ? { pinnedUntil: data.isPinned ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null }
-        : {};
+        : !willBeAutoPosted && data.isAutoPosted === false
+          ? { pinnedUntil: null } // 從自動發文改回手動 → 清掉到期時間
+          : {};
 
     return this.prisma.post.update({
       where: { id },
