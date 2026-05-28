@@ -294,6 +294,115 @@ export class NBAStatsController {
     return { data };
   }
 
+  @Get('games/:eventId/live')
+  @ApiOperation({
+    summary: '比賽即時動態（動畫直播專用，吃 ESPN eventId）',
+    description:
+      '後端自動 resolve 成 NBA gameId 後並行打 cdn box + cdn pbp，回精簡 payload：節數時鐘、雙隊比分/各節分數/暫停/bonus、目前在場球員、最近 15 個事件、最近 30 次投籃落點、領先勢頭抽樣。8 秒 Redis 快取。',
+  })
+  async getNbaLive(@Param('eventId') eventId: string) {
+    const snapshot = await this.nbaStats.getNbaLiveSnapshot(eventId);
+    if (!snapshot) return { data: null };
+
+    // 收集要翻譯的球員與球隊 ID
+    const playerIds = new Set<number>();
+    for (const p of [...snapshot.players.away, ...snapshot.players.home]) {
+      if (p?.personId) playerIds.add(p.personId);
+    }
+    for (const a of snapshot.recentActions ?? []) {
+      if (a.personId) playerIds.add(a.personId);
+    }
+    for (const s of snapshot.recentShots ?? []) {
+      if (s.personId) playerIds.add(s.personId);
+    }
+
+    // 球員翻譯
+    const playerTranslations = playerIds.size
+      ? await this.prisma.translation.findMany({
+          where: {
+            entityType: 'player',
+            sport: 'basketball',
+            apiId: { in: Array.from(playerIds) },
+          },
+        })
+      : [];
+    const playerMap = new Map(playerTranslations.map((t) => [t.apiId, t]));
+
+    // 球隊翻譯
+    // translation 表 NBA 用 espnAbbr 存（如 "SA"），但 cdn.nba.com 回傳的是
+    // NBA 官方 tricode（如 "SAS"），兩者需要正規化對應。
+    const NBA_TO_ESPN_TRICODE: Record<string, string> = {
+      SAS: 'SA',
+      GSW: 'GS',
+      NOP: 'NO',
+      NYK: 'NY',
+      UTA: 'UTAH',
+      WAS: 'WSH',
+    };
+    const teamTranslations = await this.prisma.translation.findMany({
+      where: { entityType: 'team', sport: 'basketball' },
+    });
+    const findTeamTr = (cdnTricode?: string | null) => {
+      if (!cdnTricode) return null;
+      const up = cdnTricode.toUpperCase();
+      const espnAbbr = NBA_TO_ESPN_TRICODE[up] ?? up;
+      return teamTranslations.find(
+        (t) =>
+          (t.extra as any)?.espnAbbr === espnAbbr ||
+          (t.extra as any)?.espnAbbr === up,
+      );
+    };
+
+    const enrichTeam = (team: any) => {
+      if (!team) return null;
+      const tr = findTeamTr(team.teamTricode);
+      return {
+        ...team,
+        nameZhTw:
+          tr?.nameZhTw ??
+          // cdn 給的 teamCity 與 teamName 中間沒空格，fallback 也要補上
+          (team.teamCity ? `${team.teamCity} ${team.teamName}` : team.teamName),
+        shortName: tr?.shortName ?? team.teamTricode,
+      };
+    };
+
+    const enrichPlayer = (p: any) => {
+      if (!p) return null;
+      const tr = playerMap.get(p.personId);
+      return {
+        ...p,
+        nameZhTw: tr?.nameZhTw ?? p.name,
+        shortName: tr?.shortName ?? p.familyName ?? p.name,
+      };
+    };
+
+    const enrichAction = (a: any) => ({
+      ...a,
+      playerNameZhTw: a.personId
+        ? playerMap.get(a.personId)?.nameZhTw ?? a.playerName
+        : null,
+      playerShortName: a.personId
+        ? playerMap.get(a.personId)?.shortName ?? a.playerNameI
+        : null,
+    });
+
+    return {
+      data: {
+        ...snapshot,
+        teams: {
+          away: enrichTeam(snapshot.teams.away),
+          home: enrichTeam(snapshot.teams.home),
+        },
+        players: {
+          away: snapshot.players.away.map(enrichPlayer),
+          home: snapshot.players.home.map(enrichPlayer),
+        },
+        recentActions: (snapshot.recentActions ?? []).map(enrichAction),
+        recentShots: (snapshot.recentShots ?? []).map(enrichAction),
+      },
+    };
+  }
+
   @Get('scoreboard/today')
   @ApiOperation({ summary: '今日 NBA 即時計分板（cdn.nba.com）' })
   async getTodayScoreboard() {

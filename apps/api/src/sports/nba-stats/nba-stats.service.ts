@@ -30,9 +30,19 @@ export class NBAStatsService {
   private async callApi<T>(url: string): Promise<T | null> {
     this.logger.debug(`NBA API 呼叫：${url}`);
     try {
+      // cdn.nba.com / stats.nba.com 對 User-Agent 與 Referer 敏感，
+      // 不帶會直接回 403。ESPN 則不需要這些 header。
+      const isNba = /\.nba\.com\//.test(url);
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (isNba) {
+        headers['User-Agent'] =
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36';
+        headers['Referer'] = 'https://www.nba.com/';
+        headers['Origin'] = 'https://www.nba.com';
+      }
       const res = await fetch(url, {
         signal: AbortSignal.timeout(15000),
-        headers: { Accept: 'application/json' },
+        headers,
       });
       if (!res.ok) {
         this.logger.error(`NBA API ${res.status}：${url}`);
@@ -326,6 +336,270 @@ export class NBAStatsService {
       const data = await this.callApi<any>(`${this.nbaCdn}/liveData/playbyplay/playbyplay_${nbaGameId}.json`);
       return data?.game ?? null;
     });
+  }
+
+  /**
+   * ESPN ↔ NBA tricode alias 表
+   *
+   * ESPN 對部分球隊用 2 字母縮寫，NBA 官方一律 3 字母。
+   * 部分隊伍 ESPN 用「城市完整」（UTAH）或不同字母（WSH vs WAS）。
+   */
+  private readonly ESPN_TO_NBA_TRICODE: Record<string, string> = {
+    SA: 'SAS',
+    GS: 'GSW',
+    NO: 'NOP',
+    NY: 'NYK',
+    UTAH: 'UTA',
+    WSH: 'WAS',
+  };
+
+  /** 正規化 ESPN tricode 為 NBA tricode（其他直接 toUpperCase 後回傳） */
+  private normalizeTricode(espnTricode?: string | null): string {
+    if (!espnTricode) return '';
+    const up = espnTricode.toUpperCase();
+    return this.ESPN_TO_NBA_TRICODE[up] ?? up;
+  }
+
+  /**
+   * ESPN eventId → NBA gameId 解析
+   *
+   * 流程：
+   * 1. 用 ESPN summary 取得 date (UTC) + away/home tricode（含 alias 正規化）
+   * 2. 查 cdn schedule v2，用日期 ± 48h + tricode 比對找出 NBA gameId
+   * 3. Redis 快取 30 天（mapping 一旦對上不會變）
+   */
+  async resolveEspnEventToNbaGameId(eventId: string): Promise<string | null> {
+    const cacheKey = `nba:resolve:espn2nba:${eventId}`;
+    const cached = await this.redis.get<string>(cacheKey);
+    if (cached) return cached;
+
+    const summary = await this.getGameSummary(eventId);
+    const comp = summary?.header?.competitions?.[0];
+    if (!comp) return null;
+
+    const espnDate = comp.date;
+    if (!espnDate) return null;
+    const utcDay = espnDate.slice(0, 10);
+
+    const competitors = comp.competitors ?? [];
+    const awayTri = this.normalizeTricode(
+      competitors.find((c: any) => c.homeAway === 'away')?.team?.abbreviation,
+    );
+    const homeTri = this.normalizeTricode(
+      competitors.find((c: any) => c.homeAway === 'home')?.team?.abbreviation,
+    );
+    if (!awayTri || !homeTri) return null;
+
+    const schedule = await this.getLeagueSchedule();
+    const gameDates: any[] = schedule?.gameDates ?? [];
+
+    const target = new Date(`${utcDay}T00:00:00Z`).getTime();
+    let found: string | null = null;
+    for (const gd of gameDates) {
+      const games = gd?.games ?? [];
+      for (const g of games) {
+        const gTime = new Date(g.gameDateTimeEst ?? g.gameDateTimeUTC ?? 0).getTime();
+        if (Math.abs(gTime - target) > 48 * 3600 * 1000) continue;
+        const a = (g.awayTeam?.teamTricode ?? '').toUpperCase();
+        const h = (g.homeTeam?.teamTricode ?? '').toUpperCase();
+        if (a === awayTri && h === homeTri) {
+          found = g.gameId;
+          break;
+        }
+      }
+      if (found) break;
+    }
+
+    if (found) {
+      await this.redis.set(cacheKey, found, 30 * 86400);
+      this.logger.debug(`ESPN ${eventId} ↔ NBA ${found} (${awayTri}@${homeTri})`);
+    } else {
+      this.logger.warn(
+        `ESPN ${eventId} 找不到對應的 NBA gameId（${awayTri}@${homeTri}, date=${utcDay}）`,
+      );
+    }
+    return found;
+  }
+
+  /**
+   * NBA 動畫直播快照（合成 cdn box + cdn pbp 的精簡 payload）
+   *
+   * 包含：
+   * - status：gameStatus（1=排定 / 2=進行 / 3=結束）+ statusText + period + clock
+   * - teams：雙隊 tricode/name/score/各節分數/暫停剩餘/bonus 狀態
+   * - onCourt：兩隊目前在場上球員（oncourt=1），含即時統計
+   * - recentActions：最近 10 個事件（描述、加分、時間戳）
+   * - recentShots：最近 30 次投籃落點（x/y 標準化座標 + 命中/未中）
+   * - momentum：每 30 個 action 抽樣一個比分差，用於折線圖
+   *
+   * 8s Redis 快取（live）；結束後改 60s（在 controller 層判斷）
+   */
+  async getNbaLiveSnapshot(eventId: string) {
+    const nbaGameId = await this.resolveEspnEventToNbaGameId(eventId);
+    if (!nbaGameId) return null;
+
+    const cacheKey = `nba:live:${eventId}`;
+    return this.cached(cacheKey, 8, async () => {
+      const [boxRaw, pbpRaw] = await Promise.all([
+        this.getCdnBoxScore(nbaGameId),
+        this.getCdnPlayByPlay(nbaGameId),
+      ]);
+      if (!boxRaw) return null;
+      return this.buildNbaLiveSnapshot(boxRaw, pbpRaw, nbaGameId);
+    });
+  }
+
+  /** 將 cdn box + pbp 壓成前端動畫直播的精簡 payload */
+  private buildNbaLiveSnapshot(box: any, pbp: any, nbaGameId: string) {
+    const shrinkTeam = (t: any) => {
+      if (!t) return null;
+      return {
+        teamId: t.teamId,
+        teamName: t.teamName,
+        teamCity: t.teamCity,
+        teamTricode: t.teamTricode,
+        score: t.score ?? 0,
+        timeoutsRemaining: t.timeoutsRemaining ?? 0,
+        inBonus: t.inBonus === '1',
+        periods: (t.periods ?? []).map((p: any) => ({ period: p.period, score: p.score })),
+      };
+    };
+
+    const shrinkPlayer = (p: any) => ({
+      personId: p.personId,
+      name: p.name,
+      nameI: p.nameI ?? p.name,
+      firstName: p.firstName,
+      familyName: p.familyName,
+      jerseyNum: p.jerseyNum,
+      position: p.position,
+      starter: p.starter === '1',
+      oncourt: p.oncourt === '1',
+      status: p.status,
+      stats: {
+        points: p.statistics?.points ?? 0,
+        rebounds: p.statistics?.reboundsTotal ?? 0,
+        assists: p.statistics?.assists ?? 0,
+        steals: p.statistics?.steals ?? 0,
+        blocks: p.statistics?.blocks ?? 0,
+        turnovers: p.statistics?.turnovers ?? 0,
+        plusMinus: p.statistics?.plusMinusPoints ?? 0,
+        fgm: p.statistics?.fieldGoalsMade ?? 0,
+        fga: p.statistics?.fieldGoalsAttempted ?? 0,
+        tpm: p.statistics?.threePointersMade ?? 0,
+        tpa: p.statistics?.threePointersAttempted ?? 0,
+        ftm: p.statistics?.freeThrowsMade ?? 0,
+        fta: p.statistics?.freeThrowsAttempted ?? 0,
+        minutes: p.statistics?.minutes ?? '',
+        fouls: p.statistics?.foulsPersonal ?? 0,
+      },
+    });
+
+    const awayTeam = shrinkTeam(box.awayTeam);
+    const homeTeam = shrinkTeam(box.homeTeam);
+
+    const awayPlayers = (box.awayTeam?.players ?? []).map(shrinkPlayer);
+    const homePlayers = (box.homeTeam?.players ?? []).map(shrinkPlayer);
+
+    const actions: any[] = pbp?.actions ?? [];
+
+    // 最近 10 個有意義事件（過濾掉 game/period 兩種 marker，除非是結束標記）
+    const meaningful = actions.filter(
+      (a) =>
+        !['jumpball'].includes(a.actionType) ||
+        ['game', 'period'].includes(a.actionType),
+    );
+    const recentActions = actions.slice(-15).map((a) => ({
+      actionNumber: a.actionNumber,
+      period: a.period,
+      clock: a.clock,
+      teamId: a.teamId,
+      teamTricode: a.teamTricode,
+      actionType: a.actionType,
+      subType: a.subType,
+      descriptor: a.descriptor,
+      qualifiers: a.qualifiers,
+      personId: a.personId,
+      playerName: a.playerName,
+      playerNameI: a.playerNameI,
+      description: a.description,
+      scoreAway: a.scoreAway,
+      scoreHome: a.scoreHome,
+      shotResult: a.shotResult,
+      pointsTotal: a.pointsTotal,
+      isFieldGoal: a.isFieldGoal,
+      shotDistance: a.shotDistance,
+      area: a.area,
+    }));
+
+    // 最近 30 次投籃（落點動畫用）
+    const shotActions = actions.filter(
+      (a) =>
+        (a.actionType === '2pt' || a.actionType === '3pt') &&
+        a.x !== null &&
+        a.x !== undefined &&
+        a.y !== null &&
+        a.y !== undefined,
+    );
+    const recentShots = shotActions.slice(-30).map((a) => ({
+      actionNumber: a.actionNumber,
+      period: a.period,
+      clock: a.clock,
+      teamId: a.teamId,
+      teamTricode: a.teamTricode,
+      personId: a.personId,
+      playerName: a.playerName,
+      playerNameI: a.playerNameI,
+      x: a.x, // 0~100，0 = 籃框正下方左側、100 = 右側
+      y: a.y, // 0~100，0 = 籃框、越大越遠離籃框
+      shotDistance: a.shotDistance,
+      shotResult: a.shotResult, // "Made" / "Missed"
+      pointsTotal: a.pointsTotal,
+      isThreePoint: a.actionType === '3pt',
+      area: a.area,
+      subType: a.subType,
+    }));
+
+    // 領先勢頭（每場約 600 actions，抽樣到 ~60 個點即可畫順）
+    const sampleStep = Math.max(1, Math.floor(actions.length / 60));
+    const momentum: { period: number; diff: number; clock: string }[] = [];
+    for (let i = 0; i < actions.length; i += sampleStep) {
+      const a = actions[i];
+      const home = parseInt(a.scoreHome ?? '0', 10);
+      const away = parseInt(a.scoreAway ?? '0', 10);
+      momentum.push({
+        period: a.period,
+        clock: a.clock,
+        diff: home - away,
+      });
+    }
+    // 確保最後一點是最終比分
+    if (actions.length > 0) {
+      const last = actions[actions.length - 1];
+      const home = parseInt(last.scoreHome ?? '0', 10);
+      const away = parseInt(last.scoreAway ?? '0', 10);
+      momentum.push({ period: last.period, clock: last.clock, diff: home - away });
+    }
+
+    return {
+      eventId: nbaGameId, // 內部欄位
+      nbaGameId,
+      status: {
+        gameStatus: box.gameStatus,
+        statusText: box.gameStatusText,
+        period: box.period,
+        clock: box.gameClock,
+        gameTimeUTC: box.gameTimeUTC,
+        attendance: box.attendance,
+        sellout: box.sellout === '1',
+      },
+      teams: { away: awayTeam, home: homeTeam },
+      players: { away: awayPlayers, home: homePlayers },
+      recentActions,
+      recentShots,
+      momentum,
+      totalActions: actions.length,
+    };
   }
 
   // ============ ID 對應 (API-Sports → ESPN) ============

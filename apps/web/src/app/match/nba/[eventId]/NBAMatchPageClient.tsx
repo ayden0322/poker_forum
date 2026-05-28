@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useState, useMemo } from 'react';
+import { LiveAnimationBoard } from '@/components/sports/nba/live/LiveAnimationBoard';
 
 /** 比賽狀態英文 → 中文 */
 const STATUS_ZH: Record<string, string> = {
@@ -243,6 +244,14 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
           </div>
         )}
       </div>
+
+      {/* 動畫直播板（進行中顯示即時動態、已結束顯示比賽回顧；賽前不渲染） */}
+      {status?.state !== 'pre' && (
+        <LiveAnimationBoard
+          eventId={eventId}
+          espnStatusState={status?.state}
+        />
+      )}
 
       {/* Tab 切換 */}
       <div className="flex gap-1 mb-3 border-b border-gray-200">
