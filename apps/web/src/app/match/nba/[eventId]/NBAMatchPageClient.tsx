@@ -245,10 +245,12 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
         )}
       </div>
 
-      {/* 動畫直播板（進行中顯示即時動態、已結束顯示比賽回顧；賽前不渲染） */}
-      {status?.state !== 'pre' && (
+      {/* 動畫直播板（進行中顯示即時動態、已結束顯示比賽回顧；賽前不渲染）
+          注意：要傳「已 resolve 的 espnEventId」，而非原始 eventId
+          （URL 可能是 apisports-xxx 格式，要先 resolve 後才能查 cdn live 資料） */}
+      {status?.state !== 'pre' && espnEventId && (
         <LiveAnimationBoard
-          eventId={eventId}
+          eventId={espnEventId}
           espnStatusState={status?.state}
         />
       )}
