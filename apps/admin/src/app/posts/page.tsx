@@ -280,6 +280,28 @@ export default function PostsPage() {
     onError: (err: Error) => message.error(err.message),
   });
 
+  // 一鍵刪除：把目前篩選結果（限定 status=DRAFT 才能用）整批刪掉
+  // 後端會再驗一次 status，前端只是 UX gate
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () => {
+      const params = new URLSearchParams();
+      params.set('status', 'DRAFT');
+      if (search) params.set('q', search);
+      if (scope?.startsWith('board:')) params.set('boardId', scope.slice(6));
+      else if (scope?.startsWith('cat:')) params.set('categoryId', scope.slice(4));
+      return adminApiFetch<{ data: { count: number } }>(
+        `/admin/posts?${params}`,
+        { method: 'DELETE' },
+      );
+    },
+    onSuccess: (res) => {
+      message.success(`已刪除 ${res.data.count} 篇草稿`);
+      queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-posts-draft-count'] });
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
   const columns: ColumnsType<PostItem> = [
     {
       title: '文章',
@@ -564,6 +586,31 @@ export default function PostsPage() {
           allowClear
           enterButton
         />
+        {/* 一鍵刪除：只在待審稿 tab 顯示，避免誤刪已發布文章 */}
+        {statusFilter === 'DRAFT' && (data?.data.total ?? 0) > 0 && (
+          <Popconfirm
+            title={`確定刪除目前列出的全部 ${data?.data.total ?? 0} 篇草稿？`}
+            description={
+              <div style={{ maxWidth: 280 }}>
+                此操作會把目前篩選結果裡的草稿{scope || search ? '（含當前篩選條件）' : ''}
+                一次清除，無法復原。建議先確認要保留的文章已經發布。
+              </div>
+            }
+            okText="全部刪除"
+            okButtonProps={{ danger: true, loading: bulkDeleteMutation.isPending }}
+            cancelText="取消"
+            onConfirm={() => bulkDeleteMutation.mutate()}
+          >
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              loading={bulkDeleteMutation.isPending}
+              style={{ marginLeft: 'auto' }}
+            >
+              一鍵刪除目前草稿
+            </Button>
+          </Popconfirm>
+        )}
       </div>
 
       <Table

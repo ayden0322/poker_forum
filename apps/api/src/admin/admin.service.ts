@@ -410,6 +410,39 @@ export class AdminService {
     return { success: true };
   }
 
+  /**
+   * 批次刪除文章。篩選條件與 getPosts 一致，
+   * 但強制要 status，避免一鍵清空整個論壇。
+   * 文章下層（replies / pushes / bookmarks / tags / reports）皆設 onDelete: Cascade，
+   * deleteMany 會由 DB 一起清掉。
+   */
+  async bulkDeletePosts(params: {
+    status: 'DRAFT' | 'PUBLISHED';
+    boardId?: string;
+    categoryId?: string;
+    section?: 'FEATURED' | 'DISCUSSION';
+    q?: string;
+  }) {
+    const { status, boardId, categoryId, section, q } = params;
+    if (status !== 'DRAFT' && status !== 'PUBLISHED') {
+      throw new BadRequestException('批次刪除必須指定 status=DRAFT 或 PUBLISHED');
+    }
+
+    const where: Record<string, unknown> = { status };
+    if (boardId) where.boardId = boardId;
+    else if (categoryId) where.board = { categoryId };
+    if (section) where.section = section;
+    if (q) {
+      where.OR = [
+        { title: { contains: q, mode: 'insensitive' } },
+        { author: { nickname: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    const result = await this.prisma.post.deleteMany({ where });
+    return { count: result.count };
+  }
+
   // ===== 跑馬燈管理 =====
   async getMarquees() {
     return this.prisma.marquee.findMany({ orderBy: { sortOrder: 'asc' } });

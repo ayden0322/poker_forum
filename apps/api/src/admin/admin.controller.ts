@@ -247,6 +247,30 @@ export class AdminController {
     return { data: { success: true } };
   }
 
+  /**
+   * 批次刪除文章（一鍵清空目前篩選結果）。
+   * 強制要求帶 status，避免「沒帶條件就把所有文章清光」這種誤觸。
+   * 其餘篩選（boardId / categoryId / section / q）與 GET /admin/posts 一致，
+   * 所以前端可以直接把當前列表的篩選參數丟過來。
+   */
+  @Delete('posts')
+  async bulkDeletePosts(
+    @Query('status') status: 'DRAFT' | 'PUBLISHED',
+    @Query('boardId') boardId?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('section') section?: 'FEATURED' | 'DISCUSSION',
+    @Query('q') q?: string,
+  ) {
+    const data = await this.adminService.bulkDeletePosts({
+      status,
+      boardId,
+      categoryId,
+      section: section === 'FEATURED' || section === 'DISCUSSION' ? section : undefined,
+      q,
+    });
+    return { data };
+  }
+
   // ===== 跑馬燈管理 =====
   @Get('marquees')
   async getMarquees() {
