@@ -624,31 +624,32 @@ export class MLBStatsController {
   @Get('games/:gamePk')
   @ApiOperation({ summary: '比賽完整資料（整合 schedule + linescore + boxscore）' })
   async getGameSummary(@Param('gamePk', ParseIntPipe) gamePk: number) {
-    const [schedule, linescore, boxscore] = await Promise.all([
-      this.mlbStats.getSchedule(new Date().toISOString().slice(0, 10)),
+    // 改用 gamePk 直接查 schedule，避免「UTC 今天 vs MLB ET 日期」對不上時
+    // 把直播中的比賽誤判成「已結束」（fallback 寫死 Final 的舊 bug）
+    const [game, linescore, boxscore] = await Promise.all([
+      this.mlbStats.getScheduleByGamePk(gamePk),
       this.mlbStats.getLineScore(gamePk),
       this.getBoxScore(gamePk).then((r) => r.data),
     ]);
 
-    // 從 schedule 中找到這場比賽的基本資訊（或用 gamePk 查其他日期）
-    let game = schedule?.find((g: any) => g.gamePk === gamePk);
-
-    // 如果今天的 schedule 沒有，嘗試從 boxscore 推斷
-    if (!game && boxscore) {
+    // 萬一 schedule 真的查不到（例如極舊的比賽被歸檔），才從 boxscore 還原最低限度欄位
+    // 注意：此處不再硬編 detailedState: 'Final'，避免誤判直播為已結束
+    let resolvedGame: any = game;
+    if (!resolvedGame && boxscore) {
       const bs = boxscore as any;
-      game = {
+      resolvedGame = {
         gamePk,
         teams: {
           home: { team: bs.teams?.home?.team, score: bs.teams?.home?.teamStats?.batting?.runs ?? 0 },
           away: { team: bs.teams?.away?.team, score: bs.teams?.away?.teamStats?.batting?.runs ?? 0 },
         },
-        status: { detailedState: 'Final' },
+        // 不寫死 status；交由前端依 linescore 判斷狀態
       };
     }
 
     return {
       data: {
-        game,
+        game: resolvedGame,
         linescore,
         boxscore,
       },

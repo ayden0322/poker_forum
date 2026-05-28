@@ -228,6 +228,25 @@ export class MLBStatsService {
 
   // ============ 單場比賽詳情（含逐球資料） ============
 
+  /**
+   * 透過 gamePk 直接抓單場 schedule（含即時 linescore 與正確 status）
+   *
+   * 不依賴日期猜測，避免「ET 與 UTC 跨日」造成查不到比賽的問題。
+   * TTL 30 秒，配合前端 60 秒輪詢（避免賽中狀態落後過久）。
+   */
+  async getScheduleByGamePk(gamePk: number) {
+    const cacheKey = `mlb:schedule:gamepk:${gamePk}`;
+    return this.cached(cacheKey, 30, async () => {
+      const data = await this.callApi<{ dates: any[] }>('/schedule', {
+        sportId: 1,
+        gamePks: gamePk,
+        hydrate: 'linescore',
+      });
+      const games = (data?.dates ?? []).flatMap((d: any) => d.games ?? []);
+      return games.find((g: any) => g.gamePk === gamePk) ?? null;
+    });
+  }
+
   async getGameFeed(gamePk: number) {
     const cacheKey = `mlb:game:${gamePk}`;
     return this.cached(cacheKey, 60, async () => {
