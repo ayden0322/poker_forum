@@ -99,6 +99,8 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
           shots={recentShots}
           awayTeamId={teams.away?.teamId}
           homeTeamId={teams.home?.teamId}
+          awayName={teams.away?.shortName}
+          homeName={teams.home?.shortName}
         />
         <OnCourtPlayers
           awayTeam={teams.away}
