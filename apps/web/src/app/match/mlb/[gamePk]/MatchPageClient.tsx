@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { HeadToHeadBlock } from '@/components/sports/mlb/HeadToHeadBlock';
 import { StartingLineupCard } from '@/components/sports/mlb/StartingLineupCard';
+import { LiveAnimationBoard } from '@/components/sports/mlb/live/LiveAnimationBoard';
 
 interface Response {
   data: {
@@ -32,6 +33,39 @@ function fmt(n: any, digits = 0): string {
   const num = typeof n === 'number' ? n : parseFloat(n);
   if (isNaN(num)) return String(n);
   return digits > 0 ? num.toFixed(digits) : String(num);
+}
+
+/** 半局狀態中文化（Top/Bottom/Middle/End） */
+function halfInningText(state?: string): string {
+  if (!state) return '';
+  const map: Record<string, string> = {
+    Top: '上半局',
+    Bottom: '下半局',
+    Middle: '局間休息',
+    End: '局末',
+  };
+  return map[state] ?? state;
+}
+
+/** 比賽 detailedState 中文化 */
+function gameStatusText(state?: string): string {
+  if (!state) return '';
+  const map: Record<string, string> = {
+    'In Progress': '進行中',
+    'Pre-Game': '賽前',
+    'Warmup': '熱身',
+    'Scheduled': '未開賽',
+    'Delayed': '延賽',
+    'Delayed Start': '延後開賽',
+    'Postponed': '延期',
+    'Suspended': '暫停',
+    'Final': '已結束',
+    'Game Over': '已結束',
+    'Completed Early': '提前結束',
+    'Manager Challenge': '教練挑戰中',
+    'Replay': '判決重播',
+  };
+  return map[state] ?? state;
 }
 
 /** 逐局比分表 */
@@ -238,8 +272,9 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['mlb-game', gamePk],
     queryFn: () => apiFetch<Response>(`/mlb/games/${gamePk}`),
-    staleTime: 60 * 1000,
-    refetchInterval: 60 * 1000,
+    staleTime: 30 * 1000,
+    // 進行中比賽縮短到 30 秒（比分卡 + boxscore），動畫板自己負責 10 秒級的即時更新
+    refetchInterval: 30 * 1000,
   });
 
   if (isLoading) {
@@ -301,11 +336,29 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
           {/* 中間狀態 */}
           <div className="text-center px-4">
             <div className="text-xs text-blue-200 mb-1">
-              {isFinished ? '已結束' : (linescore?.inningState ?? status) || '-'}
+              {isFinished
+                ? '已結束'
+                : halfInningText(linescore?.inningState) ||
+                  gameStatusText(status) ||
+                  '-'}
             </div>
             {!isFinished && linescore?.currentInning && (
               <div className="text-lg font-bold">
-                {linescore.inningHalf === 'Top' ? '↑' : '↓'} {linescore.currentInning}局
+                {linescore.inningHalf === 'Top' && (
+                  <>↑ {linescore.currentInning}局上</>
+                )}
+                {linescore.inningHalf === 'Bottom' && (
+                  <>↓ {linescore.currentInning}局下</>
+                )}
+                {linescore.inningHalf === 'Middle' && (
+                  <>{linescore.currentInning}局・換場</>
+                )}
+                {linescore.inningHalf === 'End' && (
+                  <>{linescore.currentInning}局・結束</>
+                )}
+                {!['Top', 'Bottom', 'Middle', 'End'].includes(
+                  linescore.inningHalf ?? '',
+                ) && <>{linescore.currentInning}局</>}
               </div>
             )}
             <div className="text-2xl text-blue-300 my-2">VS</div>
@@ -330,6 +383,11 @@ export default function MatchPageClient({ gamePk }: { gamePk: number }) {
           </Link>
         </div>
       </div>
+
+      {/* 動畫直播板（進行中比賽顯示即時動態、已結束顯示比賽回顧） */}
+      {!isLoading && abstractState !== 'Preview' && (
+        <LiveAnimationBoard gamePk={gamePk} abstractGameState={abstractState} />
+      )}
 
       {/* 逐局比分 */}
       {linescore && <LineScoreTable linescore={linescore} boxscore={boxscore} />}

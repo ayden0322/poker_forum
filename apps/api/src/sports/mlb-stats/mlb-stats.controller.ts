@@ -500,6 +500,109 @@ export class MLBStatsController {
     return { data };
   }
 
+  @Get('games/:gamePk/live')
+  @ApiOperation({
+    summary: '比賽即時動態（動畫直播專用）',
+    description:
+      'GUMBO live feed 抽取的精簡 payload：B/S/O、壘上跑者、投打對決、最後一球（球種/球速/進壘點/結果）、打者熱區、最近事件流。8 秒 Redis 快取。',
+  })
+  async getLive(@Param('gamePk', ParseIntPipe) gamePk: number) {
+    const snapshot = await this.mlbStats.getLiveSnapshot(gamePk);
+    if (!snapshot) return { data: null };
+
+    // 收集所有要翻譯的球員 ID（投手、打者、壘上跑者、最近事件中的打者/投手）
+    const playerIds = new Set<number>();
+    const collect = (p?: { id?: number } | null) => {
+      if (p?.id) playerIds.add(p.id);
+    };
+    collect(snapshot.matchup?.batter);
+    collect(snapshot.matchup?.pitcher);
+    collect(snapshot.matchup?.onDeck);
+    collect(snapshot.linescore?.onFirst);
+    collect(snapshot.linescore?.onSecond);
+    collect(snapshot.linescore?.onThird);
+    for (const p of snapshot.recentPlays ?? []) {
+      collect(p.batter);
+      collect(p.pitcher);
+    }
+
+    // 球員翻譯：只查資料庫已有的，不在這裡即時觸發 LLM 翻譯（直播 endpoint 對延遲敏感）
+    const playerTranslations = playerIds.size
+      ? await this.prisma.translation.findMany({
+          where: {
+            entityType: 'player',
+            sport: 'baseball',
+            apiId: { in: Array.from(playerIds) },
+          },
+        })
+      : [];
+    const playerMap = new Map(playerTranslations.map((t) => [t.apiId, t]));
+
+    // 球隊翻譯
+    const teamTranslations = await this.prisma.translation.findMany({
+      where: { entityType: 'team', sport: 'baseball' },
+    });
+    const findTeamTr = (teamId?: number | null) =>
+      teamId ? teamTranslations.find((t) => (t.extra as any)?.mlbStatsTeamId === teamId) : null;
+
+    const enrichPerson = (p?: { id?: number; fullName?: string } | null) => {
+      if (!p?.id) return null;
+      const tr = playerMap.get(p.id);
+      return {
+        id: p.id,
+        fullName: p.fullName,
+        nameZhTw: tr?.nameZhTw ?? p.fullName,
+        shortName: tr?.shortName ?? null,
+      };
+    };
+
+    const enrichTeam = (
+      team?: { id?: number; name?: string; abbreviation?: string; teamName?: string } | null,
+    ) => {
+      if (!team?.id) return null;
+      const tr = findTeamTr(team.id);
+      return {
+        id: team.id,
+        name: team.name,
+        abbreviation: team.abbreviation,
+        nameZhTw: tr?.nameZhTw ?? team.name,
+        shortName: tr?.shortName ?? team.teamName ?? team.abbreviation,
+      };
+    };
+
+    return {
+      data: {
+        gamePk: snapshot.gamePk,
+        status: snapshot.status,
+        teams: {
+          away: enrichTeam(snapshot.teams.away),
+          home: enrichTeam(snapshot.teams.home),
+        },
+        linescore: {
+          ...snapshot.linescore,
+          onFirst: enrichPerson(snapshot.linescore.onFirst),
+          onSecond: enrichPerson(snapshot.linescore.onSecond),
+          onThird: enrichPerson(snapshot.linescore.onThird),
+        },
+        matchup: snapshot.matchup
+          ? {
+              ...snapshot.matchup,
+              batter: enrichPerson(snapshot.matchup.batter),
+              pitcher: enrichPerson(snapshot.matchup.pitcher),
+              onDeck: enrichPerson(snapshot.matchup.onDeck),
+            }
+          : null,
+        lastPitch: snapshot.lastPitch,
+        recentPlays: (snapshot.recentPlays ?? []).map((p) => ({
+          ...p,
+          batter: enrichPerson(p.batter),
+          pitcher: enrichPerson(p.pitcher),
+        })),
+        scoringPlayIndexes: snapshot.scoringPlayIndexes,
+      },
+    };
+  }
+
   @Get('games/:gamePk/preview')
   @ApiOperation({
     summary: '賽前資訊（預計先發投手 + 先發打線，含中文翻譯）',

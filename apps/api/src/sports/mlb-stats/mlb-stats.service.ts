@@ -282,6 +282,202 @@ export class MLBStatsService {
   }
 
   /**
+   * Live Snapshot（動畫直播專用）
+   *
+   * 從 GUMBO live feed 抽取「比賽即時動態」所需的最小欄位集，
+   * 避免把整包 ~600KB 原始 feed 丟給前端。
+   *
+   * 包含：
+   * - status：比賽狀態（Live/Final/...）
+   * - linescore：B/S/O、局數、壘上跑者（offense.first/second/third）、攻守隊
+   * - matchup：currentPlay 的投手/打者/打席計數、打者熱區、左右投打、得點圈狀態
+   * - lastPitch：最後一球的球種/球速/進壘點 zone + pX/pZ 座標 + ballColor + 結果 call
+   * - hitData：最後一球若擊出去，含 launchSpeed/angle/trajectory/落點
+   * - recentPlays：最近 8 個完成的 atBat（半局、打者、result description、是否得分、是否出局）
+   *
+   * 快取 8 秒（前端輪詢間隔 10 秒，留 buffer 給多人同時看同一場比賽）
+   */
+  async getLiveSnapshot(gamePk: number) {
+    const cacheKey = `mlb:live:${gamePk}`;
+    return this.cached(cacheKey, 8, async () => {
+      const feed = await this.fetchGameFeed(gamePk);
+      if (!feed) return null;
+      return this.buildLiveSnapshot(feed);
+    });
+  }
+
+  /** 不走快取，直接抓 GUMBO feed（避免與 getGameFeed 的 60s 快取互卡） */
+  private async fetchGameFeed(gamePk: number): Promise<any | null> {
+    try {
+      const res = await fetch(
+        `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`,
+        { signal: AbortSignal.timeout(15000) },
+      );
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (err) {
+      this.logger.error(`取得 live feed 失敗（gamePk=${gamePk}）：${err}`);
+      return null;
+    }
+  }
+
+  /** 將完整 GUMBO feed 壓縮成前端動畫直播需要的精簡 payload */
+  private buildLiveSnapshot(feed: any) {
+    const gameData = feed?.gameData ?? {};
+    const liveData = feed?.liveData ?? {};
+    const ls = liveData.linescore ?? {};
+    const cp = liveData.plays?.currentPlay ?? null;
+    const allPlays: any[] = liveData.plays?.allPlays ?? [];
+
+    // 從 currentPlay.playEvents 抓最後一顆「球」（isPitch=true）；
+    // 若本打席尚未投球，回頭找上一個 atBat 的最後一顆球
+    const pickLastPitch = (play: any) => {
+      const evs: any[] = play?.playEvents ?? [];
+      for (let i = evs.length - 1; i >= 0; i--) {
+        if (evs[i]?.isPitch) return evs[i];
+      }
+      return null;
+    };
+    let lastPitchEvent = pickLastPitch(cp);
+    let lastPitchPlay = cp;
+    if (!lastPitchEvent) {
+      for (let i = allPlays.length - 1; i >= 0; i--) {
+        const p = allPlays[i];
+        if (p === cp) continue;
+        const ev = pickLastPitch(p);
+        if (ev) {
+          lastPitchEvent = ev;
+          lastPitchPlay = p;
+          break;
+        }
+      }
+    }
+
+    // 最近 8 個已完成的打席（含本場順序由舊到新；前端再倒序顯示）
+    const recentPlays = allPlays
+      .filter((p) => p?.about?.isComplete)
+      .slice(-8)
+      .map((p) => ({
+        atBatIndex: p.about?.atBatIndex,
+        inning: p.about?.inning,
+        halfInning: p.about?.halfInning, // 'top' | 'bottom'
+        isScoringPlay: !!p.about?.isScoringPlay,
+        hasOut: !!p.about?.hasOut,
+        batter: this.shrinkPerson(p.matchup?.batter),
+        pitcher: this.shrinkPerson(p.matchup?.pitcher),
+        event: p.result?.event,           // 'Single' / 'Home Run' / 'Strikeout' ...
+        eventType: p.result?.eventType,   // 'single' / 'home_run' / 'strikeout' ...
+        description: p.result?.description,
+        rbi: p.result?.rbi ?? 0,
+        awayScore: p.result?.awayScore ?? 0,
+        homeScore: p.result?.homeScore ?? 0,
+        endTime: p.about?.endTime,
+      }));
+
+    return {
+      gamePk: feed?.gamePk,
+      status: gameData.status ?? null,
+      teams: {
+        away: this.shrinkTeam(gameData.teams?.away),
+        home: this.shrinkTeam(gameData.teams?.home),
+      },
+      linescore: {
+        currentInning: ls.currentInning,
+        currentInningOrdinal: ls.currentInningOrdinal,
+        inningState: ls.inningState,
+        inningHalf: ls.inningHalf,
+        isTopInning: ls.isTopInning,
+        balls: ls.balls ?? 0,
+        strikes: ls.strikes ?? 0,
+        outs: ls.outs ?? 0,
+        awayRuns: ls.teams?.away?.runs ?? 0,
+        homeRuns: ls.teams?.home?.runs ?? 0,
+        awayHits: ls.teams?.away?.hits ?? 0,
+        homeHits: ls.teams?.home?.hits ?? 0,
+        awayErrors: ls.teams?.away?.errors ?? 0,
+        homeErrors: ls.teams?.home?.errors ?? 0,
+        // 壘上跑者（key 存在代表該壘有人）
+        onFirst: this.shrinkPerson(ls.offense?.first),
+        onSecond: this.shrinkPerson(ls.offense?.second),
+        onThird: this.shrinkPerson(ls.offense?.third),
+        // 當前進攻方/守備方陣容（核心：誰投誰打）
+        offenseTeamId: ls.offense?.team?.id,
+        defenseTeamId: ls.defense?.team?.id,
+      },
+      matchup: cp
+        ? {
+            atBatIndex: cp.about?.atBatIndex,
+            isComplete: !!cp.about?.isComplete,
+            batter: this.shrinkPerson(cp.matchup?.batter),
+            batSide: cp.matchup?.batSide?.code, // 'L'/'R'/'S'
+            pitcher: this.shrinkPerson(cp.matchup?.pitcher),
+            pitchHand: cp.matchup?.pitchHand?.code, // 'L'/'R'
+            menOnBase: cp.matchup?.splits?.menOnBase, // 'Empty'/'RISP'/'Loaded'/'Men_On'
+            batterHotColdZones: cp.matchup?.batterHotColdZones ?? [],
+            count: {
+              balls: cp.count?.balls ?? 0,
+              strikes: cp.count?.strikes ?? 0,
+              outs: cp.count?.outs ?? 0,
+            },
+            onDeck: this.shrinkPerson(cp.matchup?.batterOnDeck ?? ls.offense?.onDeck),
+          }
+        : null,
+      lastPitch: lastPitchEvent
+        ? {
+            atBatIndex: lastPitchPlay?.about?.atBatIndex,
+            playId: lastPitchEvent.playId,
+            pitchNumber: lastPitchEvent.pitchNumber,
+            startTime: lastPitchEvent.startTime,
+            // 結果（好球/壞球/出局/擊出去）
+            call: lastPitchEvent.details?.call?.description,
+            callCode: lastPitchEvent.details?.call?.code,
+            description: lastPitchEvent.details?.description,
+            isStrike: !!lastPitchEvent.details?.isStrike,
+            isBall: !!lastPitchEvent.details?.isBall,
+            isInPlay: !!lastPitchEvent.details?.isInPlay,
+            ballColor: lastPitchEvent.details?.ballColor,
+            // 球種、球速、轉速
+            pitchType: lastPitchEvent.details?.type?.description,
+            pitchTypeCode: lastPitchEvent.details?.type?.code,
+            startSpeed: lastPitchEvent.pitchData?.startSpeed,
+            endSpeed: lastPitchEvent.pitchData?.endSpeed,
+            spinRate: lastPitchEvent.pitchData?.breaks?.spinRate,
+            // 進壘點：pX/pZ（單位：英尺，0 為好球帶正中）+ MLB 內建 zone 編號（1~14）
+            zone: lastPitchEvent.pitchData?.zone,
+            pX: lastPitchEvent.pitchData?.coordinates?.pX,
+            pZ: lastPitchEvent.pitchData?.coordinates?.pZ,
+            strikeZoneTop: lastPitchEvent.pitchData?.strikeZoneTop,
+            strikeZoneBottom: lastPitchEvent.pitchData?.strikeZoneBottom,
+            // 擊出去時：擊球初速 / 仰角 / 軌跡 / 強度 / 落點
+            hit: lastPitchEvent.hitData
+              ? {
+                  launchSpeed: lastPitchEvent.hitData.launchSpeed,
+                  launchAngle: lastPitchEvent.hitData.launchAngle,
+                  totalDistance: lastPitchEvent.hitData.totalDistance,
+                  trajectory: lastPitchEvent.hitData.trajectory,
+                  hardness: lastPitchEvent.hitData.hardness,
+                  location: lastPitchEvent.hitData.location,
+                }
+              : null,
+          }
+        : null,
+      recentPlays,
+      // 計分時刻：哪幾個 atBatIndex 是得分的（前端可亮金邊）
+      scoringPlayIndexes: liveData.plays?.scoringPlays ?? [],
+    };
+  }
+
+  private shrinkPerson(p: any) {
+    if (!p?.id) return null;
+    return { id: p.id, fullName: p.fullName };
+  }
+
+  private shrinkTeam(t: any) {
+    if (!t?.id) return null;
+    return { id: t.id, name: t.name, abbreviation: t.abbreviation, teamName: t.teamName };
+  }
+
+  /**
    * 取得指定日期範圍內所有比賽的 raw schedule（含 probablePitcher + lineups hydrate）
    * 供翻譯 cron 預先掃描用。不走 cached（cron 自己控制頻率）。
    */
