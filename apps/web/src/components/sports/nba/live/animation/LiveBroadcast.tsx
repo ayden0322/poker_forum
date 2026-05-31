@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { AnimationOrchestrator } from './AnimationOrchestrator';
+import { ToastStack, type ToastMessage } from './ToastStack';
 import {
   COURT_W,
   COURT_H,
@@ -50,29 +51,53 @@ export function LiveBroadcast({
   const awayOnCourt = awayPlayers.filter((p) => p.oncourt);
   const homeOnCourt = homePlayers.filter((p) => p.oncourt);
 
-  // Demo 模式：注入「假新事件」讓使用者能在已結束比賽看到動畫效果
-  // demoActions = 原始 actions + demoCounter 個假的最新事件（每次點按鈕 +1）
-  const [demoCounter, setDemoCounter] = useState(0);
+  // Toast 堆疊（給火鍋/抄截/犯規/換人 等事件用）
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
-  // 從歷史 actions 找最近的「進球 2pt/3pt」當 demo 範本（罰球當 fallback）
+  const pushToast = useCallback((t: ToastMessage) => {
+    setToasts((arr) => {
+      // 同 id 不重複加
+      if (arr.some((x) => x.id === t.id)) return arr;
+      // 最多保留 5 個（顯示時 ToastStack 會切到最後 3 個）
+      return [...arr.slice(-4), t];
+    });
+    // 4 秒後自動移除
+    const existing = toastTimersRef.current.get(t.id);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      setToasts((arr) => arr.filter((x) => x.id !== t.id));
+      toastTimersRef.current.delete(t.id);
+    }, 4000);
+    toastTimersRef.current.set(t.id, timer);
+  }, []);
+
+  // Demo 模式：注入「假新事件」讓使用者能在已結束比賽看到動畫效果
+  // demoCounter 變化代表「按一次 demo 按鈕」
+  const [demoCounter, setDemoCounter] = useState(0);
+  const [demoActionType, setDemoActionType] = useState<string>('shot');
+
+  // 從歷史 actions 找符合 demoActionType 的範本
   const demoTemplate = useMemo(() => {
     const reversed = [...actions].reverse();
-    return (
-      reversed.find(
-        (a) =>
-          (a.actionType === '2pt' || a.actionType === '3pt') &&
-          a.shotResult === 'Made',
-      ) ??
-      reversed.find((a) => isShotEvent(a) && a.shotResult === 'Made') ??
-      reversed.find((a) => isShotEvent(a))
-    );
-  }, [actions]);
+    if (demoActionType === 'shot') {
+      return (
+        reversed.find(
+          (a) =>
+            (a.actionType === '2pt' || a.actionType === '3pt') &&
+            a.shotResult === 'Made',
+        ) ??
+        reversed.find((a) => isShotEvent(a) && a.shotResult === 'Made') ??
+        reversed.find((a) => isShotEvent(a))
+      );
+    }
+    return reversed.find((a) => a.actionType === demoActionType);
+  }, [actions, demoActionType]);
 
   const effectiveActions = useMemo(() => {
     if (demoCounter === 0) return actions;
     if (!demoTemplate) return actions;
 
-    // 製造一個 actionNumber 比所有現存還大的「假事件」
     const maxNum = actions.length
       ? Math.max(...actions.map((a) => a.actionNumber))
       : 0;
@@ -83,27 +108,64 @@ export function LiveBroadcast({
     return [...actions, fakeAction];
   }, [actions, demoCounter, demoTemplate]);
 
+  // Demo 按鈕資料
+  const demoButtons: { label: string; type: string }[] = [
+    { label: '投籃 +2/+3', type: 'shot' },
+    { label: '罰球', type: 'freethrow' },
+    { label: '籃板', type: 'rebound' },
+    { label: '火鍋', type: 'block' },
+    { label: '抄截', type: 'steal' },
+    { label: '失誤', type: 'turnover' },
+    { label: '犯規', type: 'foul' },
+    { label: '節結束', type: 'period' },
+  ];
+
+  // 過濾出實際 actions 內存在的事件類型（沒有就 hide）
+  const availableDemoTypes = useMemo(() => {
+    const types = new Set(actions.map((a) => a.actionType));
+    if (
+      actions.some((a) => isShotEvent(a) && a.actionType !== 'freethrow')
+    ) {
+      types.add('shot');
+    }
+    return types;
+  }, [actions]);
+
   return (
-    <div className="bg-gradient-to-b from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 shadow-sm">
-      <div className="text-xs text-gray-600 font-medium mb-2 flex items-center justify-between">
+    <div className="relative bg-gradient-to-b from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 shadow-sm">
+      <div className="text-xs text-gray-600 font-medium mb-2 flex items-center justify-between gap-2 flex-wrap">
         <span className="flex items-center gap-2">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
           動畫直播
         </span>
-        <div className="flex items-center gap-3">
-          {/* Demo 按鈕：手動觸發投籃動畫，方便在已結束比賽或測試環境驗證效果 */}
-          {demoTemplate && (
-            <button
-              type="button"
-              onClick={() => setDemoCounter((c) => c + 1)}
-              className="text-[10px] bg-amber-500 hover:bg-amber-600 text-white font-bold px-2 py-0.5 rounded-full transition-colors"
-            >
-              ▶ 播放投籃動畫
-            </button>
-          )}
-          <span className="text-[10px] text-gray-400">事件觸發動畫</span>
-        </div>
+        <span className="text-[10px] text-gray-400">事件觸發動畫</span>
       </div>
+
+      {/* Demo 按鈕列：手動觸發各種事件動畫，方便預覽效果（含已結束比賽） */}
+      {demoButtons.some((b) => availableDemoTypes.has(b.type)) && (
+        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+          <span className="text-[10px] text-gray-500 font-medium">▶ 試播</span>
+          {demoButtons
+            .filter((b) => availableDemoTypes.has(b.type))
+            .map((b) => (
+              <button
+                key={b.type}
+                type="button"
+                onClick={() => {
+                  setDemoActionType(b.type);
+                  setDemoCounter((c) => c + 1);
+                }}
+                className="text-[10px] bg-amber-500 hover:bg-amber-600 text-white font-bold px-2 py-0.5 rounded-full transition-colors"
+              >
+                {b.label}
+              </button>
+            ))}
+        </div>
+      )}
+
+      {/* Toast 浮窗區（球場 SVG 之上） */}
+      <div className="relative">
+        <ToastStack toasts={toasts} />
 
       <svg
         viewBox={`0 0 ${COURT_W} ${COURT_H}`}
@@ -186,8 +248,10 @@ export function LiveBroadcast({
           awayOnCourt={awayOnCourt}
           homeOnCourt={homeOnCourt}
           actions={effectiveActions}
+          onToast={pushToast}
         />
       </svg>
+      </div>
 
       <div className="mt-1 text-center text-[10px] text-gray-400">
         球員位置為示意、非真實場上座標 · 球軌跡為視覺特效

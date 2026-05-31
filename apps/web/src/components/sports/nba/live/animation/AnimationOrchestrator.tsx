@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { PlayerLayer } from './PlayerLayer';
 import { BallLayer } from './BallLayer';
+import { BannerLayer, type BannerMessage } from './BannerLayer';
+import type { ToastMessage } from './ToastStack';
 import {
   COURT_W,
   COURT_H,
@@ -11,9 +13,10 @@ import {
   COURT_CY,
   getPlayerPosition,
   getHoopPosition,
+  getFreeThrowLinePosition,
   parabolaPath,
 } from './court-coords';
-import { useNewActions, isShotEvent, isScoringEvent } from './events';
+import { useNewActions, isShotEvent } from './events';
 import type { NBALiveAction, NBALivePlayer, NBALiveTeam } from '../types';
 
 interface Props {
@@ -24,6 +27,8 @@ interface Props {
   actions: NBALiveAction[];
   awayColor?: string;
   homeColor?: string;
+  /** 父層 callback：toast 出現時呼叫，由父層 manage stack */
+  onToast?: (toast: ToastMessage) => void;
 }
 
 interface AnimationState {
@@ -39,7 +44,53 @@ interface AnimationState {
   scoreFlash: { points: number; color: string } | null;
   /** 進球時籃框震動：'left' / 'right' / null */
   hoopShake: 'left' | 'right' | null;
+  /** 罰球指示器：{ftMade: 第幾罰命中 } */
+  freeThrowIndicator: {
+    current: number;
+    total: number;
+    made: boolean;
+    pos: { x: number; y: number };
+  } | null;
+  /** 全螢幕大字幕 */
+  banner: BannerMessage | null;
 }
+
+/** action 中文化 */
+const ACTION_LABEL_ZH: Record<string, string> = {
+  block: '火鍋',
+  steal: '抄截',
+  turnover: '失誤',
+  foul: '犯規',
+  substitution: '換人',
+  timeout: '暫停',
+  rebound: '籃板',
+  jumpball: '跳球',
+  violation: '違例',
+};
+
+const ACTION_COLOR: Record<string, string> = {
+  block: '#a855f7',
+  steal: '#22c55e',
+  turnover: '#9ca3af',
+  foul: '#f97316',
+  substitution: '#06b6d4',
+  timeout: '#6366f1',
+  rebound: '#10b981',
+  jumpball: '#0ea5e9',
+  violation: '#f59e0b',
+};
+
+const ACTION_ICON: Record<string, string> = {
+  block: 'B',
+  steal: 'S',
+  turnover: 'TO',
+  foul: 'F',
+  substitution: '↔',
+  timeout: 'T',
+  rebound: 'R',
+  jumpball: 'J',
+  violation: 'V',
+};
 
 /**
  * NBA 動畫直播核心協調器
@@ -61,6 +112,7 @@ export function AnimationOrchestrator({
   actions,
   awayColor = '#dc2626',
   homeColor = '#2563eb',
+  onToast,
 }: Props) {
   const [state, setState] = useState<AnimationState>({
     ballPos: { x: COURT_CX, y: COURT_CY }, // 球初始位置：中圈
@@ -69,7 +121,11 @@ export function AnimationOrchestrator({
     flightPath: null,
     scoreFlash: null,
     hoopShake: null,
+    freeThrowIndicator: null,
+    banner: null,
   });
+  const onToastRef = useRef(onToast);
+  onToastRef.current = onToast;
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -86,37 +142,45 @@ export function AnimationOrchestrator({
     return t;
   }, []);
 
-  /** 播放投籃動畫 */
+  /** 解析罰球 subType（"1 of 2" / "2 of 2" / "1 of 3" ... ）→ {current, total} */
+  const parseFreeThrowSubType = (
+    subType?: string,
+  ): { current: number; total: number } | null => {
+    if (!subType) return null;
+    const m = subType.match(/(\d+)\s*of\s*(\d+)/i);
+    if (!m) return null;
+    return { current: parseInt(m[1], 10), total: parseInt(m[2], 10) };
+  };
+
+  /** 播放投籃動畫（2pt/3pt/freethrow） */
   const playShotAnimation = useCallback(
     (action: NBALiveAction) => {
       if (!action.personId || !action.teamId) return;
 
       const isHome = action.teamId === homeTeam?.teamId;
       const made = action.shotResult === 'Made';
-      // 這球本身的得分（不是球員累計）：3pt=3、2pt=2、freethrow=1
+      const isFreeThrow = action.actionType === 'freethrow';
+      // 這球本身的得分：3pt=3、2pt=2、freethrow=1
       const points =
-        action.actionType === '3pt'
-          ? 3
-          : action.actionType === 'freethrow'
-          ? 1
-          : 2;
+        action.actionType === '3pt' ? 3 : isFreeThrow ? 1 : 2;
       const teamColor = isHome ? homeColor : awayColor;
 
-      // 起始位置：投籃者位置（含 x/y 投籃座標）
-      const shooterPos = getPlayerPosition(
-        action.personId,
-        isHome,
-        // NBA shot 座標：cdn 給的是「球員視角」座標，shrinkAction 有保留 x/y
-        // 但 NBALiveAction type 內目前只有 shotDistance，要從 recentShots 拿
-        // ─ 這裡先用站位 fallback（站位夠用，視覺差不會差很多）
-        undefined,
-      );
+      // 起始位置：罰球從罰球線、否則從球員站位
+      const shooterPos = isFreeThrow
+        ? getFreeThrowLinePosition(isHome)
+        : getPlayerPosition(action.personId, isHome);
 
-      // 終點：籃框
+      // 終點：籃框（罰球未中時偏離一點）
       const hoopPos = getHoopPosition(isHome);
+      const endPos = !made && isFreeThrow
+        ? { x: hoopPos.x, y: hoopPos.y + 25 } // 罰球未中：偏籃板下方
+        : hoopPos;
 
       // 拋物線 path
-      const path = parabolaPath(shooterPos, hoopPos);
+      const path = parabolaPath(shooterPos, endPos);
+
+      // 罰球指示器（顯示 1✓2✗ 之類）
+      const ftMeta = isFreeThrow ? parseFreeThrowSubType(action.subType) : null;
 
       clearTimers();
 
@@ -129,9 +193,10 @@ export function AnimationOrchestrator({
         flightPath: null,
         scoreFlash: null,
         hoopShake: null,
+        freeThrowIndicator: null,
       }));
 
-      // 2. 100ms 後啟動拋物線飛行（用 SVG <animateMotion>，path 動畫）
+      // 2. 100ms 後啟動拋物線飛行
       schedule(() => {
         setState((s) => ({
           ...s,
@@ -140,21 +205,33 @@ export function AnimationOrchestrator({
         }));
       }, 100);
 
-      // 3. 800ms 後動畫到籃框（球落到目標）
+      // 3. 800ms 後球落到籃框 + 觸發命中/未中視覺
       schedule(() => {
         setState((s) => ({
           ...s,
-          ballPos: hoopPos,
+          ballPos: endPos,
           ballFlying: false,
           flightPath: null,
         }));
 
         if (made) {
-          // 命中：籃框震動 + 大字
           setState((s) => ({
             ...s,
             scoreFlash: { points, color: teamColor },
             hoopShake: isHome ? 'right' : 'left',
+          }));
+        }
+
+        // 罰球指示器：顯示在罰球者頭上方
+        if (ftMeta) {
+          setState((s) => ({
+            ...s,
+            freeThrowIndicator: {
+              current: ftMeta.current,
+              total: ftMeta.total,
+              made,
+              pos: { x: shooterPos.x, y: shooterPos.y - 35 },
+            },
           }));
         }
       }, 900);
@@ -168,27 +245,203 @@ export function AnimationOrchestrator({
         }));
       }, 1800);
 
-      // 5. 2.5s 後清掉高亮（讓下一個事件接手）
+      // 5. 2.5s 後清掉高亮、罰球指示器
+      schedule(() => {
+        setState((s) => ({
+          ...s,
+          highlightedIds: new Set(),
+          freeThrowIndicator: null,
+        }));
+      }, 2800);
+    },
+    [homeTeam, homeColor, awayColor, clearTimers, schedule],
+  );
+
+  /** 播放籃板動畫：球落到籃下 + 籃板球員伸手圖示 */
+  const playReboundAnimation = useCallback(
+    (action: NBALiveAction) => {
+      if (!action.personId || !action.teamId) return;
+
+      const isHome = action.teamId === homeTeam?.teamId;
+      // 籃板者通常是「防守籃板」，所以反向找對手的籃框（球從對方籃框附近回彈）
+      const isOffensiveRebound = action.subType === 'offensive';
+      // 進攻籃板：球員搶到自己進攻的籃框；防守籃板：球員搶到對手進攻的籃框
+      const ballHoop = isOffensiveRebound
+        ? getHoopPosition(isHome)
+        : getHoopPosition(!isHome);
+      const playerPos = getPlayerPosition(action.personId, isHome);
+
+      clearTimers();
+
+      // 1. 球從籃下到籃板球員位置
+      setState((s) => ({
+        ...s,
+        ballPos: ballHoop,
+        ballFlying: false,
+        highlightedIds: new Set([action.personId!]),
+        flightPath: null,
+        scoreFlash: null,
+        hoopShake: null,
+        freeThrowIndicator: null,
+      }));
+
+      // 2. 200ms 後啟動「球彈跳到球員」動畫（簡單拋物線）
+      schedule(() => {
+        const path = parabolaPath(ballHoop, playerPos, 50);
+        setState((s) => ({
+          ...s,
+          flightPath: path,
+          ballFlying: true,
+        }));
+      }, 200);
+
+      // 3. 700ms 後球到達球員
+      schedule(() => {
+        setState((s) => ({
+          ...s,
+          ballPos: playerPos,
+          ballFlying: false,
+          flightPath: null,
+        }));
+      }, 900);
+
+      // 4. 2s 後清掉高亮
       schedule(() => {
         setState((s) => ({
           ...s,
           highlightedIds: new Set(),
         }));
-      }, 2500);
+      }, 2000);
     },
-    [homeTeam, homeColor, awayColor, clearTimers, schedule],
+    [homeTeam, clearTimers, schedule],
+  );
+
+  /** 推送 toast（給非視覺軌跡事件用：火鍋、抄截、犯規...） */
+  const pushToast = useCallback((action: NBALiveAction) => {
+    if (!onToastRef.current) return;
+    const t = action.actionType;
+    const label = ACTION_LABEL_ZH[t] ?? t;
+    const subtitle =
+      (action.playerNameZhTw || action.playerNameI || action.playerName) ?? undefined;
+    onToastRef.current({
+      id: action.actionNumber,
+      title: subtitle ? `${subtitle} · ${label}` : label,
+      subtitle: action.description,
+      color: ACTION_COLOR[t] ?? '#6366f1',
+      icon: ACTION_ICON[t] ?? '·',
+    });
+  }, []);
+
+  /** 顯示全螢幕大字幕（period / game 事件） */
+  const showBanner = useCallback(
+    (
+      bannerId: string,
+      title: string,
+      subtitle?: string,
+      durationMs = 2000,
+      style?: { bgColor?: string; textColor?: string },
+    ) => {
+      setState((s) => ({
+        ...s,
+        banner: { id: bannerId, title, subtitle, ...style },
+      }));
+      schedule(() => {
+        setState((s) =>
+          s.banner?.id === bannerId ? { ...s, banner: null } : s,
+        );
+      }, durationMs);
+    },
+    [schedule],
   );
 
   /** 主分派器：依 actionType 路由到對應動畫 */
   const handleNewAction = useCallback(
     (action: NBALiveAction) => {
+      // 投籃（含罰球）：拋物線動畫
       if (isShotEvent(action)) {
         playShotAnimation(action);
         return;
       }
-      // MVP-2 之後接：rebound / block / steal / turnover / foul / substitution / timeout
+      // 籃板：球從籃下到搶板球員
+      if (action.actionType === 'rebound') {
+        playReboundAnimation(action);
+        return;
+      }
+      // 節結束 / 比賽結束：大字幕
+      if (action.actionType === 'period') {
+        if (action.subType === 'end') {
+          showBanner(
+            `period-end-${action.actionNumber}`,
+            `Q${action.period} END`,
+            `第 ${action.period} 節結束`,
+          );
+        } else if (action.subType === 'start') {
+          showBanner(
+            `period-start-${action.actionNumber}`,
+            `Q${action.period} START`,
+            `第 ${action.period} 節開始`,
+            1500,
+          );
+        }
+        return;
+      }
+      if (action.actionType === 'game') {
+        if (action.subType === 'end') {
+          showBanner(
+            `game-end-${action.actionNumber}`,
+            'FINAL',
+            '比賽結束',
+            3000,
+            { textColor: '#fbbf24' },
+          );
+        } else if (action.subType === 'start') {
+          showBanner(
+            `game-start-${action.actionNumber}`,
+            'TIP OFF',
+            '比賽開始',
+            1800,
+          );
+        }
+        return;
+      }
+      // 暫停：大字幕（短）
+      if (action.actionType === 'timeout') {
+        showBanner(
+          `timeout-${action.actionNumber}`,
+          'TIMEOUT',
+          '暫停',
+          1500,
+        );
+        return;
+      }
+      // 火鍋 / 抄截 / 失誤 / 犯規 / 換人 / 違例 / 跳球：toast 浮窗
+      if (
+        action.actionType === 'block' ||
+        action.actionType === 'steal' ||
+        action.actionType === 'turnover' ||
+        action.actionType === 'foul' ||
+        action.actionType === 'substitution' ||
+        action.actionType === 'violation' ||
+        action.actionType === 'jumpball'
+      ) {
+        pushToast(action);
+        // 換人 / 火鍋 / 抄截：順便高亮當事人（短暫）
+        if (action.personId) {
+          setState((s) => ({
+            ...s,
+            highlightedIds: new Set([action.personId!]),
+          }));
+          schedule(() => {
+            setState((s) => ({
+              ...s,
+              highlightedIds: new Set(),
+            }));
+          }, 1500);
+        }
+        return;
+      }
     },
-    [playShotAnimation],
+    [playShotAnimation, playReboundAnimation, pushToast, showBanner, schedule],
   );
 
   useNewActions(actions, handleNewAction);
@@ -250,6 +503,62 @@ export function AnimationOrchestrator({
         )}
       </AnimatePresence>
 
+      {/* 罰球指示器（顯示在罰球者頭上：1 ✓ 2 ✗ 之類） */}
+      <AnimatePresence>
+        {state.freeThrowIndicator && (
+          <motion.g
+            key={`ft-${state.freeThrowIndicator.current}-${state.freeThrowIndicator.made}`}
+            initial={{ opacity: 0, scale: 0.4 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.6 }}
+            transition={{ duration: 0.3 }}
+          >
+            {/* 一排小圓圈，每個對應一罰 */}
+            {Array.from(
+              { length: state.freeThrowIndicator.total },
+              (_, i) => {
+                const idx = i + 1;
+                const isCurrent = idx === state.freeThrowIndicator!.current;
+                const dotX =
+                  state.freeThrowIndicator!.pos.x -
+                  ((state.freeThrowIndicator!.total - 1) * 11) / 2 +
+                  i * 11;
+                return (
+                  <g key={idx}>
+                    <circle
+                      cx={dotX}
+                      cy={state.freeThrowIndicator!.pos.y}
+                      r={6}
+                      fill={
+                        isCurrent
+                          ? state.freeThrowIndicator!.made
+                            ? '#16a34a'
+                            : '#dc2626'
+                          : '#e5e7eb'
+                      }
+                      stroke="#ffffff"
+                      strokeWidth="1.5"
+                    />
+                    {isCurrent && (
+                      <text
+                        x={dotX}
+                        y={state.freeThrowIndicator!.pos.y + 2.5}
+                        textAnchor="middle"
+                        fontSize="8"
+                        fontWeight="900"
+                        fill="#ffffff"
+                      >
+                        {state.freeThrowIndicator!.made ? '✓' : '✗'}
+                      </text>
+                    )}
+                  </g>
+                );
+              },
+            )}
+          </motion.g>
+        )}
+      </AnimatePresence>
+
       {/* 得分大字（"+2" / "+3"） */}
       <AnimatePresence>
         {state.scoreFlash && (
@@ -277,6 +586,9 @@ export function AnimationOrchestrator({
           </motion.g>
         )}
       </AnimatePresence>
+
+      {/* 全螢幕大字幕（節結束 / 比賽結束 / 暫停） */}
+      <BannerLayer banner={state.banner} />
     </>
   );
 }
