@@ -7,6 +7,7 @@ import { GameClock } from './GameClock';
 import { LastPlay } from './LastPlay';
 import { OnCourtPlayers } from './OnCourtPlayers';
 import { PlayFeed } from './PlayFeed';
+import { LiveBroadcast } from './animation/LiveBroadcast';
 import type { NBALiveResponse } from './types';
 
 interface Props {
@@ -92,6 +93,19 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
           <GameClock status={status} awayTeam={teams.away} homeTeam={teams.home} />
         </div>
       )}
+
+      {/* 動畫直播主畫面：事件觸發球員 / 球軌跡動畫
+          進行中：每 10s 拿到新事件會自動觸發動畫
+          已結束：渲染靜態球員 + 球，方便預覽視覺（不會有新動畫）*/}
+      <div className="mb-4">
+        <LiveBroadcast
+          awayTeam={teams.away}
+          homeTeam={teams.home}
+          awayPlayers={players.away}
+          homePlayers={players.home}
+          actions={recentActions}
+        />
+      </div>
 
       {/* 第一排：投籃落點圖
           進行中：左 CourtChart + 右 OnCourtPlayers 雙欄
