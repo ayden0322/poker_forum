@@ -127,6 +127,14 @@ export function AnimationOrchestrator({
   const onToastRef = useRef(onToast);
   onToastRef.current = onToast;
 
+  /**
+   * 「上一個有 actor 的事件」追蹤——用於 Fake B 傳球軌跡：
+   * 投籃前若上一事件 actor 跟現在投籃者不同，先畫一段傳球軌跡。
+   */
+  const lastActorRef = useRef<{ personId: number; teamId: number } | null>(
+    null,
+  );
+
   const timeoutRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   /** 清掉所有排程中的 timeout（避免動畫重疊） */
@@ -152,7 +160,7 @@ export function AnimationOrchestrator({
     return { current: parseInt(m[1], 10), total: parseInt(m[2], 10) };
   };
 
-  /** 播放投籃動畫（2pt/3pt/freethrow） */
+  /** 播放投籃動畫（2pt/3pt/freethrow），自動帶傳球前奏 */
   const playShotAnimation = useCallback(
     (action: NBALiveAction) => {
       if (!action.personId || !action.teamId) return;
@@ -177,35 +185,89 @@ export function AnimationOrchestrator({
         : hoopPos;
 
       // 拋物線 path
-      const path = parabolaPath(shooterPos, endPos);
+      const shotPath = parabolaPath(shooterPos, endPos);
 
       // 罰球指示器（顯示 1✓2✗ 之類）
       const ftMeta = isFreeThrow ? parseFreeThrowSubType(action.subType) : null;
 
+      // === Fake B 傳球軌跡邏輯 ===
+      // 條件：非罰球 + 上一事件 actor 跟當前 actor 不同（且同隊伍）
+      const prevActor = lastActorRef.current;
+      const shouldShowPass =
+        !isFreeThrow &&
+        prevActor &&
+        prevActor.personId !== action.personId &&
+        prevActor.teamId === action.teamId;
+
       clearTimers();
 
-      // 1. 球瞬移到投籃者手上 + 高亮投籃者
-      setState((s) => ({
-        ...s,
-        ballPos: shooterPos,
-        ballFlying: false,
-        highlightedIds: new Set([action.personId!]),
-        flightPath: null,
-        scoreFlash: null,
-        hoopShake: null,
-        freeThrowIndicator: null,
-      }));
+      let shotStartDelay = 100;
 
-      // 2. 100ms 後啟動拋物線飛行
+      if (shouldShowPass) {
+        // 傳球階段：球從上一 actor 位置 → 當前投籃者
+        const passFromPos = getPlayerPosition(
+          prevActor!.personId,
+          prevActor!.teamId === homeTeam?.teamId,
+        );
+        const passPath = parabolaPath(passFromPos, shooterPos, 60);
+
+        // 1a. 球先放在傳球者位置 + 高亮傳球者
+        setState((s) => ({
+          ...s,
+          ballPos: passFromPos,
+          ballFlying: false,
+          highlightedIds: new Set([prevActor!.personId]),
+          flightPath: null,
+          scoreFlash: null,
+          hoopShake: null,
+          freeThrowIndicator: null,
+        }));
+
+        // 1b. 100ms 後啟動傳球飛行
+        schedule(() => {
+          setState((s) => ({
+            ...s,
+            flightPath: passPath,
+            ballFlying: true,
+          }));
+        }, 100);
+
+        // 1c. 600ms 後球到達投籃者
+        schedule(() => {
+          setState((s) => ({
+            ...s,
+            ballPos: shooterPos,
+            ballFlying: false,
+            flightPath: null,
+            highlightedIds: new Set([action.personId!]),
+          }));
+        }, 700);
+
+        shotStartDelay = 900; // 投籃動畫延後
+      } else {
+        // 沒有傳球：直接球到投籃者位置
+        setState((s) => ({
+          ...s,
+          ballPos: shooterPos,
+          ballFlying: false,
+          highlightedIds: new Set([action.personId!]),
+          flightPath: null,
+          scoreFlash: null,
+          hoopShake: null,
+          freeThrowIndicator: null,
+        }));
+      }
+
+      // 2. 投籃拋物線
       schedule(() => {
         setState((s) => ({
           ...s,
-          flightPath: path,
+          flightPath: shotPath,
           ballFlying: true,
         }));
-      }, 100);
+      }, shotStartDelay);
 
-      // 3. 800ms 後球落到籃框 + 觸發命中/未中視覺
+      // 3. 球落到籃框
       schedule(() => {
         setState((s) => ({
           ...s,
@@ -222,7 +284,6 @@ export function AnimationOrchestrator({
           }));
         }
 
-        // 罰球指示器：顯示在罰球者頭上方
         if (ftMeta) {
           setState((s) => ({
             ...s,
@@ -234,25 +295,26 @@ export function AnimationOrchestrator({
             },
           }));
         }
-      }, 900);
+      }, shotStartDelay + 800);
 
-      // 4. 1.6s 後清掉大字幕、籃框震動
+      // 4. 清掉大字幕、籃框震動
       schedule(() => {
         setState((s) => ({
           ...s,
           scoreFlash: null,
           hoopShake: null,
         }));
-      }, 1800);
+      }, shotStartDelay + 1700);
 
-      // 5. 2.5s 後清掉高亮、罰球指示器
+      // 5. 清掉高亮、罰球指示器
       schedule(() => {
         setState((s) => ({
           ...s,
           highlightedIds: new Set(),
           freeThrowIndicator: null,
         }));
-      }, 2800);
+      }, shotStartDelay + 2400);
+
     },
     [homeTeam, homeColor, awayColor, clearTimers, schedule],
   );
@@ -357,14 +419,29 @@ export function AnimationOrchestrator({
   /** 主分派器：依 actionType 路由到對應動畫 */
   const handleNewAction = useCallback(
     (action: NBALiveAction) => {
+      // 更新 lastActor 給下個事件用（傳球軌跡邏輯需要）
+      // 不過要在 dispatch 「之前」更新還是「之後」？
+      // 答案：之後。因為當前事件的 playShotAnimation 會讀「上一次的 lastActor」
+      // 算傳球，跑完再寫回自己。
+      const updateLastActor = () => {
+        if (action.personId && action.teamId) {
+          lastActorRef.current = {
+            personId: action.personId,
+            teamId: action.teamId,
+          };
+        }
+      };
+
       // 投籃（含罰球）：拋物線動畫
       if (isShotEvent(action)) {
         playShotAnimation(action);
+        updateLastActor();
         return;
       }
       // 籃板：球從籃下到搶板球員
       if (action.actionType === 'rebound') {
         playReboundAnimation(action);
+        updateLastActor();
         return;
       }
       // 節結束 / 比賽結束：大字幕
@@ -438,6 +515,14 @@ export function AnimationOrchestrator({
             }));
           }, 1500);
         }
+        // 失誤 / 抄截 → 球權轉換，更新 lastActor；其他不更新（避免犯規/換人
+        // 之類非「持球」事件影響下次傳球軌跡的起點）
+        if (
+          action.actionType === 'steal' ||
+          action.actionType === 'turnover'
+        ) {
+          updateLastActor();
+        }
         return;
       }
     },
@@ -483,23 +568,60 @@ export function AnimationOrchestrator({
         <BallLayer x={state.ballPos.x} y={state.ballPos.y} flying={false} />
       )}
 
-      {/* 籃框震動效果（命中時） */}
+      {/* 籃框震動效果（命中時） — 雙環 + 粒子特效 */}
       <AnimatePresence>
         {state.hoopShake && (
-          <motion.circle
-            key="hoop-shake"
-            cx={state.hoopShake === 'right' ? COURT_W - 52.5 : 52.5}
-            cy={COURT_H / 2}
-            r={20}
-            fill="none"
-            stroke="#fbbf24"
-            strokeWidth="3"
-            initial={{ scale: 0.5, opacity: 1 }}
-            animate={{ scale: 2.2, opacity: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.9, ease: 'easeOut' }}
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-          />
+          <g key="hoop-shake">
+            {/* 外擴金環 */}
+            <motion.circle
+              cx={state.hoopShake === 'right' ? COURT_W - 52.5 : 52.5}
+              cy={COURT_H / 2}
+              r={20}
+              fill="none"
+              stroke="#fbbf24"
+              strokeWidth="3"
+              initial={{ scale: 0.5, opacity: 1 }}
+              animate={{ scale: 2.4, opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.9, ease: 'easeOut' }}
+              style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+            />
+            {/* 內層紅環（震動感） */}
+            <motion.circle
+              cx={state.hoopShake === 'right' ? COURT_W - 52.5 : 52.5}
+              cy={COURT_H / 2}
+              r={12}
+              fill="none"
+              stroke="#ef4444"
+              strokeWidth="2"
+              initial={{ scale: 0.5, opacity: 0.9 }}
+              animate={{ scale: 1.8, opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
+              style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+            />
+            {/* 進球粒子（8 個射線） */}
+            {Array.from({ length: 8 }).map((_, i) => {
+              const angle = (i / 8) * Math.PI * 2;
+              const cx = state.hoopShake === 'right' ? COURT_W - 52.5 : 52.5;
+              const cy = COURT_H / 2;
+              const dx = Math.cos(angle) * 35;
+              const dy = Math.sin(angle) * 35;
+              return (
+                <motion.circle
+                  key={`particle-${i}`}
+                  cx={cx}
+                  cy={cy}
+                  r={3}
+                  fill="#fbbf24"
+                  initial={{ x: 0, y: 0, opacity: 1 }}
+                  animate={{ x: dx, y: dy, opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.7, ease: 'easeOut' }}
+                />
+              );
+            })}
+          </g>
         )}
       </AnimatePresence>
 

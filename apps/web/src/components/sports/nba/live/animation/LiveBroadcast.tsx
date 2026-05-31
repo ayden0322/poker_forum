@@ -172,8 +172,43 @@ export function LiveBroadcast({
         className="w-full h-auto"
         style={{ maxHeight: 480 }}
       >
-        {/* === 球場底色 === */}
-        <rect x="0" y="0" width={COURT_W} height={COURT_H} fill="#f5e1b8" />
+        {/* === 視覺資產定義（漸層 / 陰影 / 木紋） === */}
+        <defs>
+          {/* 球場木紋漸層（左右半場用一樣的漸層、模擬地板光澤） */}
+          <linearGradient id="courtWood" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#e8c890" />
+            <stop offset="50%" stopColor="#f5e1b8" />
+            <stop offset="100%" stopColor="#d4a76a" />
+          </linearGradient>
+          {/* 罰球禁區漸層 */}
+          <linearGradient id="keyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#fef9c7" />
+            <stop offset="100%" stopColor="#fbe79a" />
+          </linearGradient>
+          {/* 籃框金屬漸層 */}
+          <radialGradient id="hoopMetal" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fbbf24" />
+            <stop offset="60%" stopColor="#ea580c" />
+            <stop offset="100%" stopColor="#9a3412" />
+          </radialGradient>
+          {/* 球場柔光陰影 */}
+          <radialGradient id="courtSpotlight" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        {/* === 球場底色（木紋漸層） === */}
+        <rect x="0" y="0" width={COURT_W} height={COURT_H} fill="url(#courtWood)" />
+        {/* 中央柔光，模擬場館聚光 */}
+        <ellipse
+          cx={COURT_CX}
+          cy={COURT_H / 2}
+          rx={COURT_W * 0.45}
+          ry={COURT_H * 0.45}
+          fill="url(#courtSpotlight)"
+          pointerEvents="none"
+        />
 
         {/* === 邊線 === */}
         <rect
@@ -275,13 +310,13 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
 
   return (
     <g>
-      {/* 罰球禁區 */}
+      {/* 罰球禁區（漸層填色更有立體感） */}
       <rect
         x={keyOuterX1}
         y={keyTop}
         width={KEY_LENGTH}
         height={KEY_WIDTH}
-        fill="#fef3c7"
+        fill="url(#keyGradient)"
         stroke="#5a4a2a"
         strokeWidth="1.5"
       />
@@ -331,14 +366,23 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         stroke="#5a4a2a"
         strokeWidth="2.5"
       />
-      {/* 籃框 */}
+      {/* 籃框（金屬漸層 + 雙環立體感） */}
       <circle
         cx={hoopX}
         cy={HOOP_Y}
-        r="7.5"
+        r="10"
         fill="none"
-        stroke="#c2410c"
-        strokeWidth="2.5"
+        stroke="url(#hoopMetal)"
+        strokeWidth="3"
+      />
+      <circle
+        cx={hoopX}
+        cy={HOOP_Y}
+        r="7"
+        fill="none"
+        stroke="#fbbf24"
+        strokeWidth="1.2"
+        opacity="0.7"
       />
       {/* No-charge 弧 */}
       <path
