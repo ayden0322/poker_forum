@@ -1,11 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  HOME_POSITIONS,
-  AWAY_POSITIONS,
-  positionIndexForPlayer,
-} from './court-coords';
+import { AWAY_DOCK, HOME_DOCK, COURT_H, DOCK_H } from './court-coords';
 import type { NBALivePlayer } from '../types';
 
 interface Props {
@@ -21,14 +17,14 @@ const HEADSHOT = (personId: number) =>
   `https://cdn.nba.com/headshots/nba/latest/1040x760/${personId}.png`;
 
 /**
- * 在球場 SVG 上渲染雙方各 5 個在場球員
+ * 雙隊各 5 個 oncourt 球員的 Dock 渲染
  *
- * - 每隊 5 個球員依 positionIndexForPlayer(personId) 分配到 5 個固定站位
- * - 球員小頭像 + 號碼徽章
- * - 換人時用 AnimatePresence 做淡入淡出（同 personId 不會重畫）
- * - 高亮球員（最後事件當事人）會放大 + 加金邊
+ * 設計變更（2026-06-01）：從「球場內 5v5 固定站位」改為「球場下方 dock」。
+ * 原因：依 personId hash 分站位有 96% 機率球員疊圖、且站位跟 NBA 實際位置無關。
+ * 解法：放棄「球員在球場上」假設，球員 dock 一排、球場 SVG 只放球+軌跡+特效。
  *
- * 注意：要嵌在 SVG <g> 內使用，因為內部用 <foreignObject> 渲染 React 頭像
+ * 客隊 5 個在左、主隊 5 個在右、中間留空（視覺對應「對戰」隱喻）
+ * 被高亮球員會放大 + 金邊脈衝（事件當事人視覺反饋）
  */
 export function PlayerLayer({
   awayOnCourt,
@@ -38,29 +34,73 @@ export function PlayerLayer({
   highlightedIds = new Set(),
 }: Props) {
   return (
-    <g className="player-layer">
+    <g className="player-dock">
+      {/* Dock 背景分隔（淡色橫條，視覺暗示「這是 dock 區、不是球場」） */}
+      <rect
+        x={0}
+        y={COURT_H}
+        width={1000}
+        height={DOCK_H}
+        fill="#fffdf5"
+        opacity={0.45}
+      />
+      <line
+        x1={0}
+        y1={COURT_H}
+        x2={1000}
+        y2={COURT_H}
+        stroke="#5a4a2a"
+        strokeWidth="1.2"
+        opacity={0.6}
+      />
+
+      {/* 客隊 dock 標籤 */}
+      <text
+        x={250}
+        y={COURT_H + 14}
+        textAnchor="middle"
+        fontSize="11"
+        fontWeight="bold"
+        fill="#5a4a2a"
+        opacity={0.6}
+      >
+        客隊上場
+      </text>
+      {/* 主隊 dock 標籤 */}
+      <text
+        x={750}
+        y={COURT_H + 14}
+        textAnchor="middle"
+        fontSize="11"
+        fontWeight="bold"
+        fill="#5a4a2a"
+        opacity={0.6}
+      >
+        主隊上場
+      </text>
+
       <AnimatePresence mode="sync">
-        {awayOnCourt.slice(0, 5).map((p) => {
-          const pos = AWAY_POSITIONS[positionIndexForPlayer(p.personId)];
+        {awayOnCourt.slice(0, 5).map((p, i) => {
+          const slot = AWAY_DOCK[i];
           return (
-            <PlayerToken
+            <DockToken
               key={`away-${p.personId}`}
               player={p}
-              x={pos.x}
-              y={pos.y}
+              x={slot.x}
+              y={slot.y}
               teamColor={awayColor}
               highlighted={highlightedIds.has(p.personId)}
             />
           );
         })}
-        {homeOnCourt.slice(0, 5).map((p) => {
-          const pos = HOME_POSITIONS[positionIndexForPlayer(p.personId)];
+        {homeOnCourt.slice(0, 5).map((p, i) => {
+          const slot = HOME_DOCK[i];
           return (
-            <PlayerToken
+            <DockToken
               key={`home-${p.personId}`}
               player={p}
-              x={pos.x}
-              y={pos.y}
+              x={slot.x}
+              y={slot.y}
               teamColor={homeColor}
               highlighted={highlightedIds.has(p.personId)}
             />
@@ -72,12 +112,11 @@ export function PlayerLayer({
 }
 
 /**
- * 單一球員 token：頭像 + 號碼徽章
+ * Dock 上的單個球員 token：頭像 + 號碼徽章
  *
- * 用 SVG foreignObject 嵌入 HTML img（NBA cdn 圖片），這樣可以直接顯示頭像
- * 而不用轉成 SVG image href（後者跨域有限制）。
+ * 高亮時放大 + 上升一點點（像「跳起來」）+ 金邊脈衝
  */
-function PlayerToken({
+function DockToken({
   player,
   x,
   y,
@@ -90,34 +129,32 @@ function PlayerToken({
   teamColor: string;
   highlighted: boolean;
 }) {
-  const size = highlighted ? 44 : 36;
+  const baseSize = 38;
+  const size = highlighted ? baseSize + 8 : baseSize;
   const half = size / 2;
+  const liftY = highlighted ? y - 6 : y;
 
   return (
     <motion.g
       initial={{ opacity: 0, scale: 0.5 }}
-      animate={{
-        opacity: 1,
-        scale: 1,
-        // 用 transform 移動位置而非 x/y 屬性，避免每次重渲染都跳
-      }}
+      animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.5 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
       style={{ transformBox: 'fill-box' }}
     >
-      {/* 高亮外圈（金邊 + 脈衝） */}
+      {/* 高亮金圈脈衝（事件當事人標記） */}
       {highlighted && (
         <circle
           cx={x}
-          cy={y}
-          r={half + 4}
+          cy={liftY}
+          r={half + 5}
           fill="none"
           stroke="#fbbf24"
           strokeWidth="2.5"
         >
           <animate
             attributeName="r"
-            values={`${half + 4};${half + 8};${half + 4}`}
+            values={`${half + 5};${half + 9};${half + 5}`}
             dur="1.2s"
             repeatCount="indefinite"
           />
@@ -130,20 +167,20 @@ function PlayerToken({
         </circle>
       )}
 
-      {/* 頭像背景圓圈（隊伍色邊框） */}
+      {/* 頭像背景圓圈 */}
       <circle
         cx={x}
-        cy={y}
+        cy={liftY}
         r={half}
         fill="#ffffff"
         stroke={teamColor}
         strokeWidth="2.5"
       />
 
-      {/* 頭像（用 foreignObject 嵌入 img、允許跨域圖片） */}
+      {/* 頭像 */}
       <foreignObject
         x={x - half + 2}
-        y={y - half + 2}
+        y={liftY - half + 2}
         width={size - 4}
         height={size - 4}
         style={{ pointerEvents: 'none' }}
@@ -165,26 +202,26 @@ function PlayerToken({
         />
       </foreignObject>
 
-      {/* 號碼徽章（右下角） */}
+      {/* 號碼徽章（移到頭像下方、不再覆蓋頭像） */}
       {player.jerseyNum && (
         <g>
-          <circle
-            cx={x + half - 4}
-            cy={y + half - 4}
-            r={9}
+          <rect
+            x={x - 13}
+            y={liftY + half + 1}
+            width={26}
+            height={12}
+            rx={6}
             fill={teamColor}
-            stroke="#ffffff"
-            strokeWidth="1.5"
           />
           <text
-            x={x + half - 4}
-            y={y + half - 1}
+            x={x}
+            y={liftY + half + 10}
             textAnchor="middle"
-            fontSize="10"
+            fontSize="9"
             fontWeight="bold"
             fill="#ffffff"
           >
-            {player.jerseyNum}
+            #{player.jerseyNum}
           </text>
         </g>
       )}

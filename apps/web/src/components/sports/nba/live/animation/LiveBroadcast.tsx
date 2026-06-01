@@ -10,6 +10,7 @@ import {
   LEFT_HOOP_X,
   RIGHT_HOOP_X,
   HOOP_Y,
+  TOTAL_H,
 } from './court-coords';
 import { isShotEvent } from './events';
 import type {
@@ -168,9 +169,9 @@ export function LiveBroadcast({
         <ToastStack toasts={toasts} />
 
       <svg
-        viewBox={`0 0 ${COURT_W} ${COURT_H}`}
+        viewBox={`0 0 ${COURT_W} ${TOTAL_H}`}
         className="w-full h-auto"
-        style={{ maxHeight: 480 }}
+        style={{ maxHeight: 600 }}
       >
         {/* === 視覺資產定義（漸層 / 陰影 / 木紋） === */}
         <defs>

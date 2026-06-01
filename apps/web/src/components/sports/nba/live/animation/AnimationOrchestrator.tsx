@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PlayerLayer } from './PlayerLayer';
 import { BallLayer } from './BallLayer';
@@ -11,10 +11,10 @@ import {
   COURT_H,
   COURT_CX,
   COURT_CY,
-  getPlayerPosition,
   getHoopPosition,
   getFreeThrowLinePosition,
   parabolaPath,
+  buildPlayerDockMap,
 } from './court-coords';
 import { useNewActions, isShotEvent } from './events';
 import type { NBALiveAction, NBALivePlayer, NBALiveTeam } from '../types';
@@ -114,6 +114,23 @@ export function AnimationOrchestrator({
   homeColor = '#2563eb',
   onToast,
 }: Props) {
+  // 把 oncourt 球員陣列轉成 personId → dock 座標 map
+  // 用 useMemo 避免每次 render 重建
+  const dockMap = useMemo(() => {
+    const m = new Map<number, { x: number; y: number }>();
+    buildPlayerDockMap(awayOnCourt, false).forEach((v, k) => m.set(k, v));
+    buildPlayerDockMap(homeOnCourt, true).forEach((v, k) => m.set(k, v));
+    return m;
+  }, [awayOnCourt, homeOnCourt]);
+
+  /** 取得球員的 dock 位置；查不到時 fallback 到球場中央（罕見） */
+  const playerDockPos = useCallback(
+    (personId: number): { x: number; y: number } => {
+      return dockMap.get(personId) ?? { x: COURT_CX, y: COURT_H + 60 };
+    },
+    [dockMap],
+  );
+
   const [state, setState] = useState<AnimationState>({
     ballPos: { x: COURT_CX, y: COURT_CY }, // 球初始位置：中圈
     ballFlying: false,
@@ -173,10 +190,13 @@ export function AnimationOrchestrator({
         action.actionType === '3pt' ? 3 : isFreeThrow ? 1 : 2;
       const teamColor = isHome ? homeColor : awayColor;
 
-      // 起始位置：罰球從罰球線、否則從球員站位
+      // 起始位置：罰球從罰球線（球員視覺上仍站 dock）
+      // 一般投籃：球從投籃者的 dock 位置飛出
       const shooterPos = isFreeThrow
         ? getFreeThrowLinePosition(isHome)
-        : getPlayerPosition(action.personId, isHome);
+        : playerDockPos(action.personId);
+      // 球員視覺位置（用於罰球指示器錨定、傳球軌跡終點等）
+      const shooterDockPos = playerDockPos(action.personId);
 
       // 終點：籃框（罰球未中時偏離一點）
       const hoopPos = getHoopPosition(isHome);
@@ -204,12 +224,10 @@ export function AnimationOrchestrator({
       let shotStartDelay = 100;
 
       if (shouldShowPass) {
-        // 傳球階段：球從上一 actor 位置 → 當前投籃者
-        const passFromPos = getPlayerPosition(
-          prevActor!.personId,
-          prevActor!.teamId === homeTeam?.teamId,
-        );
-        const passPath = parabolaPath(passFromPos, shooterPos, 60);
+        // 傳球階段：球從上一 actor dock 位置 → 當前投籃者 dock 位置
+        // 註：罰球的 shooterPos 是罰球線（非 dock），所以傳球終點用 shooterDockPos
+        const passFromPos = playerDockPos(prevActor!.personId);
+        const passPath = parabolaPath(passFromPos, shooterDockPos, 40);
 
         // 1a. 球先放在傳球者位置 + 高亮傳球者
         setState((s) => ({
@@ -232,11 +250,11 @@ export function AnimationOrchestrator({
           }));
         }, 100);
 
-        // 1c. 600ms 後球到達投籃者
+        // 1c. 600ms 後球到達投籃者 dock 位置
         schedule(() => {
           setState((s) => ({
             ...s,
-            ballPos: shooterPos,
+            ballPos: shooterDockPos,
             ballFlying: false,
             flightPath: null,
             highlightedIds: new Set([action.personId!]),
@@ -285,13 +303,15 @@ export function AnimationOrchestrator({
         }
 
         if (ftMeta) {
+          // 罰球指示器錨定到「dock 上的罰球者頭像上方」、不是罰球線
+          // 否則指示器懸空在罰球線上很怪
           setState((s) => ({
             ...s,
             freeThrowIndicator: {
               current: ftMeta.current,
               total: ftMeta.total,
               made,
-              pos: { x: shooterPos.x, y: shooterPos.y - 35 },
+              pos: { x: shooterDockPos.x, y: shooterDockPos.y - 35 },
             },
           }));
         }
@@ -316,7 +336,7 @@ export function AnimationOrchestrator({
       }, shotStartDelay + 2400);
 
     },
-    [homeTeam, homeColor, awayColor, clearTimers, schedule],
+    [homeTeam, homeColor, awayColor, clearTimers, schedule, playerDockPos],
   );
 
   /** 播放籃板動畫：球落到籃下 + 籃板球員伸手圖示 */
@@ -331,7 +351,8 @@ export function AnimationOrchestrator({
       const ballHoop = isOffensiveRebound
         ? getHoopPosition(isHome)
         : getHoopPosition(!isHome);
-      const playerPos = getPlayerPosition(action.personId, isHome);
+      // 籃板球員的 dock 位置（球從籃框反彈到 dock）
+      const playerPos = playerDockPos(action.personId);
 
       clearTimers();
 
@@ -375,7 +396,7 @@ export function AnimationOrchestrator({
         }));
       }, 2000);
     },
-    [homeTeam, clearTimers, schedule],
+    [homeTeam, clearTimers, schedule, playerDockPos],
   );
 
   /** 推送 toast（給非視覺軌跡事件用：火鍋、抄截、犯規...） */
@@ -681,32 +702,38 @@ export function AnimationOrchestrator({
         )}
       </AnimatePresence>
 
-      {/* 得分大字（"+2" / "+3"） */}
+      {/* 得分大字（"+2" / "+3"）— 錨定到進球的籃框正上方，不再放球場中央
+          視覺一條線：球員 → 球軌跡 → 籃框震動 + 得分大字（同位置） */}
       <AnimatePresence>
-        {state.scoreFlash && (
-          <motion.g
-            key="score-flash"
-            initial={{ opacity: 0, scale: 0.4 }}
-            animate={{ opacity: 1, scale: 1.4 }}
-            exit={{ opacity: 0, scale: 1.8 }}
-            transition={{ duration: 0.6, ease: 'easeOut' }}
-            style={{ transformBox: 'fill-box', transformOrigin: `${COURT_CX}px ${COURT_CY}px` }}
-          >
-            <text
-              x={COURT_CX}
-              y={COURT_CY + 25}
-              textAnchor="middle"
-              fontSize="60"
-              fontWeight="900"
-              fill={state.scoreFlash.color}
-              stroke="#ffffff"
-              strokeWidth="2"
-              paintOrder="stroke"
+        {state.scoreFlash && (() => {
+          const flashX =
+            state.hoopShake === 'right' ? COURT_W - 52.5 : 52.5;
+          const flashY = COURT_H / 2 - 60; // 籃框上方 60px
+          return (
+            <motion.g
+              key="score-flash"
+              initial={{ opacity: 0, scale: 0.4 }}
+              animate={{ opacity: 1, scale: 1.3 }}
+              exit={{ opacity: 0, scale: 1.6 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+              style={{ transformBox: 'fill-box', transformOrigin: `${flashX}px ${flashY}px` }}
             >
-              +{state.scoreFlash.points}
-            </text>
-          </motion.g>
-        )}
+              <text
+                x={flashX}
+                y={flashY}
+                textAnchor="middle"
+                fontSize="44"
+                fontWeight="900"
+                fill={state.scoreFlash.color}
+                stroke="#ffffff"
+                strokeWidth="2.5"
+                paintOrder="stroke"
+              >
+                +{state.scoreFlash.points}
+              </text>
+            </motion.g>
+          );
+        })()}
       </AnimatePresence>
 
       {/* 全螢幕大字幕（節結束 / 比賽結束 / 暫停） */}
