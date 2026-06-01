@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlayerLayer } from './PlayerLayer';
+import { PlayerLayer, type PlayerPose } from './PlayerLayer';
 import { BallLayer } from './BallLayer';
 import { BannerLayer, type BannerMessage } from './BannerLayer';
 import type { ToastMessage } from './ToastStack';
@@ -38,6 +38,8 @@ interface AnimationState {
   ballFlying: boolean;
   /** 高亮的球員 ID 集合 */
   highlightedIds: Set<number>;
+  /** 球員 pose 對應表（personId → 當下動作） */
+  playerPoses: Map<number, PlayerPose>;
   /** 飛行中的 SVG path（拋物線 / 直線） */
   flightPath: string | null;
   /** 進球時的得分大字（"+2"/"+3"），null 不顯示 */
@@ -135,6 +137,7 @@ export function AnimationOrchestrator({
     ballPos: { x: COURT_CX, y: COURT_CY }, // 球初始位置：中圈
     ballFlying: false,
     highlightedIds: new Set(),
+    playerPoses: new Map(),
     flightPath: null,
     scoreFlash: null,
     hoopShake: null,
@@ -166,6 +169,30 @@ export function AnimationOrchestrator({
     timeoutRef.current.push(t);
     return t;
   }, []);
+
+  /**
+   * 為單一球員設定 pose，並在 N 毫秒後自動回 idle
+   * 讓 dock 球員「演」一個動作（投籃/傳球/籃板/慶祝/被火鍋）
+   */
+  const setPlayerPose = useCallback(
+    (personId: number, pose: PlayerPose, durationMs: number) => {
+      setState((s) => {
+        const next = new Map(s.playerPoses);
+        next.set(personId, pose);
+        return { ...s, playerPoses: next };
+      });
+      schedule(() => {
+        setState((s) => {
+          // 只在當前還是同個 pose 時清掉（避免覆蓋更新的 pose）
+          if (s.playerPoses.get(personId) !== pose) return s;
+          const next = new Map(s.playerPoses);
+          next.delete(personId);
+          return { ...s, playerPoses: next };
+        });
+      }, durationMs);
+    },
+    [schedule],
+  );
 
   /** 解析罰球 subType（"1 of 2" / "2 of 2" / "1 of 3" ... ）→ {current, total} */
   const parseFreeThrowSubType = (
@@ -229,6 +256,9 @@ export function AnimationOrchestrator({
         const passFromPos = playerDockPos(prevActor!.personId);
         const passPath = parabolaPath(passFromPos, shooterDockPos, 40);
 
+        // 傳球者 pose：擺動（passing 動作 0.55s）
+        setPlayerPose(prevActor!.personId, 'passing', 600);
+
         // 1a. 球先放在傳球者位置 + 高亮傳球者
         setState((s) => ({
           ...s,
@@ -276,13 +306,16 @@ export function AnimationOrchestrator({
         }));
       }
 
-      // 2. 投籃拋物線
+      // 2. 投籃拋物線：球開始飛 + 投籃者 pose='shooting'（跳起揚臂）
       schedule(() => {
         setState((s) => ({
           ...s,
           flightPath: shotPath,
           ballFlying: true,
         }));
+        if (action.personId) {
+          setPlayerPose(action.personId, 'shooting', 900);
+        }
       }, shotStartDelay);
 
       // 3. 球落到籃框
@@ -300,6 +333,10 @@ export function AnimationOrchestrator({
             scoreFlash: { points, color: teamColor },
             hoopShake: isHome ? 'right' : 'left',
           }));
+          // 命中：投籃者進入「慶祝」動作（連跳三下）
+          if (action.personId) {
+            setPlayerPose(action.personId, 'celebrating', 1400);
+          }
         }
 
         if (ftMeta) {
@@ -355,6 +392,9 @@ export function AnimationOrchestrator({
       const playerPos = playerDockPos(action.personId);
 
       clearTimers();
+
+      // 籃板者進入「上下彈跳搶板」動作
+      setPlayerPose(action.personId, 'rebounding', 850);
 
       // 1. 球從籃下到籃板球員位置
       setState((s) => ({
@@ -523,7 +563,7 @@ export function AnimationOrchestrator({
         action.actionType === 'jumpball'
       ) {
         pushToast(action);
-        // 換人 / 火鍋 / 抄截：順便高亮當事人（短暫）
+        // 換人 / 火鍋 / 抄截：順便高亮當事人（短暫）+ pose 動畫
         if (action.personId) {
           setState((s) => ({
             ...s,
@@ -535,6 +575,22 @@ export function AnimationOrchestrator({
               highlightedIds: new Set(),
             }));
           }, 1500);
+          // 各 type 對應不同動作
+          const posePerType: Record<string, PlayerPose> = {
+            block: 'rebounding', // 火鍋者跳起來蓋帽
+            steal: 'passing', // 抄截者橫移
+            turnover: 'blocked', // 失誤者下沉
+            foul: 'blocked', // 犯規者下沉
+            substitution: 'celebrating', // 換人者輕跳
+          };
+          const pose = posePerType[action.actionType];
+          if (pose) {
+            setPlayerPose(
+              action.personId,
+              pose,
+              pose === 'celebrating' ? 1400 : pose === 'rebounding' ? 850 : 550,
+            );
+          }
         }
         // 失誤 / 抄截 → 球權轉換，更新 lastActor；其他不更新（避免犯規/換人
         // 之類非「持球」事件影響下次傳球軌跡的起點）
@@ -561,6 +617,7 @@ export function AnimationOrchestrator({
         awayColor={awayColor}
         homeColor={homeColor}
         highlightedIds={state.highlightedIds}
+        playerPoses={state.playerPoses}
       />
 
       {/* 球的飛行路徑（飛行時短暫顯示） */}
