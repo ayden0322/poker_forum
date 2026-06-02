@@ -2,7 +2,6 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
-import { CourtChart } from './CourtChart';
 import { GameClock } from './GameClock';
 import { LastPlay } from './LastPlay';
 import { OnCourtPlayers } from './OnCourtPlayers';
@@ -55,7 +54,7 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
   if (isError || !data?.data) return null;
 
   const snap = data.data;
-  const { teams, players, status, recentActions, recentShots } = snap;
+  const { teams, players, status, recentActions } = snap;
 
   // 持球方推斷：用最近一個有 teamId 的事件當作「當下進攻方」
   // NBA cdn 沒給明確的 offense.team.id（不像 MLB），但 play-by-play 最後一個球員
@@ -119,34 +118,15 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
         />
       </div>
 
-      {/* 第一排：投籃落點圖
-          進行中：左 CourtChart + 右 OnCourtPlayers 雙欄
-          已結束：CourtChart 獨享一整列（場上球員對已結束無意義）
-      */}
-      {isLive ? (
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-4 mb-4">
-          <CourtChart
-            shots={recentShots}
-            awayTeamId={teams.away?.teamId}
-            homeTeamId={teams.home?.teamId}
-            awayName={teams.away?.shortName}
-            homeName={teams.home?.shortName}
-          />
+      {/* 第一排：場上球員（僅進行中顯示；已結束跳過）
+          移除：投籃落點圖 CourtChart（Ayden 決定不要、已被 LiveBroadcast 內的字卡取代） */}
+      {isLive && (
+        <div className="mb-4">
           <OnCourtPlayers
             awayTeam={teams.away}
             homeTeam={teams.home}
             awayPlayers={players.away}
             homePlayers={players.home}
-          />
-        </div>
-      ) : (
-        <div className="mb-4">
-          <CourtChart
-            shots={recentShots}
-            awayTeamId={teams.away?.teamId}
-            homeTeamId={teams.home?.teamId}
-            awayName={teams.away?.shortName}
-            homeName={teams.home?.shortName}
           />
         </div>
       )}
