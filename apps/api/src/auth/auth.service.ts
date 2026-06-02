@@ -361,7 +361,7 @@ export class AuthService {
       throw new UnauthorizedException('原管理員帳號已不可用');
     }
 
-    if (admin.role !== 'ADMIN') {
+    if (admin.role !== 'ADMIN' && admin.role !== 'SUPER_ADMIN') {
       throw new UnauthorizedException('原帳號已非管理員，無法還原');
     }
 

@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
-import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
+import { Role, UserStatus, FeedbackType, FeedbackStatus, PostStatus } from '@betting-forum/database';
+import { rankOf } from '../common/role-hierarchy';
 
 @Injectable()
 export class AdminService {
@@ -18,9 +19,20 @@ export class AdminService {
     q?: string;
     status?: UserStatus;
     role?: Role;
+    // tier='admin' 只看管理團隊（編輯人員以上）、'user' 只看一般會員。
+    // 用於後台「會員管理」與「管理員管理」兩頁分流。role 明確指定時優先於 tier。
+    tier?: 'admin' | 'user';
   }) {
-    const { page, limit, q, status, role } = params;
+    const { page, limit, q, status, role, tier } = params;
     const skip = (page - 1) * limit;
+
+    const roleFilter = role
+      ? { role }
+      : tier === 'admin'
+        ? { role: { in: [Role.MODERATOR, Role.ADMIN, Role.SUPER_ADMIN] } }
+        : tier === 'user'
+          ? { role: Role.USER }
+          : {};
 
     const where = {
       ...(q && {
@@ -31,7 +43,7 @@ export class AdminService {
         ],
       }),
       ...(status && { status }),
-      ...(role && { role }),
+      ...roleFilter,
     };
 
     const [items, total] = await Promise.all([
@@ -95,9 +107,23 @@ export class AdminService {
       phoneVerificationBypass?: boolean;
       phoneVerificationBypassReason?: string | null;
     },
+    actorRole?: Role,
   ) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('找不到此會員');
+
+    // 角色階層級聯規則：操作者必須「嚴格高於」目標的現有層級，且只能指派「嚴格低於自己」的層級。
+    // 例：總管理員可把一般會員升成編輯人員、可降編輯人員；但碰不到其他總管理員，也不能指派出總管理員(平級)或超級管理員。
+    if (body.role !== undefined) {
+      const actorRank = rankOf(actorRole);
+      const targetRank = rankOf(user.role);
+      const newRank = rankOf(body.role);
+      if (!(actorRank > targetRank && actorRank > newRank)) {
+        throw new ForbiddenException(
+          '只能調整比你低階的帳號，且不能指派到你自己或更高的層級',
+        );
+      }
+    }
 
     // 關閉 bypass 時一併清空原因，避免遺留誤導
     const data: Record<string, unknown> = { ...body };
@@ -159,7 +185,7 @@ export class AdminService {
   // ===== 管理員代登入（Impersonation） =====
   /**
    * 取得目標會員，並驗證是否允許被代登入。
-   * - 不允許代登入 ADMIN 角色（防止管理員互踩 / 權限提升）
+   * - 不允許代登入 ADMIN / SUPER_ADMIN 角色（防止管理員互踩 / 權限提升）
    * - BANNED 的會員不允許代登入（無意義且會違反停用語意）
    */
   async getMemberForImpersonation(targetUserId: string, actorAdminId: string) {
@@ -173,7 +199,7 @@ export class AdminService {
     });
     if (!user) throw new NotFoundException('找不到此會員');
 
-    if (user.role === Role.ADMIN) {
+    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
       throw new ForbiddenException('不能代登入其他管理員帳號');
     }
     if (user.status === UserStatus.BANNED) {
@@ -307,10 +333,11 @@ export class AdminService {
     q?: string;
     boardId?: string;
     categoryId?: string;
-    section?: 'FEATURED' | 'DISCUSSION';
+    section?: 'NEWS' | 'FEATURED' | 'DISCUSSION';
     status?: 'DRAFT' | 'PUBLISHED';
+    isAutoPosted?: boolean;
   }) {
-    const { page, limit, q, boardId, categoryId, section, status } = params;
+    const { page, limit, q, boardId, categoryId, section, status, isAutoPosted } = params;
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -318,6 +345,8 @@ export class AdminService {
     else if (categoryId) where.board = { categoryId };
     if (section) where.section = section;
     if (status) where.status = status;
+    // 新聞分流：文章管理頁帶 false 只看使用者/手動文章；新聞審核頁帶 true 只看自動發文
+    if (typeof isAutoPosted === 'boolean') where.isAutoPosted = isAutoPosted;
     if (q) {
       where.OR = [
         { title: { contains: q, mode: 'insensitive' } },
@@ -363,21 +392,27 @@ export class AdminService {
 
   /**
    * Admin 更新文章。
-   * status: 'DRAFT' → 'PUBLISHED' 即「發布草稿」動作。
-   * section: 'FEATURED' / 'DISCUSSION' 切換板塊頁上下半部分區。
+   * status: 'DRAFT' → 'PUBLISHED' 即「發布草稿」動作（＝審核通過）。
+   * section: 'NEWS' / 'FEATURED' / 'DISCUSSION' 切換板塊頁分區（最新新聞 / 站方公告 / 玩家討論）。
    * title / content 提供 admin 直接編輯草稿內文。
    *
+   * 自動發文（新聞 agent）審核通過時的預設行為（呼叫端未明確指定才套用）：
+   * - section 自動落 NEWS（最新新聞區），讓審核通過的新聞直接上該看板新聞板塊
+   * - isPinned 自動置頂（搭配下方 pinnedUntil 補 24h）
+   *
    * pinnedUntil 自動處理規則（僅 isAutoPosted=true 的文章）：
-   * - 切換成 isPinned=true → 自動補 pinnedUntil = now + 24h
-   * - 切換成 isPinned=false → 自動清空 pinnedUntil
+   * - 最終置頂為 true → 自動補 pinnedUntil = now + 24h
+   * - 最終置頂為 false → 自動清空 pinnedUntil
    * 非自動發文（玩家手寫 / 彩券公告）不受影響，行為與原本一致。
+   *
+   * publishedAt：首次 DRAFT→PUBLISHED 當下寫入，給「24h 無互動退草稿」cron 以發布時間起算。
    */
   async updatePost(
     id: string,
     data: {
       isPinned?: boolean;
       isLocked?: boolean;
-      section?: 'FEATURED' | 'DISCUSSION';
+      section?: 'NEWS' | 'FEATURED' | 'DISCUSSION';
       status?: 'DRAFT' | 'PUBLISHED';
       title?: string;
       content?: string;
@@ -387,19 +422,41 @@ export class AdminService {
     const post = await this.prisma.post.findUnique({ where: { id } });
     if (!post) throw new NotFoundException('找不到此文章');
 
-    // pinnedUntil 自動處理：以更新後的 isAutoPosted 狀態為準
     const willBeAutoPosted =
       typeof data.isAutoPosted === 'boolean' ? data.isAutoPosted : post.isAutoPosted;
+
+    // 這次操作是否把文章從草稿轉成發布（＝審核通過）
+    const isPublishing =
+      data.status === 'PUBLISHED' && post.status !== PostStatus.PUBLISHED;
+
+    // 自動新聞審核通過：呼叫端沒指定 section / isPinned 時，預設落新聞區 + 置頂
+    const autoNewsOnPublish = isPublishing && willBeAutoPosted;
+    const sectionPatch =
+      autoNewsOnPublish && data.section === undefined ? { section: 'NEWS' as const } : {};
+    const effectiveIsPinned =
+      autoNewsOnPublish && data.isPinned === undefined ? true : data.isPinned;
+
+    // 首次發布寫入 publishedAt
+    const publishedAtPatch =
+      isPublishing && !post.publishedAt ? { publishedAt: new Date() } : {};
+
+    // pinnedUntil 自動處理：以更新後的 isAutoPosted 與最終置頂狀態為準
     const pinnedUntilPatch =
-      willBeAutoPosted && typeof data.isPinned === 'boolean'
-        ? { pinnedUntil: data.isPinned ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null }
+      willBeAutoPosted && typeof effectiveIsPinned === 'boolean'
+        ? { pinnedUntil: effectiveIsPinned ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null }
         : !willBeAutoPosted && data.isAutoPosted === false
           ? { pinnedUntil: null } // 從自動發文改回手動 → 清掉到期時間
           : {};
 
     return this.prisma.post.update({
       where: { id },
-      data: { ...data, ...pinnedUntilPatch },
+      data: {
+        ...data,
+        ...(effectiveIsPinned !== undefined ? { isPinned: effectiveIsPinned } : {}),
+        ...sectionPatch,
+        ...publishedAtPatch,
+        ...pinnedUntilPatch,
+      },
     });
   }
 
@@ -420,10 +477,11 @@ export class AdminService {
     status: 'DRAFT' | 'PUBLISHED';
     boardId?: string;
     categoryId?: string;
-    section?: 'FEATURED' | 'DISCUSSION';
+    section?: 'NEWS' | 'FEATURED' | 'DISCUSSION';
     q?: string;
+    isAutoPosted?: boolean;
   }) {
-    const { status, boardId, categoryId, section, q } = params;
+    const { status, boardId, categoryId, section, q, isAutoPosted } = params;
     if (status !== 'DRAFT' && status !== 'PUBLISHED') {
       throw new BadRequestException('批次刪除必須指定 status=DRAFT 或 PUBLISHED');
     }
@@ -432,6 +490,7 @@ export class AdminService {
     if (boardId) where.boardId = boardId;
     else if (categoryId) where.board = { categoryId };
     if (section) where.section = section;
+    if (typeof isAutoPosted === 'boolean') where.isAutoPosted = isAutoPosted;
     if (q) {
       where.OR = [
         { title: { contains: q, mode: 'insensitive' } },

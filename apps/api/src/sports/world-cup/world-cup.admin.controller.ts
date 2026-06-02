@@ -3,6 +3,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PageGuard } from '../../common/guards/page.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@betting-forum/database';
 import { WorldCupService } from './world-cup.service';
@@ -21,8 +22,8 @@ class UpdateMatchDto {
 @ApiTags('Admin · World Cup')
 @ApiBearerAuth()
 @Controller('admin/world-cup')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+@Roles(Role.MODERATOR) // floor；可見性由權限矩陣（預設總管理員以上）控制
 export class WorldCupAdminController {
   constructor(private readonly svc: WorldCupService) {}
 

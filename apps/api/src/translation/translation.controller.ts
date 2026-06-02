@@ -18,6 +18,7 @@ import type { Response } from 'express';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PageGuard } from '../common/guards/page.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -53,8 +54,8 @@ function detectSuspicious(nameZhTw: string | null | undefined): string | null {
 
 @ApiTags('admin:translations')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+@Roles(Role.MODERATOR) // floor；可見性由權限矩陣（預設總管理員以上）控制
 @Controller('admin/translations')
 export class TranslationAdminController {
   constructor(

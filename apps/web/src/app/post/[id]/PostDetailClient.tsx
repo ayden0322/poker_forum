@@ -18,7 +18,7 @@ interface PostData {
   content: string;
   isPinned: boolean;
   isLocked: boolean;
-  section?: 'FEATURED' | 'DISCUSSION';
+  section?: 'NEWS' | 'FEATURED' | 'DISCUSSION';
   viewCount: number;
   replyCount: number;
   pushCount: number;
@@ -47,8 +47,9 @@ interface RepliesResponse {
 
 const LEVEL_LABELS = ['', '新手', '初階', '中階', '資深', '達人', '大師'];
 const ROLE_BADGES: Record<string, { label: string; color: string }> = {
+  SUPER_ADMIN: { label: '管理員', color: 'bg-red-100 text-red-600' },
   ADMIN: { label: '管理員', color: 'bg-red-100 text-red-600' },
-  MODERATOR: { label: '版主', color: 'bg-blue-100 text-blue-600' },
+  MODERATOR: { label: '編輯', color: 'bg-blue-100 text-blue-600' },
 };
 
 export default function PostDetailClient({ post }: { post: PostData }) {
@@ -77,7 +78,8 @@ export default function PostDetailClient({ post }: { post: PostData }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const isAuthor = user?.id === post.author.id;
-  const isAdminOrMod = user?.role === 'ADMIN' || user?.role === 'MODERATOR';
+  const isAdminOrMod =
+    user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MODERATOR';
 
   // 查詢書籤狀態
   useEffect(() => {
@@ -207,8 +209,11 @@ export default function PostDetailClient({ post }: { post: PostData }) {
         {/* 標題列 */}
         <div className="px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {post.section === 'NEWS' && (
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium">📰 最新新聞</span>
+            )}
             {post.section === 'FEATURED' && (
-              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-medium">📣 站方推送</span>
+              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-medium">📣 站方公告</span>
             )}
             {post.isPinned && (
               <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-medium">置頂</span>

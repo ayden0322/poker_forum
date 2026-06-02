@@ -40,7 +40,9 @@ export default function EditPostPage() {
     apiFetch<{ data: PostData }>(`/posts/${id}`)
       .then((res) => {
         const p = res.data;
-        if (p.author.id !== user.id && user.role !== 'ADMIN' && user.role !== 'MODERATOR') {
+        const isStaff =
+          user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || user.role === 'MODERATOR';
+        if (p.author.id !== user.id && !isStaff) {
           router.replace(`/post/${id}`);
           return;
         }

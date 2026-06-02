@@ -3,12 +3,18 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdminSmsProviderController } from './sms-provider.controller';
 import { AdminSportsConfigController } from './sports-config.controller';
+import { PermissionController } from './permission.controller';
 import { VerificationModule } from '../verification/verification.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [VerificationModule, AuthModule],
-  controllers: [AdminController, AdminSmsProviderController, AdminSportsConfigController],
+  controllers: [
+    AdminController,
+    AdminSmsProviderController,
+    AdminSportsConfigController,
+    PermissionController,
+  ],
   providers: [AdminService],
   exports: [AdminService],
 })

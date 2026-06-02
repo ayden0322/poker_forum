@@ -16,8 +16,15 @@ export class PostsService {
     const board = await this.prisma.board.findUnique({ where: { id: dto.boardId } });
     if (!board || !board.isActive) throw new NotFoundException('看板不存在或已停用');
 
-    // 只有 ADMIN 能標自己是自動發文；其他角色傳 true 也忽略
-    const isAutoPosted = dto.isAutoPosted === true && userRole === Role.ADMIN;
+    // 只有 ADMIN / SUPER_ADMIN 能標自己是自動發文（新聞 agent）；其他角色傳 true 也忽略
+    const isAutoPosted =
+      dto.isAutoPosted === true &&
+      (userRole === Role.ADMIN || userRole === Role.SUPER_ADMIN);
+
+    // lastReplyAt 語意為「最後活動時間」：發文時等於發表時間，之後 reply 來才更新。
+    // 這樣前端按 lastReplyAt desc 排序時，「沒人回的新文」也能依發表時間正確排入序列，
+    // 避免 nullable 欄位混入排序造成 NULLS LAST/FIRST 行為不一致的地雷。
+    const now = new Date();
 
     const post = await this.prisma.post.create({
       data: {
@@ -27,6 +34,7 @@ export class PostsService {
         content: dto.content,
         ...(dto.status && { status: dto.status }),
         isAutoPosted,
+        lastReplyAt: now,
         tags: dto.tagIds?.length
           ? { create: dto.tagIds.map((tagId) => ({ tagId })) }
           : undefined,

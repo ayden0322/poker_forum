@@ -42,7 +42,7 @@ interface Member {
   email: string | null;
   avatar: string | null;
   level: number;
-  role: 'USER' | 'MODERATOR' | 'ADMIN';
+  role: 'USER' | 'MODERATOR' | 'ADMIN' | 'SUPER_ADMIN';
   status: 'ACTIVE' | 'BANNED' | 'SUSPENDED';
   lastLoginIp: string | null;
   lastLoginAt: string | null;
@@ -85,12 +85,6 @@ interface MembersResponse {
   };
 }
 
-const ROLE_OPTIONS = [
-  { value: 'USER', label: '一般會員' },
-  { value: 'MODERATOR', label: '版主' },
-  { value: 'ADMIN', label: '管理員' },
-];
-
 const STATUS_OPTIONS = [
   { value: 'ACTIVE', label: '正常' },
   { value: 'SUSPENDED', label: '停權' },
@@ -101,7 +95,6 @@ export default function MembersPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [roleFilter, setRoleFilter] = useState<string>('');
   const [page, setPage] = useState(1);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [detailMember, setDetailMember] = useState<Member | null>(null);
@@ -118,10 +111,10 @@ export default function MembersPage() {
   queryParams.set('limit', '20');
   if (search) queryParams.set('q', search);
   if (statusFilter) queryParams.set('status', statusFilter);
-  if (roleFilter) queryParams.set('role', roleFilter);
+  queryParams.set('tier', 'user'); // 會員管理只顯示一般會員；管理團隊請到「管理員管理」頁
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-members', page, search, statusFilter, roleFilter],
+    queryKey: ['admin-members', page, search, statusFilter],
     queryFn: () => adminApiFetch<MembersResponse>(`/admin/members?${queryParams}`),
   });
 
@@ -208,7 +201,6 @@ export default function MembersPage() {
   const handleEdit = (member: Member) => {
     setEditingMember(member);
     form.setFieldsValue({
-      role: member.role,
       status: member.status,
       phoneVerified: member.phoneVerified,
       phoneVerificationBypass: member.phoneVerificationBypass,
@@ -221,7 +213,6 @@ export default function MembersPage() {
       .validateFields()
       .then(
         (values: {
-          role: string;
           status: string;
           phoneVerified: boolean;
           phoneVerificationBypass: boolean;
@@ -235,7 +226,6 @@ export default function MembersPage() {
           updateMutation.mutate({
             id: editingMember.id,
             body: {
-              role: values.role,
               status: values.status,
               ...(phoneVerifiedChanged ? { phoneVerified: false } : {}),
               phoneVerificationBypass: values.phoneVerificationBypass,
@@ -261,8 +251,9 @@ export default function MembersPage() {
       USER: { color: 'default', label: '一般' },
       MODERATOR: { color: 'blue', label: '版主' },
       ADMIN: { color: 'red', label: '管理員' },
+      SUPER_ADMIN: { color: 'volcano', label: '最高管理員' },
     };
-    const { color, label } = map[role];
+    const { color, label } = map[role] ?? map.USER;
     return <Tag color={color}>{label}</Tag>;
   };
 
@@ -375,7 +366,7 @@ export default function MembersPage() {
           >
             重設密碼
           </Button>
-          {record.role !== 'ADMIN' && record.status !== 'BANNED' && (
+          {record.role !== 'ADMIN' && record.role !== 'SUPER_ADMIN' && record.status !== 'BANNED' && (
             <Button
               size="small"
               icon={<LoginOutlined />}
@@ -421,14 +412,6 @@ export default function MembersPage() {
           allowClear
           options={STATUS_OPTIONS}
         />
-        <Select
-          placeholder="角色篩選"
-          style={{ width: 130, maxWidth: '100%' }}
-          value={roleFilter || undefined}
-          onChange={(v) => { setRoleFilter(v ?? ''); setPage(1); }}
-          allowClear
-          options={ROLE_OPTIONS}
-        />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Tag icon={<CheckCircleOutlined />} color="success">正常</Tag>
           <Tag icon={<StopOutlined />} color="warning">停權</Tag>
@@ -463,9 +446,7 @@ export default function MembersPage() {
         cancelText="取消"
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item label="角色" name="role" rules={[{ required: true }]}>
-            <Select options={ROLE_OPTIONS} />
-          </Form.Item>
+          {/* 角色／層級調整已移至「管理員管理」頁，會員管理只處理一般會員的狀態與驗證 */}
           <Form.Item label="狀態" name="status" rules={[{ required: true }]}>
             <Select options={STATUS_OPTIONS} />
           </Form.Item>

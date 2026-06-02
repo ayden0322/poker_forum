@@ -33,7 +33,7 @@ export interface PostItem {
   content?: string;
   isPinned: boolean;
   isLocked: boolean;
-  section?: 'FEATURED' | 'DISCUSSION';
+  section?: 'NEWS' | 'FEATURED' | 'DISCUSSION';
   viewCount: number;
   replyCount: number;
   pushCount: number;
@@ -52,6 +52,7 @@ export interface PostItem {
 
 interface BoardPostsResponse {
   data: {
+    news: PostItem[];
     featured: PostItem[];
     discussion: {
       items: PostItem[];
@@ -78,6 +79,23 @@ const SORT_OPTIONS = [
   { value: 'popular', label: '最多推文' },
 ] as const;
 
+/** 「剛回」標籤判定門檻：lastReplyAt 在此分鐘數內視為剛有人回覆 */
+const FRESH_REPLY_THRESHOLD_MIN = 6 * 60; // 6 小時
+
+/**
+ * 判定文章是否為「剛回」：
+ * - 必須真的有人回過（lastReplyAt 嚴格晚於 createdAt 至少 1 分鐘，排除「發文同時間」誤判）
+ * - lastReplyAt 距現在不超過 FRESH_REPLY_THRESHOLD_MIN
+ */
+function isFreshReply(post: PostItem): boolean {
+  if (!post.lastReplyAt) return false;
+  const replyTs = new Date(post.lastReplyAt).getTime();
+  const createdTs = new Date(post.createdAt).getTime();
+  if (replyTs - createdTs < 60_000) return false; // 沒人回的新文（lastReplyAt = createdAt）
+  const minSinceReply = (Date.now() - replyTs) / 60_000;
+  return minSinceReply >= 0 && minSinceReply < FRESH_REPLY_THRESHOLD_MIN;
+}
+
 /** 相對時間格式化：剛剛 / N 分鐘前 / N 小時前 / N 天前 / 日期 */
 function formatRelativeTime(iso: string | null): string {
   if (!iso) return '';
@@ -103,19 +121,27 @@ function formatCount(n: number): string {
 
 function PostRow({ post }: { post: PostItem }) {
   const isHot = post.pushCount >= 10 || post._count.replies >= 20;
+  const fresh = isFreshReply(post);
   const roleBadge =
-    post.author.role === 'ADMIN'
+    post.author.role === 'ADMIN' || post.author.role === 'SUPER_ADMIN'
       ? { label: '管理員', cls: 'bg-red-100 text-red-600' }
-      : post.author.role === 'MOD'
-      ? { label: '板主', cls: 'bg-purple-100 text-purple-600' }
+      : post.author.role === 'MODERATOR'
+      ? { label: '編輯', cls: 'bg-purple-100 text-purple-600' }
       : null;
+
+  // 左側色條優先級：置頂(紅) > 熱門(橘) > 剛回(藍)
+  const leftBorderCls = post.isPinned
+    ? 'border-l-4 border-l-red-400'
+    : isHot
+    ? 'border-l-4 border-l-orange-400'
+    : fresh
+    ? 'border-l-4 border-l-blue-400'
+    : '';
 
   return (
     <Link
       href={`/post/${post.id}`}
-      className={`group relative block bg-white rounded-xl border border-gray-200 p-4 transition-all hover:shadow-md hover:border-blue-300 hover:-translate-y-0.5 ${
-        post.isPinned ? 'border-l-4 border-l-red-400' : isHot ? 'border-l-4 border-l-orange-400' : ''
-      }`}
+      className={`group relative block bg-white rounded-xl border border-gray-200 p-4 transition-all hover:shadow-md hover:border-blue-300 hover:-translate-y-0.5 ${leftBorderCls}`}
     >
       <div className="flex items-start gap-3">
         {/* 作者頭像 */}
@@ -139,6 +165,12 @@ function PostRow({ post }: { post: PostItem }) {
             {isHot && !post.isPinned && (
               <span className="text-[11px] bg-gradient-to-r from-orange-400 to-red-500 text-white px-2 py-0.5 rounded-full font-medium">
                 🔥 熱門
+              </span>
+            )}
+            {/* 「剛回」：6 小時內有人回覆。置頂優先，不重複顯示；可與熱門共存 */}
+            {fresh && !post.isPinned && (
+              <span className="text-[11px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-medium">
+                💬 剛回
               </span>
             )}
             {post.isLocked && (
@@ -222,7 +254,8 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
   const { user, requireLogin, requirePhoneVerified } = useAuth();
   const router = useRouter();
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<'latest' | 'lastReply' | 'popular'>('latest');
+  // 預設改為「最新回覆」：有人剛回的文章自動冒上來；沒人回的新文因 lastReplyAt = createdAt，也會依發表時間排入。
+  const [sort, setSort] = useState<'latest' | 'lastReply' | 'popular'>('lastReply');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTag, setActiveTag] = useState('');
@@ -243,12 +276,14 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
       ),
   });
 
+  const news = data?.data.news ?? [];
   const featured = data?.data.featured ?? [];
   const posts = data?.data.discussion.items ?? [];
   const total = data?.data.discussion.total ?? 0;
   const totalPages = Math.ceil(total / 20);
 
-  // 行動裝置上 featured 預設只顯示前 N 篇，點「展開全部」才看更多
+  // 行動裝置上 news / featured 預設只顯示前 N 篇，點「展開全部」才看更多
+  const [newsExpanded, setNewsExpanded] = useState(false);
   const [featuredExpanded, setFeaturedExpanded] = useState(false);
 
   // 下半部討論區內的「置頂」文章（未來啟用 in-section pinning 時生效；目前都是 false）
@@ -261,11 +296,11 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
   // 收集所有出現的 tag（用於篩選按鈕）
   const allTags = useMemo(() => {
     const tagMap = new Map<string, { id: string; name: string; slug: string }>();
-    [...featured, ...posts].forEach((p) =>
+    [...news, ...featured, ...posts].forEach((p) =>
       p.tags.forEach((t) => tagMap.set(t.tag.slug, t.tag))
     );
     return Array.from(tagMap.values());
-  }, [featured, posts]);
+  }, [news, featured, posts]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -445,35 +480,77 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         </span>
       </div>
 
-      {/* === 上半部：站方推送（0 篇隱藏整區） === */}
-      {featured.length > 0 && (
+      {/* === 上半部置頂區：最新新聞 + 站方公告（皆 0 篇隱藏整區） === */}
+      {(news.length > 0 || featured.length > 0) && (
         <section className="mb-6">
-          {/* Desktop：全顯示。Mobile：預設只顯示前 N 篇，點按鈕展開 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {featured
-              .slice(0, featuredExpanded ? featured.length : Number.POSITIVE_INFINITY)
-              .map((post, i) => (
-                <div
-                  key={post.id}
-                  className={
-                    !featuredExpanded && i >= FEATURED_MOBILE_PREVIEW
-                      ? 'hidden md:block'
-                      : ''
-                  }
+          {/* 最新新聞（NEWS）：新聞 agent 審核通過後落這 */}
+          {news.length > 0 && (
+            <div className="mb-4">
+              <div className="mb-2 px-1 text-[11px] font-medium text-blue-500">
+                📰 最新新聞
+              </div>
+              {/* Desktop：全顯示。Mobile：預設只顯示前 N 篇，點按鈕展開 */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {news
+                  .slice(0, newsExpanded ? news.length : Number.POSITIVE_INFINITY)
+                  .map((post, i) => (
+                    <div
+                      key={post.id}
+                      className={
+                        !newsExpanded && i >= FEATURED_MOBILE_PREVIEW
+                          ? 'hidden md:block'
+                          : ''
+                      }
+                    >
+                      <FeaturedPostCard post={post} />
+                    </div>
+                  ))}
+              </div>
+              {news.length > FEATURED_MOBILE_PREVIEW && !newsExpanded && (
+                <button
+                  onClick={() => setNewsExpanded(true)}
+                  className="md:hidden mt-2 w-full py-2 text-xs text-slate-500 hover:text-slate-700 border border-dashed border-slate-300 rounded-lg"
                 >
-                  <FeaturedPostCard post={post} />
-                </div>
-              ))}
-          </div>
+                  展開全部新聞（還有 {news.length - FEATURED_MOBILE_PREVIEW} 篇）
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* 行動裝置展開按鈕：超過預設篇數才顯示 */}
-          {featured.length > FEATURED_MOBILE_PREVIEW && !featuredExpanded && (
-            <button
-              onClick={() => setFeaturedExpanded(true)}
-              className="md:hidden mt-2 w-full py-2 text-xs text-slate-500 hover:text-slate-700 border border-dashed border-slate-300 rounded-lg"
-            >
-              展開全部站方推送（還有 {featured.length - FEATURED_MOBILE_PREVIEW} 篇）
-            </button>
+          {/* 站方公告（FEATURED）：站方手動置頂 / 彩券公告等 */}
+          {featured.length > 0 && (
+            <div>
+              {/* 同時有新聞時才標題區分，避免單一區塊時多餘 label */}
+              {news.length > 0 && (
+                <div className="mb-2 px-1 text-[11px] font-medium text-orange-500">
+                  📣 站方公告
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {featured
+                  .slice(0, featuredExpanded ? featured.length : Number.POSITIVE_INFINITY)
+                  .map((post, i) => (
+                    <div
+                      key={post.id}
+                      className={
+                        !featuredExpanded && i >= FEATURED_MOBILE_PREVIEW
+                          ? 'hidden md:block'
+                          : ''
+                      }
+                    >
+                      <FeaturedPostCard post={post} />
+                    </div>
+                  ))}
+              </div>
+              {featured.length > FEATURED_MOBILE_PREVIEW && !featuredExpanded && (
+                <button
+                  onClick={() => setFeaturedExpanded(true)}
+                  className="md:hidden mt-2 w-full py-2 text-xs text-slate-500 hover:text-slate-700 border border-dashed border-slate-300 rounded-lg"
+                >
+                  展開全部站方公告（還有 {featured.length - FEATURED_MOBILE_PREVIEW} 篇）
+                </button>
+              )}
+            </div>
           )}
 
           {/* 區塊分隔：極小灰字 label，不放分隔線、不放大標題 */}
@@ -490,7 +567,7 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         <div className="text-center py-20 text-gray-400">
           {searchQuery || activeTag
             ? '找不到符合條件的文章'
-            : featured.length > 0
+            : news.length > 0 || featured.length > 0
               ? '目前還沒有玩家討論，來發表第一篇吧！'
               : '此看板尚無文章，來發表第一篇吧！'}
         </div>

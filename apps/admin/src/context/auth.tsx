@@ -20,6 +20,10 @@ interface AdminAuthContextValue {
   logout: () => void;
 }
 
+// 可進入後台的角色：編輯人員(MODERATOR) 以上皆可登入，實際能看到/操作什麼由層級決定
+const ADMIN_ROLES = ['MODERATOR', 'ADMIN', 'SUPER_ADMIN'];
+const isAdminRole = (role: string) => ADMIN_ROLES.includes(role);
+
 const AdminAuthContext = createContext<AdminAuthContextValue | null>(null);
 
 export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
@@ -29,7 +33,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
   const fetchMe = useCallback(async (throwOnError = false) => {
     try {
       const res = await adminApiFetch<{ data: AdminUser }>('/auth/me');
-      if (res.data.role !== 'ADMIN') {
+      if (!isAdminRole(res.data.role)) {
         throw new Error('此帳號不具有管理員權限');
       }
       setUser(res.data);
@@ -59,7 +63,7 @@ export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
       skipAuth: true,
     });
 
-    if (res.data.user.role !== 'ADMIN') {
+    if (!isAdminRole(res.data.user.role)) {
       throw new Error('此帳號不具有管理員權限');
     }
 

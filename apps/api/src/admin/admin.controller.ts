@@ -18,6 +18,7 @@ import { AdminService } from './admin.service';
 import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PageGuard } from '../common/guards/page.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -25,8 +26,8 @@ import { getClientIp } from '../common/get-client-ip.util';
 
 @ApiTags('admin')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+@Roles(Role.MODERATOR) // floor：編輯人員以上可進；實際每頁可見性由 PageGuard 讀權限矩陣決定
 @Controller('admin')
 export class AdminController {
   constructor(
@@ -34,6 +35,7 @@ export class AdminController {
     private authService: AuthService,
   ) {}
 
+  @Roles(Role.MODERATOR) // 編輯人員可看儀表板
   @Get('stats')
   async getStats() {
     const data = await this.adminService.getDashboardStats();
@@ -47,14 +49,23 @@ export class AdminController {
     @Query('q') q?: string,
     @Query('status') status?: UserStatus,
     @Query('role') role?: Role,
+    @Query('tier') tier?: 'admin' | 'user',
   ) {
-    const data = await this.adminService.getMembers({ page, limit, q, status, role });
+    const data = await this.adminService.getMembers({
+      page,
+      limit,
+      q,
+      status,
+      role,
+      tier: tier === 'admin' || tier === 'user' ? tier : undefined,
+    });
     return { data };
   }
 
   @Patch('members/:id')
   async updateMember(
     @Param('id') id: string,
+    @CurrentUser() actor: { id: string; role: Role },
     @Body()
     body: {
       role?: Role;
@@ -64,7 +75,9 @@ export class AdminController {
       phoneVerificationBypassReason?: string | null;
     },
   ) {
-    const data = await this.adminService.updateMember(id, body);
+    // 角色變更走階層級聯規則（在 service 內依操作者層級判斷）：
+    // 只能調整比自己低階的帳號，且不能指派到自己或更高的層級。
+    const data = await this.adminService.updateMember(id, body, actor.role);
     return { data };
   }
 
@@ -201,6 +214,7 @@ export class AdminController {
   }
 
   // ===== 文章管理 =====
+  @Roles(Role.MODERATOR) // 編輯人員可審文章 / 新聞
   @Get('posts')
   async getPosts(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -208,8 +222,10 @@ export class AdminController {
     @Query('q') q?: string,
     @Query('boardId') boardId?: string,
     @Query('categoryId') categoryId?: string,
-    @Query('section') section?: 'FEATURED' | 'DISCUSSION',
+    @Query('section') section?: 'NEWS' | 'FEATURED' | 'DISCUSSION',
     @Query('status') status?: 'DRAFT' | 'PUBLISHED',
+    // 'true' 只看新聞 agent 自動發文、'false' 只看使用者/手動文章、未帶則全部
+    @Query('isAutoPosted') isAutoPosted?: string,
   ) {
     const data = await this.adminService.getPosts({
       page,
@@ -217,12 +233,18 @@ export class AdminController {
       q,
       boardId,
       categoryId,
-      section: section === 'FEATURED' || section === 'DISCUSSION' ? section : undefined,
+      section:
+        section === 'NEWS' || section === 'FEATURED' || section === 'DISCUSSION'
+          ? section
+          : undefined,
       status,
+      isAutoPosted:
+        isAutoPosted === 'true' ? true : isAutoPosted === 'false' ? false : undefined,
     });
     return { data };
   }
 
+  @Roles(Role.MODERATOR) // 編輯人員可編輯 / 發布文章
   @Patch('posts/:id')
   async updatePost(
     @Param('id') id: string,
@@ -230,7 +252,7 @@ export class AdminController {
     body: {
       isPinned?: boolean;
       isLocked?: boolean;
-      section?: 'FEATURED' | 'DISCUSSION';
+      section?: 'NEWS' | 'FEATURED' | 'DISCUSSION';
       status?: 'DRAFT' | 'PUBLISHED';
       title?: string;
       content?: string;
@@ -241,6 +263,7 @@ export class AdminController {
     return { data };
   }
 
+  @Roles(Role.MODERATOR) // 編輯人員可刪單篇文章（內容審核）
   @Delete('posts/:id')
   async deletePost(@Param('id') id: string) {
     await this.adminService.deletePost(id);
@@ -254,19 +277,27 @@ export class AdminController {
    * 所以前端可以直接把當前列表的篩選參數丟過來。
    */
   @Delete('posts')
+  @Roles(Role.SUPER_ADMIN) // 一鍵刪除只開放給最高管理員，共管 ADMIN 不可
   async bulkDeletePosts(
     @Query('status') status: 'DRAFT' | 'PUBLISHED',
     @Query('boardId') boardId?: string,
     @Query('categoryId') categoryId?: string,
-    @Query('section') section?: 'FEATURED' | 'DISCUSSION',
+    @Query('section') section?: 'NEWS' | 'FEATURED' | 'DISCUSSION',
     @Query('q') q?: string,
+    // 限定只刪自動發文(true)或使用者文章(false)，避免新聞審核頁一鍵刪除誤刪使用者草稿
+    @Query('isAutoPosted') isAutoPosted?: string,
   ) {
     const data = await this.adminService.bulkDeletePosts({
       status,
       boardId,
       categoryId,
-      section: section === 'FEATURED' || section === 'DISCUSSION' ? section : undefined,
+      section:
+        section === 'NEWS' || section === 'FEATURED' || section === 'DISCUSSION'
+          ? section
+          : undefined,
       q,
+      isAutoPosted:
+        isAutoPosted === 'true' ? true : isAutoPosted === 'false' ? false : undefined,
     });
     return { data };
   }
@@ -300,6 +331,7 @@ export class AdminController {
   }
 
   // ===== 檢舉管理 =====
+  @Roles(Role.MODERATOR) // 編輯人員可處理檢舉
   @Get('reports')
   async getReports(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -309,6 +341,7 @@ export class AdminController {
     return { data };
   }
 
+  @Roles(Role.MODERATOR) // 編輯人員可處理檢舉
   @Patch('reports/:id')
   async updateReport(
     @Param('id') id: string,
@@ -343,7 +376,7 @@ export class AdminController {
     return { data: { success: true } };
   }
 
-  // ===== 封鎖 IP 管理 =====
+  // ===== 封鎖 IP 管理（可見性由權限矩陣控制，預設僅超級管理員） =====
   @Get('banned-ips')
   async getBannedIps() {
     const data = await this.adminService.getBannedIps();
@@ -363,6 +396,7 @@ export class AdminController {
   }
 
   // ===== 意見回報管理 =====
+  @Roles(Role.MODERATOR) // 編輯人員可處理意見回報
   @Get('feedbacks')
   async getFeedbacks(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
@@ -374,6 +408,7 @@ export class AdminController {
     return { data };
   }
 
+  @Roles(Role.MODERATOR) // 編輯人員可看意見詳情
   @Get('feedbacks/:id')
   async getFeedbackById(@Param('id') id: string) {
     const data = await this.adminService.getFeedbackById(id);
@@ -389,6 +424,7 @@ export class AdminController {
     return { data };
   }
 
+  @Roles(Role.MODERATOR) // 編輯人員可更新意見狀態
   @Patch('feedbacks/:id/status')
   async updateFeedbackStatus(
     @Param('id') id: string,
@@ -404,6 +440,7 @@ export class AdminController {
     return { data: { success: true } };
   }
 
+  @Roles(Role.MODERATOR) // 編輯人員可回覆意見
   @Post('feedbacks/:id/replies')
   async createFeedbackReply(
     @Param('id') id: string,

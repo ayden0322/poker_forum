@@ -37,7 +37,11 @@ export class PostsTask {
     }
   }
 
-  /** 24h 無互動改 DRAFT：給新聞 Agent 文「24h 內 0 留言 → 從前台消失」 */
+  /**
+   * 24h 無互動改 DRAFT：給新聞 Agent 文「發布後 24h 內 0 留言 → 從前台消失」。
+   * 以 publishedAt（首次發布時間）起算，避免「草稿待審超過 24h 才審核通過、
+   * 一上架就被立刻判定逾時退草稿」。舊資料 publishedAt 為 null 時 fallback createdAt。
+   */
   @Cron('15 * * * *', { timeZone: 'Asia/Taipei' })
   async draftIfNoEngagement() {
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -46,8 +50,11 @@ export class PostsTask {
       where: {
         isAutoPosted: true,
         status: PostStatus.PUBLISHED,
-        createdAt: { lte: cutoff },
         replyCount: 0,
+        OR: [
+          { publishedAt: { lte: cutoff } },
+          { publishedAt: null, createdAt: { lte: cutoff } },
+        ],
       },
       select: { id: true, title: true },
     });

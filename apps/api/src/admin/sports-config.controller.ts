@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, IsNumber, IsObject } from 'class-validator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PageGuard } from '../common/guards/page.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -44,8 +45,8 @@ function buildDefaultConfigs() {
 
 @ApiTags('admin:sports-config')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+@Roles(Role.MODERATOR) // floor；實際可見性由權限矩陣（預設僅超級管理員）控制
 @Controller('admin/sports-config')
 export class AdminSportsConfigController {
   private readonly logger = new Logger(AdminSportsConfigController.name);

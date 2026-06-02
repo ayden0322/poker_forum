@@ -13,7 +13,9 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { LotteryService, GameType, GAME_CONFIG } from './lottery.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PageGuard } from '../common/guards/page.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { RequirePage } from '../common/decorators/require-page.decorator';
 import { Role } from '@betting-forum/database';
 
 @ApiTags('彩券')
@@ -66,8 +68,9 @@ export class LotteryController {
   }
 
   @Post('sync')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+  @Roles(Role.MODERATOR)
+  @RequirePage('lottery')
   @ApiBearerAuth()
   @ApiOperation({ summary: '手動觸發同步（需管理員權限）' })
   async sync(@Query('gameType') gameType?: string) {
@@ -86,8 +89,9 @@ export class LotteryController {
   }
 
   @Post('backfill')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+  @Roles(Role.MODERATOR)
+  @RequirePage('lottery')
   @ApiBearerAuth()
   @ApiOperation({ summary: '補抓過去 N 個月的歷史開獎（需管理員權限）' })
   async backfill(

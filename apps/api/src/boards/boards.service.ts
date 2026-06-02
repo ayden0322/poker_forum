@@ -2,8 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { PostStatus, PostSection } from '@betting-forum/database';
 
-/** 站方推送（FEATURED）區塊單次回傳上限，超過此數量需在後台維護收斂 */
+/** 站方公告（FEATURED）區塊單次回傳上限，超過此數量需在後台維護收斂 */
 const FEATURED_MAX = 20;
+/** 最新新聞（NEWS）區塊單次回傳上限 */
+const NEWS_MAX = 20;
 
 @Injectable()
 export class BoardsService {
@@ -54,11 +56,12 @@ export class BoardsService {
   }
 
   /**
-   * 取得看板的文章列表
-   * - featured：站方推送（上半部）。不分頁、永遠回最新的 FEATURED 文章（上限 FEATURED_MAX）。
-   *   不受 sort / search 影響；tag 篩選會套用（讓使用者點 tag 時 featured 也跟著縮）。
-   * - discussion：玩家討論（下半部）。維持分頁、套用所有篩選與排序。
-   * - 搜尋時 featured 自動隱藏，避免「搜尋結果」與「站方推送」互相混淆。
+   * 取得看板的文章列表（前台由上而下三區）
+   * - news：最新新聞（NEWS，最上）。不分頁、永遠回最新的 NEWS 文章（上限 NEWS_MAX）。
+   * - featured：站方公告（FEATURED，中）。不分頁、永遠回最新的 FEATURED 文章（上限 FEATURED_MAX）。
+   *   不受 sort / search 影響；tag 篩選會套用（讓使用者點 tag 時 news / featured 也跟著縮）。
+   * - discussion：玩家討論（DISCUSSION，下）。維持分頁、套用所有篩選與排序。
+   * - 搜尋時 news / featured 自動隱藏，避免「搜尋結果」與置頂區互相混淆。
    */
   async getBoardPosts(
     slug: string,
@@ -96,8 +99,30 @@ export class BoardsService {
           ? [{ isPinned: 'desc' as const }, { lastReplyAt: 'desc' as const }, { createdAt: 'desc' as const }]
           : [{ isPinned: 'desc' as const }, { createdAt: 'desc' as const }];
 
-    // === 上半部：站方推送 ===
-    // 搜尋進行中時不回 featured，避免擾亂搜尋結果
+    // === 置頂兩區共用 include ===
+    const pinnedInclude = {
+      author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+      tags: { include: { tag: true } },
+      _count: { select: { replies: true, pushes: true } },
+    };
+
+    // === 最上：最新新聞（NEWS）===
+    // 搜尋進行中時不回，避免擾亂搜尋結果
+    const newsPromise = search
+      ? Promise.resolve([])
+      : this.prisma.post.findMany({
+          where: {
+            boardId: board.id,
+            status: PostStatus.PUBLISHED,
+            section: PostSection.NEWS,
+            ...tagFilter,
+          },
+          take: NEWS_MAX,
+          orderBy: [{ createdAt: 'desc' }],
+          include: pinnedInclude,
+        });
+
+    // === 中：站方公告（FEATURED）===
     const featuredPromise = search
       ? Promise.resolve([])
       : this.prisma.post.findMany({
@@ -109,30 +134,24 @@ export class BoardsService {
           },
           take: FEATURED_MAX,
           orderBy: [{ createdAt: 'desc' }],
-          include: {
-            author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
-            tags: { include: { tag: true } },
-            _count: { select: { replies: true, pushes: true } },
-          },
+          include: pinnedInclude,
         });
 
-    const [featured, items, total] = await Promise.all([
+    const [news, featured, items, total] = await Promise.all([
+      newsPromise,
       featuredPromise,
       this.prisma.post.findMany({
         where: discussionWhere,
         skip,
         take: limit,
         orderBy,
-        include: {
-          author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
-          tags: { include: { tag: true } },
-          _count: { select: { replies: true, pushes: true } },
-        },
+        include: pinnedInclude,
       }),
       this.prisma.post.count({ where: discussionWhere }),
     ]);
 
     return {
+      news,
       featured,
       discussion: { items, total, page, limit },
     };

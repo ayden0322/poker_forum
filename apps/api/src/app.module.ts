@@ -12,6 +12,7 @@ import { BookmarksModule } from './bookmarks/bookmarks.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TagsModule } from './tags/tags.module';
 import { AdminModule } from './admin/admin.module';
+import { PagePermissionModule } from './admin/page-permission.module';
 import { LotteryModule } from './lottery/lottery.module';
 import { UploadModule } from './upload/upload.module';
 import { GifsModule } from './gifs/gifs.module';
@@ -47,6 +48,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     NotificationsModule,
     TagsModule,
     AdminModule,
+    PagePermissionModule,
     LotteryModule,
     UploadModule,
     GifsModule,

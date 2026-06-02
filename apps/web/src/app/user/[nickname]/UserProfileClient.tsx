@@ -117,11 +117,11 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
               <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
                 Lv.{profile.level} {LEVEL_NAMES[profile.level]}
               </span>
-              {profile.role === 'ADMIN' && (
+              {(profile.role === 'ADMIN' || profile.role === 'SUPER_ADMIN') && (
                 <span className="px-2.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">管理員</span>
               )}
               {profile.role === 'MODERATOR' && (
-                <span className="px-2.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">版主</span>
+                <span className="px-2.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs font-medium rounded-full">編輯</span>
               )}
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm text-gray-500">

@@ -4,6 +4,7 @@ import { IsBoolean, IsOptional, IsString, IsObject } from 'class-validator';
 import { Prisma } from '@betting-forum/database';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { PageGuard } from '../common/guards/page.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { Role } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -33,8 +34,8 @@ class TestSmsDto {
 
 @ApiTags('admin:sms-provider')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
+@Roles(Role.MODERATOR) // floor；實際可見性由權限矩陣（預設僅超級管理員）控制
 @Controller('admin/sms-provider')
 export class AdminSmsProviderController {
   constructor(

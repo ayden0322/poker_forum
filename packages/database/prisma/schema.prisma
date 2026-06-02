@@ -57,6 +57,7 @@ enum Role {
   USER
   MODERATOR
   ADMIN
+  SUPER_ADMIN
 }
 
 enum UserStatus {
@@ -109,8 +110,12 @@ enum PostStatus {
   PUBLISHED
 }
 
-// 板塊頁分區：FEATURED = 站方推送（上半部）、DISCUSSION = 玩家討論（下半部）
+// 板塊頁分區（前台由上而下）：
+// NEWS = 最新新聞（新聞 agent 自動發文審核通過後落此區）
+// FEATURED = 站方公告（站方手動置頂 / 彩券公告等）
+// DISCUSSION = 玩家討論（玩家發文，分頁）
 enum PostSection {
+  NEWS
   FEATURED
   DISCUSSION
 }
@@ -130,13 +135,18 @@ model Post {
   viewCount   Int         @default(0) @map("view_count")
   replyCount  Int         @default(0) @map("reply_count")
   pushCount   Int         @default(0) @map("push_count")
-  lastReplyAt DateTime?   @map("last_reply_at")
+  // 最後活動時間：發文時等於 createdAt，之後 reply 來才更新。
+  // 改為 non-null 以避免 ORDER BY lastReplyAt 時的 NULLS LAST/FIRST 行為不一致。
+  lastReplyAt DateTime    @default(now()) @map("last_reply_at")
   lastReplyBy String?     @map("last_reply_by")
   // 新聞 Agent 自動發文標記：true 表示走「24h 自動退置頂 + 無互動回 DRAFT」生命週期
   // 彩券自動發文維持 false，不受相關 cron 影響
   isAutoPosted Boolean    @default(false) @map("is_auto_posted")
   // 置頂到期時間；到了 cron 會自動 unpin。null 表示永久置頂或未置頂
   pinnedUntil DateTime?   @map("pinned_until")
+  // 首次發布時間（DRAFT→PUBLISHED 當下寫入）。新聞 24h 無互動退草稿 cron 以此為起算，
+  // 避免「草稿放超過 24h 才審核通過、一上架就被秒退」。null 代表尚未發布或舊資料（cron 會 fallback createdAt）
+  publishedAt DateTime?   @map("published_at")
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
@@ -153,6 +163,7 @@ model Post {
   @@index([authorId])
   @@index([isAutoPosted, isPinned, pinnedUntil])
   @@index([isAutoPosted, status, createdAt])
+  @@index([isAutoPosted, status, publishedAt])
   @@map("posts")
 }
 
@@ -608,4 +619,20 @@ model SportsConfig {
 
   @@index([sportType])
   @@map("sports_configs")
+}
+
+// ===== 後台頁面權限矩陣（僅超級管理員可編輯） =====
+// 每個後台頁面（pageKey）對三個層級各有一個可見開關。
+// 採「每層獨立布林」而非「最低層級」，以支援非單調設定（例如某頁開放給總管理員、卻對超級管理員隱藏）。
+// 「權限設定」頁本身永遠對超級管理員開放（防鎖死，於 service 層硬性保證）。
+model AdminPagePermission {
+  id              String   @id @default(cuid())
+  pageKey         String   @unique @map("page_key")
+  allowModerator  Boolean  @default(false) @map("allow_moderator")  // 編輯人員
+  allowAdmin      Boolean  @default(false) @map("allow_admin")      // 總管理員
+  allowSuperAdmin Boolean  @default(true) @map("allow_super_admin") // 超級管理員
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("admin_page_permissions")
 }

@@ -7,7 +7,7 @@ import type { ColumnsType } from 'antd/es/table';
 
 import { adminApiFetch } from '@/lib/api';
 
-type Section = 'FEATURED' | 'DISCUSSION';
+type Section = 'NEWS' | 'FEATURED' | 'DISCUSSION';
 
 interface PostItem {
   id: string;
@@ -83,12 +83,13 @@ export default function FeaturedPostsPage() {
         <Select<Section>
           size="small"
           value={record.section}
-          style={{ width: 120 }}
+          style={{ width: 140 }}
           onChange={(v) =>
             updateMutation.mutate({ id: record.id, body: { section: v } })
           }
           options={[
-            { value: 'FEATURED', label: '📣 站方推送' },
+            { value: 'NEWS', label: '📰 最新新聞' },
+            { value: 'FEATURED', label: '📣 站方公告' },
             { value: 'DISCUSSION', label: '玩家討論' },
           ]}
         />
