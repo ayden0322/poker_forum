@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { AWAY_DOCK, HOME_DOCK, COURT_H, DOCK_H } from './court-coords';
+import { PlayerFigure } from './PlayerFigure';
 import type { NBALivePlayer } from '../types';
 
 /**
@@ -164,9 +165,15 @@ function DockToken({
   pose: PlayerPose;
   idlePhase: number;
 }) {
-  const baseSize = 38;
-  const size = highlighted ? baseSize + 6 : baseSize;
-  const half = size / 2;
+  // PlayerFigure viewBox 100x140，size 控顯示寬度
+  // 平常 size=48、highlighted=56
+  const baseFigSize = 48;
+  const figSize = highlighted ? baseFigSize + 8 : baseFigSize;
+  const figHeight = figSize * 1.4;
+  // 將 PlayerFigure 置中於 (x, y)
+  const figX = x - figSize / 2;
+  const figY = y - figHeight / 2;
+  const half = figSize / 2;
 
   // pose → animate 屬性 mapping
   const poseAnimate = (() => {
@@ -263,8 +270,9 @@ function DockToken({
         </circle>
       )}
 
-      {/* 球員整體：pose 動畫包在這層
-          注意：transformBox / transformOrigin 設成球員中心，讓 rotate/scale 都繞中心 */}
+      {/* 球員整體：pose keyframe 動畫包在這層（位移 / 旋轉 / 縮放）
+          內部用 codex 設計的 PlayerFigure 人形 SVG 畫實際姿勢
+          兩層動畫疊加：keyframe 控「跳動 / 擺動」、pose prop 控「人形姿勢」 */}
       <motion.g
         animate={poseAnimate}
         transition={poseTransition}
@@ -273,47 +281,29 @@ function DockToken({
           transformOrigin: `${x}px ${y}px`,
         }}
       >
-        {/* 頭像背景圓圈 */}
-        <circle
-          cx={x}
-          cy={y}
-          r={half}
-          fill="#ffffff"
-          stroke={teamColor}
-          strokeWidth="2.5"
-        />
-
-        {/* 頭像 */}
-        <foreignObject
-          x={x - half + 2}
-          y={y - half + 2}
-          width={size - 4}
-          height={size - 4}
-          style={{ pointerEvents: 'none' }}
+        {/* 嵌套 svg 放 PlayerFigure（100x140 viewBox） */}
+        <svg
+          x={figX}
+          y={figY}
+          width={figSize}
+          height={figHeight}
+          overflow="visible"
         >
-          <img
-            src={HEADSHOT(player.personId)}
-            alt={player.nameZhTw}
-            width={size - 4}
-            height={size - 4}
-            style={{
-              borderRadius: '50%',
-              objectFit: 'cover',
-              background: '#f3f4f6',
-              display: 'block',
-            }}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.opacity = '0.3';
-            }}
+          <PlayerFigure
+            pose={pose}
+            teamColor={teamColor}
+            headshotUrl={HEADSHOT(player.personId)}
+            playerName={player.nameZhTw}
+            size={figSize}
           />
-        </foreignObject>
+        </svg>
 
-        {/* 號碼徽章（移到頭像下方、不再覆蓋頭像） */}
+        {/* 號碼徽章（在人形腳下） */}
         {player.jerseyNum && (
           <g>
             <rect
               x={x - 13}
-              y={y + half + 1}
+              y={y + half + 6}
               width={26}
               height={12}
               rx={6}
@@ -321,7 +311,7 @@ function DockToken({
             />
             <text
               x={x}
-              y={y + half + 10}
+              y={y + half + 15}
               textAnchor="middle"
               fontSize="9"
               fontWeight="bold"
