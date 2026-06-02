@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { AnimationOrchestrator } from './AnimationOrchestrator';
 import { ToastStack, type ToastMessage } from './ToastStack';
+import { EventCard, type EventCardData } from './EventCard';
 import {
   COURT_W,
   COURT_H,
@@ -10,7 +11,6 @@ import {
   LEFT_HOOP_X,
   RIGHT_HOOP_X,
   HOOP_Y,
-  TOTAL_H,
 } from './court-coords';
 import { isShotEvent } from './events';
 import type {
@@ -32,15 +32,20 @@ const KEY_LENGTH = 190;
 const THREE_RADIUS = 237.5;
 
 /**
- * NBA 動畫直播主畫面
+ * NBA 動畫直播主畫面（極簡字卡版）
  *
- * 包含：
- * - 球場 SVG（複用 CourtChart 同款 1000x500 全場視角）
- * - 球員 5v5 layer
- * - 球 layer + 投籃軌跡動畫
- * - 籃框震動 + 得分大字幕
+ * 設計重大轉向（2026-06-01 Ayden 決定）：
+ * 從「5v5 dock + 球員動畫」改成「事件字卡聚焦」：
+ * - 不再呈現所有球員位置
+ * - 投籃/罰球事件 → 中央彈出字卡（球員頭像 + 姓名 + 動作 + 加分）
+ * - 籃框震動 / 進球大字 / Toast / Banner 全部保留
  *
- * 跟 CourtChart 的差別：CourtChart 是「累積投籃熱點」、這裡是「即時事件動畫」
+ * 視覺核心：
+ * 1. 球場 SVG 底圖（背景感、漸層 + 聚光、籃框、中線）
+ * 2. 事件字卡（球場中央 HTML overlay）— 主視覺
+ * 3. 籃框震動 + 粒子（進球 feedback）
+ * 4. Toast（火鍋/抄截/犯規/換人）
+ * 5. Banner（節結束/暫停/比賽結束）
  */
 export function LiveBroadcast({
   awayTeam,
@@ -58,12 +63,9 @@ export function LiveBroadcast({
 
   const pushToast = useCallback((t: ToastMessage) => {
     setToasts((arr) => {
-      // 同 id 不重複加
       if (arr.some((x) => x.id === t.id)) return arr;
-      // 最多保留 5 個（顯示時 ToastStack 會切到最後 3 個）
       return [...arr.slice(-4), t];
     });
-    // 4 秒後自動移除
     const existing = toastTimersRef.current.get(t.id);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
@@ -73,12 +75,26 @@ export function LiveBroadcast({
     toastTimersRef.current.set(t.id, timer);
   }, []);
 
-  // Demo 模式：注入「假新事件」讓使用者能在已結束比賽看到動畫效果
-  // demoCounter 變化代表「按一次 demo 按鈕」
+  // 事件字卡（投籃 / 罰球時跳出）
+  const [eventCard, setEventCard] = useState<EventCardData | null>(null);
+  const cardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showEventCard = useCallback((card: EventCardData) => {
+    setEventCard(card);
+    if (cardTimerRef.current) clearTimeout(cardTimerRef.current);
+    // 命中字卡停留 2.5s、未進字卡停留 1.8s
+    cardTimerRef.current = setTimeout(
+      () => {
+        setEventCard((curr) => (curr?.id === card.id ? null : curr));
+      },
+      card.made ? 2500 : 1800,
+    );
+  }, []);
+
+  // Demo 模式
   const [demoCounter, setDemoCounter] = useState(0);
   const [demoActionType, setDemoActionType] = useState<string>('shot');
 
-  // 從歷史 actions 找符合 demoActionType 的範本
   const demoTemplate = useMemo(() => {
     const reversed = [...actions].reverse();
     if (demoActionType === 'shot') {
@@ -109,7 +125,6 @@ export function LiveBroadcast({
     return [...actions, fakeAction];
   }, [actions, demoCounter, demoTemplate]);
 
-  // Demo 按鈕資料
   const demoButtons: { label: string; type: string }[] = [
     { label: '投籃 +2/+3', type: 'shot' },
     { label: '罰球', type: 'freethrow' },
@@ -121,7 +136,6 @@ export function LiveBroadcast({
     { label: '節結束', type: 'period' },
   ];
 
-  // 過濾出實際 actions 內存在的事件類型（沒有就 hide）
   const availableDemoTypes = useMemo(() => {
     const types = new Set(actions.map((a) => a.actionType));
     if (
@@ -139,10 +153,10 @@ export function LiveBroadcast({
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
           動畫直播
         </span>
-        <span className="text-[10px] text-gray-400">事件觸發動畫</span>
+        <span className="text-[10px] text-gray-400">事件字卡呈現</span>
       </div>
 
-      {/* Demo 按鈕列：手動觸發各種事件動畫，方便預覽效果（含已結束比賽） */}
+      {/* Demo 按鈕列 */}
       {demoButtons.some((b) => availableDemoTypes.has(b.type)) && (
         <div className="flex items-center gap-1.5 mb-2 flex-wrap">
           <span className="text-[10px] text-gray-500 font-medium">▶ 試播</span>
@@ -164,133 +178,131 @@ export function LiveBroadcast({
         </div>
       )}
 
-      {/* Toast 浮窗區（球場 SVG 之上） */}
+      {/* 主畫面：球場 SVG + EventCard / Toast / Banner overlay */}
       <div className="relative">
+        {/* Toast 堆疊（右上） */}
         <ToastStack toasts={toasts} />
 
-      <svg
-        viewBox={`0 0 ${COURT_W} ${TOTAL_H}`}
-        className="w-full h-auto"
-        style={{ maxHeight: 600 }}
-      >
-        {/* === 視覺資產定義（漸層 / 陰影 / 木紋） === */}
-        <defs>
-          {/* 球場木紋漸層（左右半場用一樣的漸層、模擬地板光澤） */}
-          <linearGradient id="courtWood" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#e8c890" />
-            <stop offset="50%" stopColor="#f5e1b8" />
-            <stop offset="100%" stopColor="#d4a76a" />
-          </linearGradient>
-          {/* 罰球禁區漸層 */}
-          <linearGradient id="keyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#fef9c7" />
-            <stop offset="100%" stopColor="#fbe79a" />
-          </linearGradient>
-          {/* 籃框金屬漸層 */}
-          <radialGradient id="hoopMetal" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#fbbf24" />
-            <stop offset="60%" stopColor="#ea580c" />
-            <stop offset="100%" stopColor="#9a3412" />
-          </radialGradient>
-          {/* 球場柔光陰影 */}
-          <radialGradient id="courtSpotlight" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-          </radialGradient>
-        </defs>
+        {/* Event 字卡（球場中央） */}
+        <EventCard card={eventCard} />
 
-        {/* === 球場底色（木紋漸層） === */}
-        <rect x="0" y="0" width={COURT_W} height={COURT_H} fill="url(#courtWood)" />
-        {/* 中央柔光，模擬場館聚光 */}
-        <ellipse
-          cx={COURT_CX}
-          cy={COURT_H / 2}
-          rx={COURT_W * 0.45}
-          ry={COURT_H * 0.45}
-          fill="url(#courtSpotlight)"
-          pointerEvents="none"
-        />
+        <svg
+          viewBox={`0 0 ${COURT_W} ${COURT_H}`}
+          className="w-full h-auto"
+          style={{ maxHeight: 400 }}
+        >
+          <defs>
+            <linearGradient id="courtWood" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#e8c890" />
+              <stop offset="50%" stopColor="#f5e1b8" />
+              <stop offset="100%" stopColor="#d4a76a" />
+            </linearGradient>
+            <linearGradient id="keyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#fef9c7" />
+              <stop offset="100%" stopColor="#fbe79a" />
+            </linearGradient>
+            <radialGradient id="hoopMetal" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#fbbf24" />
+              <stop offset="60%" stopColor="#ea580c" />
+              <stop offset="100%" stopColor="#9a3412" />
+            </radialGradient>
+            <radialGradient id="courtSpotlight" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </radialGradient>
+          </defs>
 
-        {/* === 邊線 === */}
-        <rect
-          x="2"
-          y="2"
-          width={COURT_W - 4}
-          height={COURT_H - 4}
-          fill="none"
-          stroke="#5a4a2a"
-          strokeWidth="2"
-        />
+          {/* 球場底色 */}
+          <rect x="0" y="0" width={COURT_W} height={COURT_H} fill="url(#courtWood)" />
+          <ellipse
+            cx={COURT_CX}
+            cy={COURT_H / 2}
+            rx={COURT_W * 0.45}
+            ry={COURT_H * 0.45}
+            fill="url(#courtSpotlight)"
+            pointerEvents="none"
+          />
 
-        {/* === 中線 + 中圈 === */}
-        <line
-          x1={COURT_CX}
-          y1="2"
-          x2={COURT_CX}
-          y2={COURT_H - 2}
-          stroke="#5a4a2a"
-          strokeWidth="1.5"
-        />
-        <circle
-          cx={COURT_CX}
-          cy={HOOP_Y}
-          r="60"
-          fill="none"
-          stroke="#5a4a2a"
-          strokeWidth="1.5"
-        />
-        <circle
-          cx={COURT_CX}
-          cy={HOOP_Y}
-          r="22"
-          fill="none"
-          stroke="#5a4a2a"
-          strokeWidth="1"
-        />
+          {/* 邊線 */}
+          <rect
+            x="2"
+            y="2"
+            width={COURT_W - 4}
+            height={COURT_H - 4}
+            fill="none"
+            stroke="#5a4a2a"
+            strokeWidth="2"
+          />
 
-        {/* === 左半場 === */}
-        <CourtHalf side="left" />
-        {/* === 右半場 === */}
-        <CourtHalf side="right" />
+          {/* 中線 + 中圈 */}
+          <line
+            x1={COURT_CX}
+            y1="2"
+            x2={COURT_CX}
+            y2={COURT_H - 2}
+            stroke="#5a4a2a"
+            strokeWidth="1.5"
+          />
+          <circle
+            cx={COURT_CX}
+            cy={HOOP_Y}
+            r="60"
+            fill="none"
+            stroke="#5a4a2a"
+            strokeWidth="1.5"
+          />
+          <circle
+            cx={COURT_CX}
+            cy={HOOP_Y}
+            r="22"
+            fill="none"
+            stroke="#5a4a2a"
+            strokeWidth="1"
+          />
 
-        {/* === 隊伍標籤（在球場頂部，避開動畫區） === */}
-        <g opacity="0.5">
-          <text
-            x={COURT_CX - 250}
-            y={28}
-            textAnchor="middle"
-            fontSize="13"
-            fontWeight="bold"
-            fill="#5a4a2a"
-          >
-            ← {awayTeam?.shortName ?? '客隊'} 進攻
-          </text>
-          <text
-            x={COURT_CX + 250}
-            y={28}
-            textAnchor="middle"
-            fontSize="13"
-            fontWeight="bold"
-            fill="#5a4a2a"
-          >
-            {homeTeam?.shortName ?? '主隊'} 進攻 →
-          </text>
-        </g>
+          {/* 左右半場 */}
+          <CourtHalf side="left" />
+          <CourtHalf side="right" />
 
-        {/* === 動畫協調器（球員 + 球 + 動畫效果） === */}
-        <AnimationOrchestrator
-          awayTeam={awayTeam}
-          homeTeam={homeTeam}
-          awayOnCourt={awayOnCourt}
-          homeOnCourt={homeOnCourt}
-          actions={effectiveActions}
-          onToast={pushToast}
-        />
-      </svg>
+          {/* 隊伍標籤（球場頂部） */}
+          <g opacity="0.5">
+            <text
+              x={COURT_CX - 250}
+              y={28}
+              textAnchor="middle"
+              fontSize="13"
+              fontWeight="bold"
+              fill="#5a4a2a"
+            >
+              ← {awayTeam?.shortName ?? '客隊'} 進攻
+            </text>
+            <text
+              x={COURT_CX + 250}
+              y={28}
+              textAnchor="middle"
+              fontSize="13"
+              fontWeight="bold"
+              fill="#5a4a2a"
+            >
+              {homeTeam?.shortName ?? '主隊'} 進攻 →
+            </text>
+          </g>
+
+          {/* 動畫協調器：籃框震動 + 進球大字 + 球軌跡 + banner */}
+          <AnimationOrchestrator
+            awayTeam={awayTeam}
+            homeTeam={homeTeam}
+            awayOnCourt={awayOnCourt}
+            homeOnCourt={homeOnCourt}
+            actions={effectiveActions}
+            onToast={pushToast}
+            onEventCard={showEventCard}
+          />
+        </svg>
       </div>
 
       <div className="mt-1 text-center text-[10px] text-gray-400">
-        球員位置為示意、非真實場上座標 · 球軌跡為視覺特效
+        投籃事件以字卡呈現 · 其他事件以右上 toast 呈現
       </div>
     </div>
   );
@@ -311,7 +323,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
 
   return (
     <g>
-      {/* 罰球禁區（漸層填色更有立體感） */}
       <rect
         x={keyOuterX1}
         y={keyTop}
@@ -321,7 +332,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         stroke="#5a4a2a"
         strokeWidth="1.5"
       />
-      {/* 罰球圓圈 */}
       <circle
         cx={ftLineX}
         cy={HOOP_Y}
@@ -330,7 +340,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         stroke="#5a4a2a"
         strokeWidth="1.5"
       />
-      {/* 三分線兩條直線 */}
       <line
         x1={baseLineX}
         y1={HOOP_Y - KEY_WIDTH / 2 - 25}
@@ -347,7 +356,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         stroke="#5a4a2a"
         strokeWidth="1.5"
       />
-      {/* 三分弧 */}
       <path
         d={
           side === 'left'
@@ -358,7 +366,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         stroke="#5a4a2a"
         strokeWidth="1.5"
       />
-      {/* 籃板 */}
       <line
         x1={ftFromBaseLine(40)}
         y1={HOOP_Y - 30}
@@ -367,7 +374,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         stroke="#5a4a2a"
         strokeWidth="2.5"
       />
-      {/* 籃框（金屬漸層 + 雙環立體感） */}
       <circle
         cx={hoopX}
         cy={HOOP_Y}
@@ -385,7 +391,6 @@ function CourtHalf({ side }: { side: 'left' | 'right' }) {
         strokeWidth="1.2"
         opacity="0.7"
       />
-      {/* No-charge 弧 */}
       <path
         d={
           side === 'left'
