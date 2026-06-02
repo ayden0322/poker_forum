@@ -6,6 +6,7 @@ import { BannerLayer, type BannerMessage } from './BannerLayer';
 import type { ToastMessage } from './ToastStack';
 import type { EventCardData } from './EventCard';
 import { describeShot } from './EventCard';
+import type { BurstMessage } from './EventBurst';
 import {
   COURT_W,
   COURT_H,
@@ -31,6 +32,7 @@ interface Props {
   homeColor?: string;
   onToast?: (toast: ToastMessage) => void;
   onEventCard?: (card: EventCardData) => void;
+  onEventBurst?: (burst: BurstMessage) => void;
 }
 
 interface AnimationState {
@@ -99,6 +101,7 @@ export function AnimationOrchestrator({
   homeColor = '#2563eb',
   onToast,
   onEventCard,
+  onEventBurst,
 }: Props) {
   const [state, setState] = useState<AnimationState>({
     flightPath: null,
@@ -110,6 +113,8 @@ export function AnimationOrchestrator({
   onToastRef.current = onToast;
   const onEventCardRef = useRef(onEventCard);
   onEventCardRef.current = onEventCard;
+  const onEventBurstRef = useRef(onEventBurst);
+  onEventBurstRef.current = onEventBurst;
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -311,14 +316,61 @@ export function AnimationOrchestrator({
         );
         return;
       }
-      // 火鍋 / 抄截 / 失誤 / 犯規 / 換人 / 違例 / 跳球 / 籃板：toast
+      // 強反饋事件 → EventBurst 中央大字 + toast 雙重呈現
+      // 規則：戲劇性事件用 burst（抄截/火鍋/失誤/出界）、其他用 toast
+      const burstSpec: Record<string, { text: string; color: string }> = {
+        steal: { text: 'STEAL', color: '#16a34a' }, // 綠
+        block: { text: 'BLOCKED', color: '#7e22ce' }, // 紫
+        turnover: { text: 'TURNOVER', color: '#6b7280' }, // 灰
+      };
+
+      const spec = burstSpec[action.actionType];
+      if (spec) {
+        const subtitle =
+          action.playerNameZhTw ?? action.playerNameI ?? action.playerName;
+        onEventBurstRef.current?.({
+          id: action.actionNumber,
+          text: spec.text,
+          subtitle,
+          color: spec.color,
+        });
+        pushToast(action); // toast 也保留，給「球場區捲走」的 user 看
+        return;
+      }
+
+      // violation：依 subType 判斷是否「出界」、其他違例
+      if (action.actionType === 'violation') {
+        const sub = (action.subType ?? '').toLowerCase();
+        const isOutOfBounds = sub.includes('out of bounds') || sub.includes('out-of-bounds');
+        const subtitle =
+          action.playerNameZhTw ?? action.playerNameI ?? action.playerName;
+        onEventBurstRef.current?.({
+          id: action.actionNumber,
+          text: isOutOfBounds ? 'OUT OF BOUNDS' : 'VIOLATION',
+          subtitle: isOutOfBounds ? `${subtitle ?? ''} · 出界` : subtitle,
+          color: '#f97316', // 橘
+        });
+        pushToast(action);
+        return;
+      }
+
+      // 犯規：burst（橘）+ toast，但 burst 字小一點避免太擾人（demo 連點時）
+      if (action.actionType === 'foul') {
+        const subtitle =
+          action.playerNameZhTw ?? action.playerNameI ?? action.playerName;
+        onEventBurstRef.current?.({
+          id: action.actionNumber,
+          text: 'FOUL',
+          subtitle,
+          color: '#f97316',
+        });
+        pushToast(action);
+        return;
+      }
+
+      // 換人 / 跳球 / 籃板：純 toast 即可（這些不需要大字打斷）
       if (
-        action.actionType === 'block' ||
-        action.actionType === 'steal' ||
-        action.actionType === 'turnover' ||
-        action.actionType === 'foul' ||
         action.actionType === 'substitution' ||
-        action.actionType === 'violation' ||
         action.actionType === 'jumpball' ||
         action.actionType === 'rebound'
       ) {

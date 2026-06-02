@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef } from 'react';
 import { AnimationOrchestrator } from './AnimationOrchestrator';
 import { ToastStack, type ToastMessage } from './ToastStack';
 import { EventCard, type EventCardData } from './EventCard';
+import { EventBurst, type BurstMessage } from './EventBurst';
 import {
   COURT_W,
   COURT_H,
@@ -25,6 +26,8 @@ interface Props {
   awayPlayers: NBALivePlayer[];
   homePlayers: NBALivePlayer[];
   actions: NBALiveAction[];
+  /** 當前持球方 teamId（從後端 linescore.offenseTeamId） */
+  offenseTeamId?: number;
 }
 
 const KEY_WIDTH = 160;
@@ -53,6 +56,7 @@ export function LiveBroadcast({
   awayPlayers,
   homePlayers,
   actions,
+  offenseTeamId,
 }: Props) {
   const awayOnCourt = awayPlayers.filter((p) => p.oncourt);
   const homeOnCourt = homePlayers.filter((p) => p.oncourt);
@@ -82,7 +86,6 @@ export function LiveBroadcast({
   const showEventCard = useCallback((card: EventCardData) => {
     setEventCard(card);
     if (cardTimerRef.current) clearTimeout(cardTimerRef.current);
-    // 命中字卡停留 2.5s、未進字卡停留 1.8s
     cardTimerRef.current = setTimeout(
       () => {
         setEventCard((curr) => (curr?.id === card.id ? null : curr));
@@ -90,6 +93,22 @@ export function LiveBroadcast({
       card.made ? 2500 : 1800,
     );
   }, []);
+
+  // 事件特效大字（STEAL / BLOCKED / TURNOVER / OUT / FOUL）
+  const [burst, setBurst] = useState<BurstMessage | null>(null);
+  const burstTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showBurst = useCallback((b: BurstMessage) => {
+    setBurst(b);
+    if (burstTimerRef.current) clearTimeout(burstTimerRef.current);
+    burstTimerRef.current = setTimeout(() => {
+      setBurst((curr) => (curr?.id === b.id ? null : curr));
+    }, 1500);
+  }, []);
+
+  // 判斷哪一邊持球（用於球場頂端持球指示器）
+  const awayHasBall = offenseTeamId === awayTeam?.teamId;
+  const homeHasBall = offenseTeamId === homeTeam?.teamId;
 
   // Demo 模式
   const [demoCounter, setDemoCounter] = useState(0);
@@ -178,13 +197,16 @@ export function LiveBroadcast({
         </div>
       )}
 
-      {/* 主畫面：球場 SVG + EventCard / Toast / Banner overlay */}
+      {/* 主畫面：球場 SVG + EventCard / EventBurst / Toast / Banner overlay */}
       <div className="relative">
         {/* Toast 堆疊（右上） */}
         <ToastStack toasts={toasts} />
 
-        {/* Event 字卡（球場中央） */}
+        {/* Event 字卡（球場中央，投籃 / 罰球） */}
         <EventCard card={eventCard} />
+
+        {/* Event 特效大字（STEAL / BLOCKED / TURNOVER / OUT / FOUL） */}
+        <EventBurst burst={burst} />
 
         <svg
           viewBox={`0 0 ${COURT_W} ${COURT_H}`}
@@ -264,28 +286,57 @@ export function LiveBroadcast({
           <CourtHalf side="left" />
           <CourtHalf side="right" />
 
-          {/* 隊伍標籤（球場頂部） */}
-          <g opacity="0.5">
-            <text
-              x={COURT_CX - 250}
-              y={28}
-              textAnchor="middle"
-              fontSize="13"
-              fontWeight="bold"
-              fill="#5a4a2a"
-            >
-              ← {awayTeam?.shortName ?? '客隊'} 進攻
-            </text>
-            <text
-              x={COURT_CX + 250}
-              y={28}
-              textAnchor="middle"
-              fontSize="13"
-              fontWeight="bold"
-              fill="#5a4a2a"
-            >
-              {homeTeam?.shortName ?? '主隊'} 進攻 →
-            </text>
+          {/* 隊伍標籤 + 持球方指示器（球場頂部）
+              持球方：隊名變色 + 紅色 dot 脈衝（球賽 idle 時的視覺核心） */}
+          <g>
+            {/* 客隊 */}
+            <g opacity={awayHasBall ? 1 : 0.4}>
+              {awayHasBall && (
+                <circle cx={COURT_CX - 320} cy={26} r={6} fill="#dc2626">
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.3;1"
+                    dur="1.2s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+              )}
+              <text
+                x={COURT_CX - 250}
+                y={30}
+                textAnchor="middle"
+                fontSize="14"
+                fontWeight="bold"
+                fill={awayHasBall ? '#dc2626' : '#5a4a2a'}
+              >
+                ← {awayTeam?.shortName ?? '客隊'}
+                {awayHasBall ? ' 持球' : ' 進攻'}
+              </text>
+            </g>
+            {/* 主隊 */}
+            <g opacity={homeHasBall ? 1 : 0.4}>
+              <text
+                x={COURT_CX + 250}
+                y={30}
+                textAnchor="middle"
+                fontSize="14"
+                fontWeight="bold"
+                fill={homeHasBall ? '#2563eb' : '#5a4a2a'}
+              >
+                {homeTeam?.shortName ?? '主隊'}
+                {homeHasBall ? ' 持球' : ' 進攻'} →
+              </text>
+              {homeHasBall && (
+                <circle cx={COURT_CX + 320} cy={26} r={6} fill="#2563eb">
+                  <animate
+                    attributeName="opacity"
+                    values="1;0.3;1"
+                    dur="1.2s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+              )}
+            </g>
           </g>
 
           {/* 動畫協調器：籃框震動 + 進球大字 + 球軌跡 + banner */}
@@ -297,6 +348,7 @@ export function LiveBroadcast({
             actions={effectiveActions}
             onToast={pushToast}
             onEventCard={showEventCard}
+            onEventBurst={showBurst}
           />
         </svg>
       </div>

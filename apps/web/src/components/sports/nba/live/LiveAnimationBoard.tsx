@@ -57,6 +57,17 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
   const snap = data.data;
   const { teams, players, status, recentActions, recentShots } = snap;
 
+  // 持球方推斷：用最近一個有 teamId 的事件當作「當下進攻方」
+  // NBA cdn 沒給明確的 offense.team.id（不像 MLB），但 play-by-play 最後一個球員
+  // 動作 = 球在誰手上，這對 demo / Final 狀態夠用
+  const offenseTeamId = (() => {
+    for (let i = recentActions.length - 1; i >= 0; i--) {
+      const a = recentActions[i];
+      if (a.teamId) return a.teamId;
+    }
+    return undefined;
+  })();
+
   // 賽前比賽資料還沒生成 box/pbp，不渲染
   if (status.gameStatus === 1) return null;
 
@@ -104,6 +115,7 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
           awayPlayers={players.away}
           homePlayers={players.home}
           actions={recentActions}
+          offenseTeamId={offenseTeamId}
         />
       </div>
 
