@@ -391,6 +391,27 @@ export class AdminService {
   }
 
   /**
+   * 依看板統計文章數（給後台看板篩選下拉顯示「待審 N」用）。
+   * 預設用於 status=DRAFT + isAutoPosted 分流，回傳 [{ boardId, count }]。
+   */
+  async getBoardPostCounts(params: {
+    status?: 'DRAFT' | 'PUBLISHED';
+    isAutoPosted?: boolean;
+  }) {
+    const { status, isAutoPosted } = params;
+    const where: Record<string, unknown> = {};
+    if (status) where.status = status;
+    if (typeof isAutoPosted === 'boolean') where.isAutoPosted = isAutoPosted;
+
+    const rows = await this.prisma.post.groupBy({
+      by: ['boardId'],
+      where,
+      _count: { _all: true },
+    });
+    return rows.map((r) => ({ boardId: r.boardId, count: r._count._all }));
+  }
+
+  /**
    * Admin 更新文章。
    * status: 'DRAFT' → 'PUBLISHED' 即「發布草稿」動作（＝審核通過）。
    * section: 'NEWS' / 'FEATURED' / 'DISCUSSION' 切換板塊頁分區（最新新聞 / 站方公告 / 玩家討論）。

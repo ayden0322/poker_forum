@@ -244,6 +244,21 @@ export class AdminController {
     return { data };
   }
 
+  // 依看板統計文章數（給看板篩選下拉顯示「待審 N」）。放在 :id 路由之前避免被吃掉。
+  @Roles(Role.MODERATOR)
+  @Get('posts/board-counts')
+  async getBoardPostCounts(
+    @Query('status') status?: 'DRAFT' | 'PUBLISHED',
+    @Query('isAutoPosted') isAutoPosted?: string,
+  ) {
+    const data = await this.adminService.getBoardPostCounts({
+      status: status === 'DRAFT' || status === 'PUBLISHED' ? status : undefined,
+      isAutoPosted:
+        isAutoPosted === 'true' ? true : isAutoPosted === 'false' ? false : undefined,
+    });
+    return { data };
+  }
+
   @Roles(Role.MODERATOR) // 編輯人員可編輯 / 發布文章
   @Patch('posts/:id')
   async updatePost(

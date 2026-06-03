@@ -246,6 +246,21 @@ export function PostsManager({ variant }: { variant: Variant }) {
     staleTime: 5 * 60 * 1000,
   });
 
+  // 每個看板的「待審（DRAFT）」數，給看板篩選下拉顯示「（待審 N）」
+  const { data: boardCountsData } = useQuery({
+    queryKey: ['admin-board-draft-counts', variant],
+    queryFn: () =>
+      adminApiFetch<{ data: { boardId: string; count: number }[] }>(
+        `/admin/posts/board-counts?status=DRAFT&isAutoPosted=${cfg.autoPosted}`,
+      ),
+    refetchInterval: 60_000,
+  });
+  const boardCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of boardCountsData?.data ?? []) m.set(r.boardId, r.count);
+    return m;
+  }, [boardCountsData]);
+
   const treeData = useMemo(() => {
     const boards = boardsData?.data ?? [];
     const groups = new Map<string, { id: string; name: string; boards: BoardItem[] }>();
@@ -255,18 +270,26 @@ export function PostsManager({ variant }: { variant: Variant }) {
       if (!groups.has(catId)) groups.set(catId, { id: catId, name: catName, boards: [] });
       groups.get(catId)!.boards.push(b);
     }
-    return Array.from(groups.values()).map((g) => ({
-      title: g.name,
-      value: `cat:${g.id}`,
-      key: `cat:${g.id}`,
-      selectable: true,
-      children: g.boards.map((b) => ({
-        title: b.name,
-        value: `board:${b.id}`,
-        key: `board:${b.id}`,
-      })),
-    }));
-  }, [boardsData]);
+    const withCount = (name: string, n: number) =>
+      n > 0 ? `${name}（待審 ${n}）` : name;
+    return Array.from(groups.values()).map((g) => {
+      const catCount = g.boards.reduce(
+        (sum, b) => sum + (boardCounts.get(b.id) ?? 0),
+        0,
+      );
+      return {
+        title: withCount(g.name, catCount),
+        value: `cat:${g.id}`,
+        key: `cat:${g.id}`,
+        selectable: true,
+        children: g.boards.map((b) => ({
+          title: withCount(b.name, boardCounts.get(b.id) ?? 0),
+          value: `board:${b.id}`,
+          key: `board:${b.id}`,
+        })),
+      };
+    });
+  }, [boardsData, boardCounts]);
 
   const queryParams = new URLSearchParams();
   queryParams.set('page', String(page));
