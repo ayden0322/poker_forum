@@ -193,6 +193,18 @@ function formatRelativeTime(iso: string): string {
   return date.toLocaleDateString('zh-TW');
 }
 
+/** 從 HTML 內容抽純文字摘要，給列表快速判斷用（免開 Drawer） */
+function extractSummary(html?: string, max = 90): string {
+  if (!html) return '';
+  const text = html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length <= max ? text : text.slice(0, max) + '…';
+}
+
 export function PostsManager({ variant }: { variant: Variant }) {
   const cfg = VARIANT_CONFIG[variant];
   const queryClient = useQueryClient();
@@ -203,6 +215,13 @@ export function PostsManager({ variant }: { variant: Variant }) {
   const [page, setPage] = useState(1);
   const [scope, setScope] = useState<ScopeValue>(undefined);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(cfg.defaultStatus);
+  // 批次審核：表格列選取
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
+  // 切換頁碼 / 篩選 / 搜尋時清空選取，避免拿到已不在畫面上的舊 key
+  useEffect(() => {
+    setSelectedRowKeys([]);
+  }, [page, search, scope, statusFilter, variant]);
 
   // 預覽 / 編輯狀態
   const [selectedPost, setSelectedPost] = useState<PostItem | null>(null);
@@ -210,12 +229,12 @@ export function PostsManager({ variant }: { variant: Variant }) {
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
 
-  // 開啟 drawer 時，DRAFT 預設進入編輯模式；PUBLISHED 預設預覽
+  // 開啟 drawer 時一律先「預覽」，讀完再決定發布 / 編輯（審核 ≠ 一進來就改字）
   useEffect(() => {
     if (selectedPost) {
       setEditTitle(selectedPost.title);
       setEditContent(selectedPost.content);
-      setEditMode(selectedPost.status === 'DRAFT');
+      setEditMode(false);
     } else {
       setEditMode(false);
     }
@@ -350,6 +369,51 @@ export function PostsManager({ variant }: { variant: Variant }) {
     onError: (err: Error) => message.error(err.message),
   });
 
+  // 列表內快速改狀態（一鍵發布 / 退回），不開 Drawer
+  const rowStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: PostStatus }) =>
+      adminApiFetch(`/admin/posts/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: (_, v) => {
+      message.success(v.status === 'PUBLISHED' ? '已發布' : '已退回草稿');
+      queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-posts-draft-count'] });
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
+  // 批次改狀態：對選取的多篇分批（每批 8 篇）呼叫現有 PATCH，避免一次打太多請求。
+  // 每篇仍各自走後端 updatePost 邏輯（自動新聞發布會自動落「最新新聞」區）。
+  const batchStatusMutation = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[]; status: PostStatus }) => {
+      let ok = 0;
+      for (let i = 0; i < ids.length; i += 8) {
+        const chunk = ids.slice(i, i + 8);
+        const results = await Promise.allSettled(
+          chunk.map((id) =>
+            adminApiFetch(`/admin/posts/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status }),
+            }),
+          ),
+        );
+        ok += results.filter((r) => r.status === 'fulfilled').length;
+      }
+      return { ok, total: ids.length };
+    },
+    onSuccess: (res, v) => {
+      const action = v.status === 'PUBLISHED' ? '發布' : '退回';
+      if (res.ok === res.total) message.success(`已${action} ${res.ok} 篇`);
+      else message.warning(`已${action} ${res.ok}/${res.total} 篇（部分失敗）`);
+      setSelectedRowKeys([]);
+      queryClient.invalidateQueries({ queryKey: ['admin-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-posts-draft-count'] });
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
   const columns: ColumnsType<PostItem> = [
     {
       title: '文章',
@@ -435,6 +499,14 @@ export function PostsManager({ variant }: { variant: Variant }) {
                 </>
               )}
             </div>
+            {(() => {
+              const summary = extractSummary(record.content);
+              return summary ? (
+                <div style={{ fontSize: 12, color: '#bfbfbf', lineHeight: 1.5 }}>
+                  {summary}
+                </div>
+              ) : null;
+            })()}
           </div>
         );
       },
@@ -442,13 +514,25 @@ export function PostsManager({ variant }: { variant: Variant }) {
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 240,
       align: 'right' as const,
       render: (_, record) => (
         <Space size={4}>
+          {record.status === 'DRAFT' && (
+            <Button
+              size="small"
+              type="primary"
+              icon={<CheckCircleOutlined />}
+              loading={rowStatusMutation.isPending}
+              onClick={() =>
+                rowStatusMutation.mutate({ id: record.id, status: 'PUBLISHED' })
+              }
+            >
+              發布
+            </Button>
+          )}
           <Button
             size="small"
-            type={record.status === 'DRAFT' ? 'primary' : 'default'}
             icon={record.status === 'DRAFT' ? <EditOutlined /> : <EyeOutlined />}
             onClick={() => setSelectedPost(record)}
           >
@@ -492,18 +576,23 @@ export function PostsManager({ variant }: { variant: Variant }) {
                       body: { isLocked: !record.isLocked },
                     }),
                 },
-                {
-                  key: 'autoPosted',
-                  label: record.isAutoPosted
-                    ? '取消自動發文標記'
-                    : '標為自動發文',
-                  icon: <span style={{ display: 'inline-block', width: 14 }}>🤖</span>,
-                  onClick: () =>
-                    toggleMutation.mutate({
-                      id: record.id,
-                      body: { isAutoPosted: !record.isAutoPosted },
-                    }),
-                },
+                // 新聞審核頁本來全是自動發文，這顆是雜訊 → 只在「文章管理」顯示
+                ...(variant === 'news'
+                  ? []
+                  : [
+                      {
+                        key: 'autoPosted',
+                        label: record.isAutoPosted
+                          ? '取消自動發文標記'
+                          : '標為自動發文',
+                        icon: <span style={{ display: 'inline-block', width: 14 }}>🤖</span>,
+                        onClick: () =>
+                          toggleMutation.mutate({
+                            id: record.id,
+                            body: { isAutoPosted: !record.isAutoPosted },
+                          }),
+                      },
+                    ]),
                 { type: 'divider' as const },
                 {
                   key: 'delete',
@@ -633,6 +722,37 @@ export function PostsManager({ variant }: { variant: Variant }) {
           allowClear
           enterButton
         />
+        {/* 批次審核：勾選後出現，發布 / 退回選取的多篇 */}
+        {selectedRowKeys.length > 0 && (
+          <Space>
+            <Button
+              type="primary"
+              icon={<CheckCircleOutlined />}
+              loading={batchStatusMutation.isPending}
+              onClick={() =>
+                batchStatusMutation.mutate({
+                  ids: selectedRowKeys.map(String),
+                  status: 'PUBLISHED',
+                })
+              }
+            >
+              發布選取 ({selectedRowKeys.length})
+            </Button>
+            <Popconfirm
+              title={`退回選取的 ${selectedRowKeys.length} 篇為草稿？`}
+              onConfirm={() =>
+                batchStatusMutation.mutate({
+                  ids: selectedRowKeys.map(String),
+                  status: 'DRAFT',
+                })
+              }
+            >
+              <Button danger ghost loading={batchStatusMutation.isPending}>
+                退回選取 ({selectedRowKeys.length})
+              </Button>
+            </Popconfirm>
+          </Space>
+        )}
         {/* 一鍵刪除：只在待審稿 tab + 最高管理員 顯示，避免誤刪與越權 */}
         {isSuperAdmin && statusFilter === 'DRAFT' && (data?.data.total ?? 0) > 0 && (
           <Popconfirm
@@ -665,6 +785,10 @@ export function PostsManager({ variant }: { variant: Variant }) {
         dataSource={data?.data.items}
         rowKey="id"
         loading={isLoading}
+        rowSelection={{
+          selectedRowKeys,
+          onChange: setSelectedRowKeys,
+        }}
         locale={{
           emptyText: (
             <div style={{ padding: '48px 0', textAlign: 'center' }}>
@@ -687,7 +811,7 @@ export function PostsManager({ variant }: { variant: Variant }) {
           showTotal: (total) => `共 ${total} 篇`,
           showSizeChanger: false,
         }}
-        size="middle"
+        size={variant === 'news' ? 'small' : 'middle'}
         rowClassName={(record) =>
           record.status === 'DRAFT' ? 'post-row-draft' : ''
         }
@@ -712,7 +836,13 @@ export function PostsManager({ variant }: { variant: Variant }) {
             ) : (
               <Tag color="green">已發布</Tag>
             )}
-            <span>{editMode ? '編輯文章' : '檢視文章'}</span>
+            <span>
+              {editMode
+                ? '編輯文章'
+                : selectedPost?.status === 'DRAFT'
+                  ? '審稿'
+                  : '檢視文章'}
+            </span>
           </Space>
         }
         open={!!selectedPost}
@@ -720,7 +850,7 @@ export function PostsManager({ variant }: { variant: Variant }) {
         width={820}
         styles={{ wrapper: { maxWidth: '100vw' }, body: { paddingTop: 16 } }}
         extra={
-          selectedPost && !editMode ? (
+          selectedPost && !editMode && selectedPost.status === 'PUBLISHED' ? (
             <Button icon={<EditOutlined />} onClick={() => setEditMode(true)}>
               編輯
             </Button>
@@ -729,7 +859,7 @@ export function PostsManager({ variant }: { variant: Variant }) {
           ) : null
         }
         footer={
-          selectedPost && editMode ? (
+          !selectedPost ? null : editMode ? (
             <div
               style={{
                 display: 'flex',
@@ -796,6 +926,40 @@ export function PostsManager({ variant }: { variant: Variant }) {
                     <Button danger>退回草稿</Button>
                   </Popconfirm>
                 )}
+              </Space>
+            </div>
+          ) : selectedPost.status === 'DRAFT' ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#8c8c8c' }}>
+                {variant === 'news'
+                  ? '讀完沒問題就按「發布」，會自動上架到該看板的「最新新聞」區'
+                  : '讀完沒問題就按「發布」讓玩家看到'}
+              </div>
+              <Space>
+                <Button icon={<EditOutlined />} onClick={() => setEditMode(true)}>
+                  編輯後再發
+                </Button>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<CheckCircleOutlined />}
+                  loading={updateMutation.isPending}
+                  onClick={() =>
+                    updateMutation.mutate({
+                      id: selectedPost.id,
+                      body: { status: 'PUBLISHED' },
+                    })
+                  }
+                >
+                  發布
+                </Button>
               </Space>
             </div>
           ) : null
