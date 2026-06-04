@@ -16,7 +16,7 @@ import type { NBALiveAction } from '../types';
  *
  * 適用情境：
  * - 動畫直播板 polling 拿到新 snapshot 時，要播放「上次 → 這次」之間新增的事件動畫
- * - 進行中比賽每 10 秒輪詢一次，每輪可能新增 0~3 個事件
+ * - 進行中比賽每 3 秒輪詢一次，每輪可能新增 0~3 個事件
  */
 export function useNewActions(
   actions: NBALiveAction[] | undefined,

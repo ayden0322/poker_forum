@@ -322,17 +322,18 @@ export class NBAStatsService {
     });
   }
 
-  /** 單場 Box Score（cdn.nba.com，需 NBA 官方 gameId 如 0042500107）*/
+  /** 單場 Box Score（cdn.nba.com，需 NBA 官方 gameId 如 0042500107）
+   *  TTL 3s：配合動畫直播 3 秒輪詢，讓進行中比賽的比分/在場球員能即時更新 */
   async getCdnBoxScore(nbaGameId: string) {
-    return this.cached(`nba:cdn:box:${nbaGameId}`, 60, async () => {
+    return this.cached(`nba:cdn:box:${nbaGameId}`, 3, async () => {
       const data = await this.callApi<any>(`${this.nbaCdn}/liveData/boxscore/boxscore_${nbaGameId}.json`);
       return data?.game ?? null;
     });
   }
 
-  /** 單場 Play-by-play */
+  /** 單場 Play-by-play（TTL 3s：配合動畫直播 3 秒輪詢，事件流即時推進） */
   async getCdnPlayByPlay(nbaGameId: string) {
-    return this.cached(`nba:cdn:pbp:${nbaGameId}`, 60, async () => {
+    return this.cached(`nba:cdn:pbp:${nbaGameId}`, 3, async () => {
       const data = await this.callApi<any>(`${this.nbaCdn}/liveData/playbyplay/playbyplay_${nbaGameId}.json`);
       return data?.game ?? null;
     });
@@ -432,14 +433,16 @@ export class NBAStatsService {
    * - recentShots：最近 30 次投籃落點（x/y 標準化座標 + 命中/未中）
    * - momentum：每 30 個 action 抽樣一個比分差，用於折線圖
    *
-   * 8s Redis 快取（live）；結束後改 60s（在 controller 層判斷）
+   * 3s Redis 快取，與內層 box/pbp 的 3s TTL 對齊，讓進行中比賽約 3 秒更新一次。
+   * 快取 key 以場次為單位（多人同看同一場共用一份），上游每場每 3 秒只打一次。
+   * 已結束比賽由前端改用 60s 輪詢，後端不會頻繁回源。
    */
   async getNbaLiveSnapshot(eventId: string) {
     const nbaGameId = await this.resolveEspnEventToNbaGameId(eventId);
     if (!nbaGameId) return null;
 
     const cacheKey = `nba:live:${eventId}`;
-    return this.cached(cacheKey, 8, async () => {
+    return this.cached(cacheKey, 3, async () => {
       const [boxRaw, pbpRaw] = await Promise.all([
         this.getCdnBoxScore(nbaGameId),
         this.getCdnPlayByPlay(nbaGameId),

@@ -298,7 +298,7 @@ export class NBAStatsController {
   @ApiOperation({
     summary: '比賽即時動態（動畫直播專用，吃 ESPN eventId）',
     description:
-      '後端自動 resolve 成 NBA gameId 後並行打 cdn box + cdn pbp，回精簡 payload：節數時鐘、雙隊比分/各節分數/暫停/bonus、目前在場球員、最近 15 個事件、最近 30 次投籃落點、領先勢頭抽樣。8 秒 Redis 快取。',
+      '後端自動 resolve 成 NBA gameId 後並行打 cdn box + cdn pbp，回精簡 payload：節數時鐘、雙隊比分/各節分數/暫停/bonus、目前在場球員、最近 15 個事件、最近 30 次投籃落點、領先勢頭抽樣。3 秒 Redis 快取（與內層 box/pbp 對齊）。',
   })
   async getNbaLive(@Param('eventId') eventId: string) {
     const snapshot = await this.nbaStats.getNbaLiveSnapshot(eventId);

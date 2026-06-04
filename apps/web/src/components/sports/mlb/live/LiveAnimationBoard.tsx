@@ -19,7 +19,7 @@ interface Props {
 /**
  * MLB 動畫直播主容器
  *
- * - 進行中（Live）：每 10 秒輪詢一次
+ * - 進行中（Live）：每 3 秒輪詢一次
  * - 已結束（Final）：每 60 秒輪詢一次（仍顯示「最後一球 + 完整事件流」作為比賽回顧）
  * - 賽前（Preview）：60 秒（其實沒資料可顯示，但偶爾刷新偵測開賽）
  *
@@ -29,7 +29,7 @@ export function LiveAnimationBoard({ gamePk, abstractGameState }: Props) {
   // 根據比賽狀態決定輪詢間隔
   const interval =
     abstractGameState === 'Live'
-      ? 10_000
+      ? 3_000
       : abstractGameState === 'Final'
       ? 60_000
       : 60_000;
@@ -38,7 +38,7 @@ export function LiveAnimationBoard({ gamePk, abstractGameState }: Props) {
     queryKey: ['mlb-live', gamePk],
     queryFn: () => apiFetch<LiveResponse>(`/mlb/games/${gamePk}/live`),
     refetchInterval: interval,
-    staleTime: 5_000,
+    staleTime: 2_000,
   });
 
   // 載入中（首次）
@@ -82,7 +82,7 @@ export function LiveAnimationBoard({ gamePk, abstractGameState }: Props) {
           <h2 className="text-base font-bold text-gray-800">即時動態</h2>
         </div>
         <span className="text-[10px] text-gray-400">
-          {isLive ? '10 秒自動更新' : isFinal ? '比賽回顧' : ''}
+          {isLive ? '3 秒自動更新' : isFinal ? '比賽回顧' : ''}
         </span>
       </div>
 

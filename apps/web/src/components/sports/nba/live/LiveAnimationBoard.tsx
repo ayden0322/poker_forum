@@ -24,23 +24,23 @@ interface Props {
  *
  * 各狀態渲染：
  * - 賽前（gameStatus=1 / espn=pre）：不渲染（讓頭卡 + 先發名單接手）
- * - 進行中（gameStatus=2）：完整渲染 GameClock + CourtChart + OnCourtPlayers + LastPlay + PlayFeed，10s 輪詢
+ * - 進行中（gameStatus=2）：完整渲染 GameClock + CourtChart + OnCourtPlayers + LastPlay + PlayFeed，3s 輪詢
  * - 已結束（gameStatus=3）：只渲染 CourtChart + PlayFeed（投籃熱點圖 + 完整事件 timeline），其他元件對已結束無資訊量
  */
 export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
   const initialInterval =
-    espnStatusState === 'in' ? 10_000 : espnStatusState === 'post' ? 60_000 : 60_000;
+    espnStatusState === 'in' ? 3_000 : espnStatusState === 'post' ? 60_000 : 60_000;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['nba-live', eventId],
     queryFn: () => apiFetch<NBALiveResponse>(`/nba/games/${eventId}/live`),
     refetchInterval: (q) => {
       const status = q.state.data?.data?.status?.gameStatus;
-      if (status === 2) return 10_000;
+      if (status === 2) return 3_000;
       if (status === 3) return 60_000;
       return initialInterval;
     },
-    staleTime: 5_000,
+    staleTime: 2_000,
   });
 
   if (isLoading) {
@@ -77,7 +77,7 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
   return (
     <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-200 p-4 sm:p-5 mb-4 shadow-sm">
       {/* 標題列：
-          進行中 → 紅色 LIVE chip + 「即時動態」+ 右上「10 秒自動更新」
+          進行中 → 紅色 LIVE chip + 「即時動態」+ 右上「3 秒自動更新」
           已結束 → 「比賽回顧」標題（不重複比賽狀態，因為頭卡已經顯示「已結束」）
       */}
       <div className="flex items-center justify-between mb-4">
@@ -93,7 +93,7 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
           </h2>
         </div>
         {isLive && (
-          <span className="text-[10px] text-gray-400">10 秒自動更新</span>
+          <span className="text-[10px] text-gray-400">3 秒自動更新</span>
         )}
       </div>
 
