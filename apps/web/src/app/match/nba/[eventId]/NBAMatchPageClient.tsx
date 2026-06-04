@@ -5,6 +5,7 @@ import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
 import { useState, useMemo } from 'react';
 import { LiveAnimationBoard } from '@/components/sports/nba/live/LiveAnimationBoard';
+import { formatClock, type NBALiveResponse } from '@/components/sports/nba/live/types';
 
 /** 比賽狀態英文 → 中文 */
 const STATUS_ZH: Record<string, string> = {
@@ -108,6 +109,18 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
     enabled: !!espnEventId,
   });
 
+  // 即時比分同源：頭卡預設用 ESPN summary（30s 前端 / 60s 後端），會落後即時板
+  // （NBA CDN，3s）。這裡訂閱「與 LiveAnimationBoard 完全相同的 queryKey」，
+  // React Query 會共用同一份快取、由即時板負責輪詢，這裡不額外打 API。
+  // 進行中時用它覆蓋頭卡的比分/各節/時鐘，確保頭卡與即時板永遠一致。
+  const summaryState = data?.data?.header?.competitions?.[0]?.status?.type?.state;
+  const { data: liveRes } = useQuery({
+    queryKey: ['nba-live', espnEventId],
+    queryFn: () => apiFetch<NBALiveResponse>(`/nba/games/${espnEventId}/live`),
+    staleTime: 2_000,
+    enabled: !!espnEventId && summaryState !== 'pre',
+  });
+
   /** 30 隊中文翻譯 + ESPN id / abbreviation 對應 */
   const { data: teamsRes } = useQuery({
     queryKey: ['nba-teams-zh'],
@@ -169,6 +182,29 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
   const homeZh = (home?.team?.id ? zhById.get(Number(home.team.id)) : undefined) ?? (homeAbbr ? zhByAbbr.get(homeAbbr) : undefined);
   const awayZh = (away?.team?.id ? zhById.get(Number(away.team.id)) : undefined) ?? (awayAbbr ? zhByAbbr.get(awayAbbr) : undefined);
 
+  // 即時比分覆蓋：僅「進行中（gameStatus=2）」時用即時板同一份 snapshot；
+  // 已結束 / 賽前用 ESPN summary（summary 已準確且帶 winner 標記）。
+  const live = liveRes?.data ?? null;
+  const useLiveScore = live?.status?.gameStatus === 2;
+  const awayLive = live?.teams?.away ?? null;
+  const homeLive = live?.teams?.home ?? null;
+
+  const awayScoreShown = useLiveScore && awayLive ? String(awayLive.score) : away?.score;
+  const homeScoreShown = useLiveScore && homeLive ? String(homeLive.score) : home?.score;
+
+  const awayPeriodsShown: (string | number)[] =
+    useLiveScore && awayLive
+      ? awayLive.periods.map((p) => p.score)
+      : (away?.linescores ?? []).map((q) => q.displayValue ?? q.value ?? '—');
+  const homePeriodsShown: (string | number)[] =
+    useLiveScore && homeLive
+      ? homeLive.periods.map((p) => p.score)
+      : (home?.linescores ?? []).map((q) => q.displayValue ?? q.value ?? '—');
+
+  const periodShown = useLiveScore && live ? live.status.period : comp.status?.period;
+  const clockShown =
+    useLiveScore && live ? formatClock(live.status.clock) : comp.status?.clock ?? '';
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-4">
       <nav className="text-sm text-gray-500 mb-3">
@@ -181,7 +217,7 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
       <div className="rounded-xl bg-gradient-to-br from-gray-50 to-orange-50 border border-orange-100 p-5 mb-4">
         <div className="flex items-center justify-between gap-4">
           {/* Away */}
-          <TeamScoreBlock comp={away} align="left" winner={completed && away?.winner} nameZh={awayZh} />
+          <TeamScoreBlock comp={away} align="left" winner={completed && away?.winner} nameZh={awayZh} scoreOverride={awayScoreShown} />
           {/* Status */}
           <div className="text-center px-3 flex-shrink-0">
             <div
@@ -192,9 +228,9 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
               {inProgress && '🔴 '}
               {statusDescZh}
             </div>
-            {inProgress && comp.status?.period !== undefined && (
+            {inProgress && periodShown !== undefined && (
               <div className="text-xs text-gray-500">
-                第 {comp.status.period} 節 {comp.status.clock ?? ''}
+                第 {periodShown} 節 {clockShown}
               </div>
             )}
             {seasonSeries && (
@@ -202,17 +238,17 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
             )}
           </div>
           {/* Home */}
-          <TeamScoreBlock comp={home} align="right" winner={completed && home?.winner} nameZh={homeZh} />
+          <TeamScoreBlock comp={home} align="right" winner={completed && home?.winner} nameZh={homeZh} scoreOverride={homeScoreShown} />
         </div>
 
-        {/* Linescore (按節得分) */}
-        {(home?.linescores?.length ?? 0) > 0 && (
+        {/* Linescore (按節得分) — 進行中時與大比分同源（即時板 snapshot） */}
+        {homePeriodsShown.length > 0 && (
           <div className="mt-4 pt-3 border-t border-orange-200 overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr>
                   <th className="text-left text-gray-500 font-normal w-12"></th>
-                  {(home?.linescores ?? []).map((_, i) => (
+                  {homePeriodsShown.map((_, i) => (
                     <th key={i} className="text-center text-gray-500 font-medium">
                       Q{i + 1}
                     </th>
@@ -223,21 +259,21 @@ export default function NBAMatchPageClient({ eventId }: { eventId: string }) {
               <tbody>
                 <tr>
                   <td className="text-gray-500 font-mono py-0.5">{away?.team?.abbreviation}</td>
-                  {(away?.linescores ?? []).map((q, i) => (
+                  {awayPeriodsShown.map((v, i) => (
                     <td key={i} className="text-center font-mono text-gray-700">
-                      {q.displayValue ?? q.value ?? '—'}
+                      {v}
                     </td>
                   ))}
-                  <td className="text-center font-mono font-bold text-gray-900">{away?.score}</td>
+                  <td className="text-center font-mono font-bold text-gray-900">{awayScoreShown ?? '—'}</td>
                 </tr>
                 <tr>
                   <td className="text-gray-500 font-mono py-0.5">{home?.team?.abbreviation}</td>
-                  {(home?.linescores ?? []).map((q, i) => (
+                  {homePeriodsShown.map((v, i) => (
                     <td key={i} className="text-center font-mono text-gray-700">
-                      {q.displayValue ?? q.value ?? '—'}
+                      {v}
                     </td>
                   ))}
-                  <td className="text-center font-mono font-bold text-gray-900">{home?.score}</td>
+                  <td className="text-center font-mono font-bold text-gray-900">{homeScoreShown ?? '—'}</td>
                 </tr>
               </tbody>
             </table>
@@ -280,11 +316,14 @@ function TeamScoreBlock({
   align,
   winner,
   nameZh,
+  scoreOverride,
 }: {
   comp?: any;
   align: 'left' | 'right';
   winner?: boolean | null;
   nameZh?: string;
+  /** 進行中時用即時板比分覆蓋 ESPN summary 的比分 */
+  scoreOverride?: string;
 }) {
   const team = comp?.team;
   const justify = align === 'left' ? 'justify-start' : 'justify-end';
@@ -308,7 +347,7 @@ function TeamScoreBlock({
           <div
             className={`text-3xl font-bold font-mono ${winner ? 'text-orange-600' : 'text-gray-700'}`}
           >
-            {comp?.score ?? '—'}
+            {scoreOverride ?? comp?.score ?? '—'}
           </div>
         </div>
       </Link>
