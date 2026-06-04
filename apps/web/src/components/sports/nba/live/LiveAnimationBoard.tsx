@@ -56,23 +56,47 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
   const snap = data.data;
   const { teams, players, status, recentActions } = snap;
 
-  // 持球方推斷：用最近一個有 teamId 的事件當作「當下進攻方」
-  // NBA cdn 沒給明確的 offense.team.id（不像 MLB），但 play-by-play 最後一個球員
-  // 動作 = 球在誰手上，這對 demo / Final 狀態夠用
-  const offenseTeamId = (() => {
-    for (let i = recentActions.length - 1; i >= 0; i--) {
-      const a = recentActions[i];
-      if (a.teamId) return a.teamId;
-    }
-    return undefined;
-  })();
+  // 最新事件（含系統事件，如 Period End 沒有 teamId）
+  const lastAction = recentActions[recentActions.length - 1] ?? null;
+
+  // 死球判斷：節結束/節間、暫停、比賽結束 → 沒有人持球。
+  // 這些狀態與事件流、時鐘來自同一包 snapshot；過去的持球推斷沒去看它，
+  // 才會出現「節已結束、動畫卻還顯示某隊持球」的不一致。
+  const isDeadBall =
+    status.gameStatus === 3 ||
+    lastAction?.actionType === 'period' ||
+    lastAction?.actionType === 'game' ||
+    lastAction?.actionType === 'timeout';
+
+  // 持球方推斷：用最近一個有 teamId 的事件當作「當下進攻方」；死球時無人持球。
+  // NBA cdn 沒給明確的 offense.team.id（不像 MLB），用 play-by-play 最後一個有
+  // 球隊的動作 = 球在誰手上，對 live / demo / Final 都夠用。
+  const offenseTeamId = isDeadBall
+    ? undefined
+    : (() => {
+        for (let i = recentActions.length - 1; i >= 0; i--) {
+          const a = recentActions[i];
+          if (a.teamId) return a.teamId;
+        }
+        return undefined;
+      })();
+
+  // 死球時，上方持球指示改顯示的中性狀態文字
+  const deadBallLabel = !isDeadBall
+    ? undefined
+    : status.gameStatus === 3 || lastAction?.actionType === 'game'
+      ? '比賽結束'
+      : lastAction?.actionType === 'timeout'
+        ? '暫停'
+        : lastAction?.subType === 'start'
+          ? '節間休息'
+          : '本節結束';
 
   // 賽前比賽資料還沒生成 box/pbp，不渲染
   if (status.gameStatus === 1) return null;
 
   const isLive = status.gameStatus === 2;
   const isFinal = status.gameStatus === 3;
-  const lastAction = recentActions[recentActions.length - 1] ?? null;
 
   return (
     <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-200 p-4 sm:p-5 mb-4 shadow-sm">
@@ -115,6 +139,7 @@ export function LiveAnimationBoard({ eventId, espnStatusState }: Props) {
           homePlayers={players.home}
           actions={recentActions}
           offenseTeamId={offenseTeamId}
+          deadBallLabel={deadBallLabel}
         />
       </div>
 

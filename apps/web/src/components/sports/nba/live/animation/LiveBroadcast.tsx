@@ -28,6 +28,8 @@ interface Props {
   actions: NBALiveAction[];
   /** 當前持球方 teamId（從後端 linescore.offenseTeamId） */
   offenseTeamId?: number;
+  /** 死球狀態文字（節結束/暫停/比賽結束）；有值時表示無人持球 */
+  deadBallLabel?: string;
 }
 
 const KEY_WIDTH = 160;
@@ -57,6 +59,7 @@ export function LiveBroadcast({
   homePlayers,
   actions,
   offenseTeamId,
+  deadBallLabel,
 }: Props) {
   const awayOnCourt = awayPlayers.filter((p) => p.oncourt);
   const homeOnCourt = homePlayers.filter((p) => p.oncourt);
@@ -106,7 +109,8 @@ export function LiveBroadcast({
     }, 1500);
   }, []);
 
-  // 判斷哪一邊持球（用於球場頂端持球指示器）
+  // 判斷哪一邊持球（用於球場頂端持球指示器）；死球時兩邊皆 false
+  const isDeadBall = !!deadBallLabel;
   const awayHasBall = offenseTeamId === awayTeam?.teamId;
   const homeHasBall = offenseTeamId === homeTeam?.teamId;
 
@@ -287,7 +291,8 @@ export function LiveBroadcast({
           <CourtHalf side="right" />
 
           {/* 隊伍標籤 + 持球方指示器（球場頂部）
-              持球方：隊名變色 + 紅色 dot 脈衝（球賽 idle 時的視覺核心） */}
+              持球方：隊名變色 + dot 脈衝（球賽 idle 時的視覺核心）
+              死球（節結束/暫停/比賽結束）：兩隊皆不顯示持球，中央改秀中性狀態 */}
           <g>
             {/* 客隊 */}
             <g opacity={awayHasBall ? 1 : 0.4}>
@@ -310,9 +315,22 @@ export function LiveBroadcast({
                 fill={awayHasBall ? '#dc2626' : '#5a4a2a'}
               >
                 ← {awayTeam?.shortName ?? '客隊'}
-                {awayHasBall ? ' 持球' : ' 進攻'}
+                {isDeadBall ? '' : awayHasBall ? ' 持球' : ' 進攻'}
               </text>
             </g>
+            {/* 中央：死球中性狀態（節結束 / 暫停 / 比賽結束） */}
+            {isDeadBall && (
+              <text
+                x={COURT_CX}
+                y={30}
+                textAnchor="middle"
+                fontSize="13"
+                fontWeight="bold"
+                fill="#9ca3af"
+              >
+                {deadBallLabel}
+              </text>
+            )}
             {/* 主隊 */}
             <g opacity={homeHasBall ? 1 : 0.4}>
               <text
@@ -324,7 +342,7 @@ export function LiveBroadcast({
                 fill={homeHasBall ? '#2563eb' : '#5a4a2a'}
               >
                 {homeTeam?.shortName ?? '主隊'}
-                {homeHasBall ? ' 持球' : ' 進攻'} →
+                {isDeadBall ? ' →' : homeHasBall ? ' 持球 →' : ' 進攻 →'}
               </text>
               {homeHasBall && (
                 <circle cx={COURT_CX + 320} cy={26} r={6} fill="#2563eb">
