@@ -110,92 +110,79 @@ function queryForTab(tab: TabKey): string {
   }
 }
 
-function TeamRow({ t, score, emphasize, live }: { t: TeamView; score: number | null; emphasize: boolean; live: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-2 min-w-0">
-        {t.logoUrl ? (
-          <Image src={t.logoUrl} alt="" width={20} height={20} className="w-5 h-5 object-contain flex-shrink-0" />
-        ) : (
-          <span className="w-5 h-5 flex-shrink-0 text-center leading-5 text-gray-300">⚪</span>
-        )}
-        <span className={`text-sm truncate ${emphasize ? 'font-bold text-gray-900' : 'text-gray-700'}`} title={teamLabel(t)}>{teamLabel(t)}</span>
-      </div>
-      <span
-        className={`text-sm tabular-nums flex-shrink-0 ${
-          live ? 'font-bold text-red-600' : emphasize ? 'font-bold text-gray-900' : 'text-gray-400'
-        }`}
-      >
-        {score ?? '-'}
-      </span>
-    </div>
+/** 隊伍 logo（缺圖用灰圓 placeholder，不用 emoji） */
+function TeamLogo({ url }: { url: string | null }) {
+  return url ? (
+    <Image src={url} alt="" width={18} height={18} className="w-[18px] h-[18px] object-contain flex-shrink-0" />
+  ) : (
+    <span className="w-[18px] h-[18px] rounded-full bg-gray-100 flex-shrink-0" />
   );
 }
 
-/** 焦點戰 / LIVE → 大卡片 */
-function MatchCard({ m }: { m: Match }) {
-  const isLive = m.status === 'live';
+/**
+ * 統一賽事列（焦點戰 / LIVE / 一般場共用同一容器）
+ * 版面：grid [時間 56px | 主隊 1fr 靠右 | 比分 64px | 客隊 1fr 靠左]
+ * 焦點戰/LIVE 只用「左色條 + 字重 + 🔥」區分，不另開卡片，避免左右開天窗與孤兒卡。
+ */
+function MatchRow({ m }: { m: Match }) {
   const isFinal = m.status === 'finished';
+  const isLive = m.status === 'live';
+  const isFeatured = m.isFeatured;
   const hs = m.homeScore;
   const as = m.awayScore;
   const homeWins = isFinal && hs != null && as != null && hs > as;
   const awayWins = isFinal && hs != null && as != null && as > hs;
 
-  const borderCls = isLive
-    ? 'border-2 border-red-400 shadow-[0_0_0_3px_rgba(248,113,113,0.18)]'
-    : 'border border-gray-200';
+  const bar = isLive
+    ? 'border-l-[3px] border-l-red-500'
+    : isFeatured
+      ? 'border-l-[3px] border-l-amber-400'
+      : 'border-l-[3px] border-l-transparent';
+  const nameBase = isFeatured ? 'font-semibold text-gray-900' : 'text-gray-600';
 
   return (
     <Link
       href={`/match/friendly/${m.id}`}
-      className={`block rounded-lg ${borderCls} bg-white px-3 py-2.5 shadow-sm hover:shadow-md hover:border-[#39B8BE] transition-all`}
+      className={`grid grid-cols-[52px_1fr_60px_1fr] items-center gap-2 ${bar} pl-2.5 pr-3 ${isFeatured || isLive ? 'py-2.5' : 'py-2'} hover:bg-gray-50 transition-colors text-sm`}
     >
-      <div className="flex items-center justify-between mb-2 h-4">
-        <span className="text-[10px] text-gray-400 truncate flex items-center gap-1">
-          {m.isFeatured && <span className="text-amber-500">🔥 焦點戰</span>}
-          {!m.isFeatured && <span className="truncate">{m.round ?? '國際友誼賽'}</span>}
-        </span>
+      {/* 時間 / 狀態 */}
+      <span className="text-[11px] tabular-nums whitespace-nowrap">
         {isLive ? (
-          <span className="text-[10px] font-bold text-red-500 flex items-center gap-0.5 flex-shrink-0">
+          <span className="text-red-500 font-bold flex items-center gap-0.5">
             <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-            LIVE{m.liveMinute != null && <span className="text-red-400 ml-0.5">{m.liveMinute}&apos;</span>}
+            {m.liveMinute != null ? `${m.liveMinute}'` : 'LIVE'}
           </span>
         ) : isFinal ? (
-          <span className="text-[10px] text-gray-400 flex-shrink-0">已結束</span>
+          <span className="text-gray-400">FT</span>
         ) : (
-          <span className="text-[10px] text-gray-400 flex-shrink-0">{twTime(m.kickoffAt)} 開賽</span>
+          <span className="text-gray-500">{twTime(m.kickoffAt)}</span>
         )}
-      </div>
-      <div className="space-y-1.5">
-        <TeamRow t={m.home} score={hs} emphasize={homeWins} live={isLive} />
-        <TeamRow t={m.away} score={as} emphasize={awayWins} live={isLive} />
-      </div>
-    </Link>
-  );
-}
+      </span>
 
-/** 一般完賽/未開賽場 → 緊湊列表行 */
-function MatchRow({ m }: { m: Match }) {
-  const isFinal = m.status === 'finished';
-  const isLive = m.status === 'live';
-  return (
-    <Link
-      href={`/match/friendly/${m.id}`}
-      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 transition-colors text-sm"
-    >
-      <span className="w-12 flex-shrink-0 text-[11px] text-gray-400 tabular-nums">
-        {isLive ? <span className="text-red-500 font-bold">LIVE</span> : isFinal ? 'FT' : twTime(m.kickoffAt)}
-      </span>
-      <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
-        <span className="truncate text-gray-700 text-right" title={teamLabel(m.home)}>{m.home.nameZh}</span>
-        {m.home.logoUrl && <Image src={m.home.logoUrl} alt="" width={16} height={16} className="w-4 h-4 object-contain flex-shrink-0" />}
+      {/* 主隊：靠右貼比分 */}
+      <div className="flex items-center gap-1.5 min-w-0 justify-end">
+        {isFeatured && <span className="text-amber-500 text-[11px] flex-shrink-0">🔥</span>}
+        <span className={`truncate text-right ${homeWins ? 'font-bold text-gray-900' : nameBase}`} title={teamLabel(m.home)}>
+          {m.home.nameZh}
+        </span>
+        <TeamLogo url={m.home.logoUrl} />
       </div>
-      <span className="flex-shrink-0 tabular-nums text-gray-500 font-medium w-10 text-center">
-        {isFinal || isLive ? `${m.homeScore ?? 0}-${m.awayScore ?? 0}` : 'vs'}
+
+      {/* 比分 */}
+      <span
+        className={`text-center tabular-nums font-semibold ${
+          isLive ? 'text-red-600' : isFinal ? 'text-gray-900' : 'text-gray-300 text-xs font-normal'
+        }`}
+      >
+        {isFinal || isLive ? `${hs ?? 0}-${as ?? 0}` : 'vs'}
       </span>
-      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-        {m.away.logoUrl && <Image src={m.away.logoUrl} alt="" width={16} height={16} className="w-4 h-4 object-contain flex-shrink-0" />}
-        <span className="truncate text-gray-700" title={teamLabel(m.away)}>{m.away.nameZh}</span>
+
+      {/* 客隊：靠左貼比分 */}
+      <div className="flex items-center gap-1.5 min-w-0">
+        <TeamLogo url={m.away.logoUrl} />
+        <span className={`truncate ${awayWins ? 'font-bold text-gray-900' : nameBase}`} title={teamLabel(m.away)}>
+          {m.away.nameZh}
+        </span>
       </div>
     </Link>
   );
@@ -284,37 +271,24 @@ export function FriendlyActivityStrip() {
           {TABS.find((t) => t.key === tab)?.label}目前無賽事
         </div>
       ) : (
-        <div className="space-y-4">
-          {groups.map((g) => {
-            const cards = g.matches.filter((m) => m.isFeatured || m.status === 'live');
-            const rows = g.matches.filter((m) => !m.isFeatured && m.status !== 'live');
-            return (
-              <div key={g.date}>
-                <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white/95 backdrop-blur py-1 z-10">
-                  <span className="text-sm font-bold text-gray-800">{twDateLabel(g.date)}</span>
-                  <span className="text-[11px] text-gray-400">週{g.weekday.replace(/週|星期/g, '')}</span>
-                  <span className="text-[11px] text-gray-300">·</span>
-                  <span className="text-[11px] text-gray-400">{g.matches.length} 場</span>
-                  <div className="flex-1 border-t border-gray-100" />
-                </div>
-
-                {cards.length > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-                    {cards.map((m) => (
-                      <MatchCard key={m.id} m={m} />
-                    ))}
-                  </div>
-                )}
-                {rows.length > 0 && (
-                  <div className="divide-y divide-gray-50 rounded-lg border border-gray-100 bg-white">
-                    {rows.map((m) => (
-                      <MatchRow key={m.id} m={m} />
-                    ))}
-                  </div>
-                )}
+        <div className="space-y-3">
+          {groups.map((g) => (
+            <div key={g.date}>
+              <div className="flex items-center gap-2 mb-1.5 sticky top-0 bg-white/95 backdrop-blur py-1 z-10">
+                <span className="text-sm font-bold text-gray-800">{twDateLabel(g.date)}</span>
+                <span className="text-[11px] text-gray-400">週{g.weekday.replace(/週|星期/g, '')}</span>
+                <span className="text-[11px] text-gray-300">·</span>
+                <span className="text-[11px] text-gray-400">{g.matches.length} 場</span>
+                <div className="flex-1 border-t border-gray-100" />
               </div>
-            );
-          })}
+
+              <div className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white overflow-hidden">
+                {g.matches.map((m) => (
+                  <MatchRow key={m.id} m={m} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
