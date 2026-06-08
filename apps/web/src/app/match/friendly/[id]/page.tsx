@@ -11,8 +11,7 @@ interface MatchMeta {
 }
 
 /**
- * SEO 白名單策略：只有焦點戰（isFeatured）才允許被索引。
- * 其餘冷門友誼賽 robots = noindex，避免大量薄頁面拖累整站 quality signal。
+ * SEO 策略：以資訊完整為主，全部友誼賽場次皆允許被索引（不再只開焦點戰白名單）。
  */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -23,7 +22,6 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return {
       title,
       description,
-      robots: data.isFeatured ? undefined : { index: false, follow: true },
     };
   } catch {
     return { title: '國際足球友誼賽 2026', robots: { index: false, follow: true } };

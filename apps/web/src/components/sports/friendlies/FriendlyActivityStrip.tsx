@@ -56,6 +56,7 @@ interface Overview {
 }
 
 const TABS = [
+  { key: 'all', label: '全部' },
   { key: 'featured', label: '焦點戰' },
   { key: 'live', label: 'LIVE' },
   { key: 'today', label: '今日' },
@@ -93,6 +94,9 @@ function teamLabel(t: TeamView): string {
 function queryForTab(tab: TabKey): string {
   const today = twToday();
   switch (tab) {
+    case 'all':
+      // 資訊完整為主：焦點戰與一般場一起，近期 + 未來都顯示
+      return `from=${twDatePlus(-14)}&to=${twDatePlus(30)}`;
     case 'featured':
       return `featured=true&from=${twDatePlus(-3)}`;
     case 'live':
@@ -198,7 +202,7 @@ function MatchRow({ m }: { m: Match }) {
 }
 
 export function FriendlyActivityStrip() {
-  const [tab, setTab] = useState<TabKey>('featured');
+  const [tab, setTab] = useState<TabKey>('all');
 
   const { data: overviewData } = useQuery({
     queryKey: ['friendlies-overview'],
