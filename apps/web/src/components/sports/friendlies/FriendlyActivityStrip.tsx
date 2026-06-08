@@ -189,7 +189,7 @@ function MatchRow({ m }: { m: Match }) {
 }
 
 export function FriendlyActivityStrip() {
-  const [tab, setTab] = useState<TabKey>('all');
+  const [tab, setTab] = useState<TabKey>('today');
 
   const { data: overviewData } = useQuery({
     queryKey: ['friendlies-overview'],
