@@ -6,12 +6,12 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { apiFetch } from '@/lib/api';
 
 /**
- * 今日即將開打 — header 下方的全棒球聯盟橫向快覽帶
+ * 即將開打 — header 下方的全棒球聯盟橫向快覽帶
  *
  * 設計（設計顧問規格）：
  *  - 位置：header 下方、首頁 h1 之上，淺底色帶（與下方青綠 masthead 區隔）
- *  - 內容：今日「尚未開打」(Preview) 的賽事，**合併全部棒球聯盟**（MLB/中職/日職/韓職/其他）
- *  - 排序：純開賽時間早 → 晚
+ *  - 內容：今日 + 明日「尚未開打」(Preview) 的賽事，**合併全部棒球聯盟**（MLB/中職/日職/韓職/其他）
+ *  - 排序：聯盟優先（MLB→中職→日職→韓職→其他），同聯盟內開賽時間早→晚（今日早於明日）；明日場加「明日」標記
  *  - 互動：橫向滑動，桌機 hover 顯示左右箭頭、手機純觸控
  *  - 空狀態：保留帶子 + 友善文案引導往下看即時比分
  *  - 視覺重量「刻意低於」下方賽事中心：矮高度、弱標題、卡片標聯盟 badge
@@ -55,6 +55,7 @@ interface UpcomingGame {
   time: string;
   startTs: number;
   href: string;
+  day?: '今日' | '明日';
   away: { name: string; logo: string };
   home: { name: string; logo: string };
 }
@@ -140,12 +141,15 @@ function UpcomingCard({ g }: { g: UpcomingGame }) {
       href={g.href}
       className="group/card w-[176px] shrink-0 rounded-xl border border-gray-200 bg-white p-2.5 hover:border-blue-300 hover:shadow-md transition-all"
     >
-      {/* 頂列：聯盟 badge + 開賽時間 */}
+      {/* 頂列：聯盟 badge + 開賽時間（明日場加標記） */}
       <div className="flex items-center justify-between mb-1.5">
         <span className={`px-1.5 py-0.5 rounded font-bold text-[10px] leading-none ${g.badgeCls}`}>
           {g.badge}
         </span>
-        <span className="text-xs font-bold tabular-nums text-gray-700">{g.time || '--:--'}</span>
+        <span className="text-xs font-bold tabular-nums text-gray-700 flex items-center gap-1">
+          {g.day === '明日' && <span className="text-[9px] font-medium text-amber-600 bg-amber-50 rounded px-1 py-0.5 leading-none">明日</span>}
+          {g.time || '--:--'}
+        </span>
       </div>
       {/* 對戰：客隊上、主隊下 */}
       <div className="space-y-1">
@@ -165,6 +169,7 @@ function UpcomingCard({ g }: { g: UpcomingGame }) {
 /* ───── 主元件 ───── */
 export function TodayUpcomingStrip() {
   const today = twDateOffset(0);
+  const tomorrow = twDateOffset(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
@@ -179,17 +184,23 @@ export function TodayUpcomingStrip() {
     staleTime: 24 * 60 * 60 * 1000,
   });
 
-  // 5 聯盟「今日」賽事並行抓取（任一失敗不擋其他）
+  // 5 聯盟「今日 + 明日」賽事並行抓取（任一失敗不擋其他）
   const results = useQueries({
     queries: LEAGUES.map((l) => ({
-      queryKey: ['upcoming-strip', l.slug, today],
+      queryKey: ['upcoming-strip', l.slug, today, tomorrow],
       queryFn: async () => {
         if (l.slug === 'mlb') {
-          const res = await apiFetch<{ data: MlbGame[] }>(`/mlb/schedule/tw?date=${today}`);
-          return res.data ?? [];
+          const [d0, d1] = await Promise.all([
+            apiFetch<{ data: MlbGame[] }>(`/mlb/schedule/tw?date=${today}`),
+            apiFetch<{ data: MlbGame[] }>(`/mlb/schedule/tw?date=${tomorrow}`),
+          ]);
+          return [...(d0.data ?? []), ...(d1.data ?? [])];
         }
-        const res = await apiFetch<{ data: ApiGame[] }>(`/baseball/${l.slug}/games/tw?date=${today}`);
-        return res.data ?? [];
+        const [d0, d1] = await Promise.all([
+          apiFetch<{ data: ApiGame[] }>(`/baseball/${l.slug}/games/tw?date=${today}`),
+          apiFetch<{ data: ApiGame[] }>(`/baseball/${l.slug}/games/tw?date=${tomorrow}`),
+        ]);
+        return [...(d0.data ?? []), ...(d1.data ?? [])];
       },
       staleTime: 60 * 1000,
     })),
@@ -197,7 +208,11 @@ export function TodayUpcomingStrip() {
 
   const isLoading = results.some((r) => r.isLoading);
 
-  // 正規化 + 依聯盟順序排（MLB→中職→日職→韓職→其他棒球），同聯盟內按開賽時間
+  // 依開賽時間所屬台灣日期標記今日/明日
+  const dayOf = (ts: number): '今日' | '明日' =>
+    new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }) === today ? '今日' : '明日';
+
+  // 正規化 + 依聯盟順序排（MLB→中職→日職→韓職→其他棒球），同聯盟內按開賽時間（今日早於明日）
   const games: UpcomingGame[] = LEAGUES.flatMap((l, i) => {
     const raw = results[i].data;
     if (!raw) return [];
@@ -205,7 +220,9 @@ export function TodayUpcomingStrip() {
       l.slug === 'mlb'
         ? normalizeMlbPreview(raw as MlbGame[], mlbTr ?? new Map())
         : normalizeGenericPreview(raw as ApiGame[], l.slug, l.badge, l.badgeCls);
-    return list.sort((a, b) => a.startTs - b.startTs);
+    return list
+      .sort((a, b) => a.startTs - b.startTs)
+      .map((g) => ({ ...g, day: dayOf(g.startTs) }));
   });
 
   /* 滾動箭頭可見性 */
@@ -231,7 +248,7 @@ export function TodayUpcomingStrip() {
       {/* 標題列（刻意弱於下方 masthead） */}
       <div className="flex items-center justify-between mb-2 px-0.5">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm font-bold text-gray-700">⚾ 今日即將開打</span>
+          <span className="text-sm font-bold text-gray-700">⚾ 即將開打</span>
           {games.length > 0 && <span className="text-xs text-gray-400 tabular-nums">· {games.length} 場</span>}
         </div>
       </div>
@@ -245,7 +262,7 @@ export function TodayUpcomingStrip() {
         </div>
       ) : games.length === 0 ? (
         <div className="text-sm text-gray-400 text-center py-3">
-          今日賽事都開打囉，往下看即時比分 ↓
+          今明兩日暫無即將開打的賽事，往下看即時比分 ↓
         </div>
       ) : (
         <div className="relative group">
