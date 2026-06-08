@@ -697,8 +697,9 @@ model AdminPagePermission {
 // 發/扣幣一律帶 idempotencyKey（@unique），同 key 重送不重複入帳。
 
 enum Currency {
-  G // G幣：行為獎勵、論壇積分
-  P // P幣：預測籌碼（只能用 G幣換）
+  G   // G幣：行為獎勵、論壇積分
+  P   // P幣：預測籌碼（只能用 G幣換）
+  EXP // 經驗值：只增不減、用來升等（沿用帳本機制取得冪等與稽核）
 }
 
 enum LedgerReason {
@@ -741,4 +742,15 @@ model LedgerEntry {
 
   @@index([accountId, createdAt])
   @@map("ledger_entries")
+}
+
+// 等級門檻（程式定義預設 + 開機自動 seed，之後可後台覆蓋）。
+// minExp = null 代表非經驗門檻（邀請制，如 Lv5 名人堂），不會被經驗自動升上去。
+model LevelTier {
+  level     Int      @id // 1..5
+  name      String
+  minExp    Int?     @map("min_exp")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("level_tiers")
 }
