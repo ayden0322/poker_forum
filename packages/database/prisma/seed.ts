@@ -73,7 +73,8 @@ async function main() {
     { name: 'J 聯賽', slug: 'j-league', icon: '🇯🇵', description: '日本 J1 聯賽', sortOrder: 7 },
     { name: '中超', slug: 'csl', icon: '🇨🇳', description: '中國足球超級聯賽', sortOrder: 8 },
     { name: '世界盃', slug: 'world-cup', icon: '🌍', description: 'FIFA 世界盃', sortOrder: 9 },
-    { name: '其他足球', slug: 'other-soccer', icon: '⚽', description: 'K 聯賽、東南亞足球等討論', sortOrder: 10 },
+    { name: '國際友誼賽', slug: 'friendlies', icon: '🤝', description: '國際足球友誼賽（國家隊熱身賽）', sortOrder: 10 },
+    { name: '其他足球', slug: 'other-soccer', icon: '⚽', description: 'K 聯賽、東南亞足球等討論', sortOrder: 11 },
   ];
 
   for (const board of soccerBoards) {

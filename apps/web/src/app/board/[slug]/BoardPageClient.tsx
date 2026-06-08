@@ -20,6 +20,7 @@ import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
 import { BaseballStandingsWidget } from '@/components/sports/BaseballStandingsWidget';
 import { CpblInjuriesWidget } from '@/components/sports/cpbl/CpblInjuriesWidget';
 import { WorldCupActivityStrip } from '@/components/sports/world-cup/WorldCupActivityStrip';
+import { FriendlyActivityStrip } from '@/components/sports/friendlies/FriendlyActivityStrip';
 import { WorldCupMatchThreadShelf } from '@/components/sports/world-cup/WorldCupMatchThreadShelf';
 import { WorldCupTagFilter } from '@/components/sports/world-cup/WorldCupTagFilter';
 import { GameIcon } from '@/components/lottery/GameIcon';
@@ -403,6 +404,8 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
           <WorldCupActivityStrip />
           <WorldCupMatchThreadShelf posts={posts} />
         </>
+      ) : board.slug === 'friendlies' ? (
+        <FriendlyActivityStrip />
       ) : (
         <ScoreWidget boardSlug={board.slug} />
       )}

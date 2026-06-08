@@ -581,6 +581,59 @@ model WorldCupMatch {
   @@map("world_cup_matches")
 }
 
+// ===== 國際足球友誼賽（API-Sports league=10 Cup Friendlies）=====
+// 刻意與 World Cup 完全隔離：友誼賽沒有小組/淘汰賽結構，且需要 api_fixture_id / logo_url
+// 等欄位（World Cup 的同名欄位因 2026-05-18 migration drift 被註解掉，新 model 直接繞開那顆雷）。
+model FriendlyTeam {
+  id        Int     @id @default(autoincrement())
+  apiTeamId Int     @unique @map("api_team_id")     // api-sports team ID
+  nameEn    String  @map("name_en")                 // "Germany"
+  nameZh    String? @map("name_zh")                 // "德國"（翻譯後填入）
+  logoUrl   String? @map("logo_url")                // api-sports 隊徽 URL（真 logo）
+  country   String?                                  // 國家名（國家隊）
+  isMarquee Boolean @default(false) @map("is_marquee")  // 是否為強隊（焦點戰判斷用）
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  matchesAsHome FriendlyMatch[] @relation("FriendlyHome")
+  matchesAsAway FriendlyMatch[] @relation("FriendlyAway")
+
+  @@map("friendly_teams")
+}
+
+model FriendlyMatch {
+  id           Int      @id @default(autoincrement())
+  apiFixtureId Int      @unique @map("api_fixture_id")   // api-sports fixture ID（去重主鍵）
+  season       Int                                        // 2026
+  round        String?                                    // api-sports round 文字
+  kickoffAt    DateTime @map("kickoff_at")               // UTC
+  venue        String?
+  venueCity    String?  @map("venue_city")
+
+  homeTeamId Int          @map("home_team_id")
+  awayTeamId Int          @map("away_team_id")
+  homeTeam   FriendlyTeam @relation("FriendlyHome", fields: [homeTeamId], references: [id])
+  awayTeam   FriendlyTeam @relation("FriendlyAway", fields: [awayTeamId], references: [id])
+
+  homeScore   Int?    @map("home_score")
+  awayScore   Int?    @map("away_score")
+  status      String  @default("scheduled")              // scheduled | live | finished
+  statusShort String? @map("status_short")               // 原始 api short code（FT/NS/1H...）
+  liveMinute  Int?    @map("live_minute")                // 進行中的分鐘
+
+  // 焦點戰白名單：只有 isFeatured=true 的場次才生成可索引頁面，其餘 noindex
+  // （避免 488 場薄頁面反傷整站 SEO quality signal）
+  isFeatured  Boolean @default(false) @map("is_featured")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([kickoffAt])
+  @@index([status])
+  @@index([isFeatured])
+  @@map("friendly_matches")
+}
+
 // ===== 管理員操作稽核日誌 =====
 // 紀錄管理員執行的敏感操作，例如代登入會員、密碼重設等
 // 動作分類用 string 而非 enum，方便未來新增動作不需 migration

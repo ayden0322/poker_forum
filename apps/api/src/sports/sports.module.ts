@@ -8,11 +8,12 @@ import { CpblStatsModule } from './cpbl-stats/cpbl-stats.module';
 import { NpbStatsModule } from './npb-stats/npb-stats.module';
 import { KboStatsModule } from './kbo-stats/kbo-stats.module';
 import { WorldCupModule } from './world-cup/world-cup.module';
+import { FriendliesModule } from './friendlies/friendlies.module';
 
 @Module({
-  imports: [MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule, WorldCupModule],
+  imports: [MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule, WorldCupModule, FriendliesModule],
   controllers: [SportsController],
   providers: [SportsService],
-  exports: [SportsService, MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule, WorldCupModule],
+  exports: [SportsService, MLBStatsModule, NBAStatsModule, BaseballCommonModule, CpblStatsModule, NpbStatsModule, KboStatsModule, WorldCupModule, FriendliesModule],
 })
 export class SportsModule {}
