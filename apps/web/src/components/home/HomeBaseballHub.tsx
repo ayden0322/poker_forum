@@ -31,12 +31,13 @@ const LEAGUE_BADGE: Record<string, { badge: string; badgeCls: string }> = Object
   LEAGUES.map((l) => [l.slug, { badge: l.badge, badgeCls: l.badgeCls }]),
 );
 
-/** 狀態子 tab（全部聯盟模式才出現）：選中才上語意色 */
-const STATE_TABS = [
-  { state: 'Live' as const, label: '進行中', activeCls: 'bg-red-50 text-red-600 ring-1 ring-red-200' },
-  { state: 'Preview' as const, label: '尚未開賽', activeCls: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' },
-  { state: 'Final' as const, label: '已結束', activeCls: 'bg-gray-100 text-gray-600 ring-1 ring-gray-200' },
-];
+/** 運動別主切換（Phase 1：僅棒球可用，籃球/足球預留架構、標即將開放） */
+const SPORTS = [
+  { key: 'baseball', label: '棒球', icon: '⚾', enabled: true },
+  { key: 'basketball', label: '籃球', icon: '🏀', enabled: false },
+  { key: 'football', label: '足球', icon: '⚽', enabled: false },
+] as const;
+type SportKey = (typeof SPORTS)[number]['key'];
 
 const DATE_TABS = [
   { key: 'yesterday', label: '昨日', offset: -1 },
@@ -209,21 +210,19 @@ function TeamLogo({ src }: { src: string }) {
 }
 
 /**
- * 單列賽事 — 雷速式左右對稱、比分釘中央
- * 五欄：狀態(w-14) │ 客隊(flex-1靠右) │ 比分(w-20置中錨點) │ 主隊(flex-1靠左) │ ›
- * 顏色分狀態（紅=進行中、灰=已結束、未開賽不顯示比分）；比分顏色分勝負。
+ * 單列賽事 — 友誼賽式條列（單欄 divide-y、grid 對齊、左色條標 LIVE）
+ * grid：狀態(56px) │ 客隊(1fr 靠右) │ 比分(60px 置中) │ 主隊(1fr 靠左)
+ * 跨聯盟模式狀態欄改顯示聯盟 badge + 局數/時間。
  */
 function GameRow({ g, crossLeague = false }: { g: HubGame; crossLeague?: boolean }) {
   const isLive = g.state === 'Live';
   const isFinal = g.state === 'Final';
 
-  // 狀態欄文字色
-  const statusCls = isLive ? 'text-red-600 font-semibold' : isFinal ? 'text-gray-400' : 'text-gray-500';
+  const bar = isLive ? 'border-l-[3px] border-l-red-500' : 'border-l-[3px] border-l-transparent';
 
   // 比分色：Live 兩隊紅；Final 贏家黑、輸家灰
   const scoreCls = (t: HubTeam) =>
-    isLive ? 'text-red-600' : isFinal ? (t.winner ? 'text-gray-900' : 'text-gray-400') : 'text-gray-400';
-
+    isLive ? 'text-red-600' : isFinal ? (t.winner ? 'text-gray-900' : 'text-gray-400') : 'text-gray-300';
   // 隊名色：Final 贏家黑粗、輸家灰；其餘正常
   const nameCls = (t: HubTeam) =>
     isFinal ? (t.winner ? 'text-gray-900 font-semibold' : 'text-gray-400') : 'text-gray-700';
@@ -231,54 +230,45 @@ function GameRow({ g, crossLeague = false }: { g: HubGame; crossLeague?: boolean
   return (
     <Link
       href={g.href}
-      className="group flex items-center h-11 rounded-lg border border-gray-200 bg-white px-2 hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-sm transition-all"
+      className={`grid grid-cols-[56px_1fr_60px_1fr] items-center gap-2 ${bar} pl-2.5 pr-3 py-2 hover:bg-gray-50 transition-colors`}
     >
-      {/* ① 左欄：跨聯盟模式顯示聯盟 badge（+進行中局數/未開賽時間）；單聯盟模式顯示狀態 */}
+      {/* ① 狀態欄：跨聯盟顯示聯盟 badge + 局數/時間；單聯盟顯示狀態 */}
       {crossLeague ? (
-        <div className="w-14 shrink-0 flex flex-col items-center justify-center gap-0.5">
+        <div className="flex flex-col items-start gap-0.5 min-w-0">
           <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold leading-none ${g.badgeCls}`}>{g.badge}</span>
-          {g.state !== 'Final' && (
-            <span className={`text-[10px] tabular-nums leading-none ${isLive ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-              {g.detail}
-            </span>
-          )}
+          <span className={`text-[10px] tabular-nums leading-none ${isLive ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+            {g.detail}
+          </span>
         </div>
       ) : (
-        <div className={`w-11 shrink-0 text-center text-[11px] tabular-nums leading-tight ${statusCls}`}>
+        <span className={`text-[11px] tabular-nums whitespace-nowrap ${isLive ? 'text-red-600 font-semibold' : isFinal ? 'text-gray-400' : 'text-gray-500'}`}>
           {g.detail}
-        </div>
+        </span>
       )}
 
-      {/* ② 客隊（靠右，往中央比分夾） */}
-      <div className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
+      {/* ② 客隊（靠右貼比分） */}
+      <div className="flex items-center justify-end gap-1.5 min-w-0">
         <span className={`truncate text-sm text-right ${nameCls(g.away)}`}>{g.away.name}</span>
         <TeamLogo src={g.away.logo} />
       </div>
 
-      {/* ③ 比分：卡片視覺錨點，釘在正中軸 */}
-      <div className="w-16 shrink-0 flex items-center justify-center gap-1 tabular-nums">
+      {/* ③ 比分（置中） */}
+      <div className="flex items-center justify-center gap-1 tabular-nums">
         {g.state === 'Preview' ? (
-          <span className="text-sm text-gray-400">vs</span>
+          <span className="text-xs text-gray-300">vs</span>
         ) : (
           <>
-            <span className={`text-base font-bold ${scoreCls(g.away)}`}>{g.away.score ?? '-'}</span>
-            <span className="text-gray-300 text-sm">:</span>
-            <span className={`text-base font-bold ${scoreCls(g.home)}`}>{g.home.score ?? '-'}</span>
+            <span className={`text-sm font-bold ${scoreCls(g.away)}`}>{g.away.score ?? '-'}</span>
+            <span className="text-gray-300 text-xs">:</span>
+            <span className={`text-sm font-bold ${scoreCls(g.home)}`}>{g.home.score ?? '-'}</span>
           </>
         )}
       </div>
 
-      {/* ④ 主隊（靠左） */}
-      <div className="flex-1 flex items-center justify-start gap-1.5 min-w-0">
+      {/* ④ 主隊（靠左貼比分） */}
+      <div className="flex items-center justify-start gap-1.5 min-w-0">
         <TeamLogo src={g.home.logo} />
         <span className={`truncate text-sm ${nameCls(g.home)}`}>{g.home.name}</span>
-      </div>
-
-      {/* ⑤ chevron */}
-      <div className="w-5 shrink-0 flex items-center justify-center text-gray-300 group-hover:text-blue-600 transition-colors">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
       </div>
     </Link>
   );
@@ -291,7 +281,15 @@ const STATE_GROUPS: { state: GameState; title: string; accent: string }[] = [
   { state: 'Final', title: '已結束', accent: 'text-gray-500' },
 ];
 
-function ThreeStateList({ games, isLoading }: { games: HubGame[]; isLoading: boolean }) {
+function ThreeStateList({
+  games,
+  isLoading,
+  crossLeague = false,
+}: {
+  games: HubGame[];
+  isLoading: boolean;
+  crossLeague?: boolean;
+}) {
   if (isLoading) {
     return <div className="px-4 py-10 text-center text-sm text-gray-400">載入賽事中…</div>;
   }
@@ -299,22 +297,22 @@ function ThreeStateList({ games, isLoading }: { games: HubGame[]; isLoading: boo
     return <div className="px-4 py-10 text-center text-sm text-gray-400">本日無賽事</div>;
   }
   return (
-    <div className="p-3 space-y-4">
+    <div className="p-3 space-y-3">
       {STATE_GROUPS.map((grp) => {
         const list = games.filter((g) => g.state === grp.state);
         if (list.length === 0) return null;
         return (
           <div key={grp.state}>
-            {/* 分區塊標題 */}
+            {/* 分段標題（狀態用排序分段取代 tab） */}
             <div className="flex items-center gap-2 mb-1.5 px-0.5">
               <span className={`text-xs font-bold ${grp.accent}`}>{grp.title}</span>
               <span className="text-[11px] text-gray-400">{list.length} 場</span>
               <span className="flex-1 h-px bg-gray-100" />
             </div>
-            {/* 賽事卡片網格：桌機 2~3 欄並排，消除整列死白 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
+            {/* 單欄條列（友誼賽式） */}
+            <div className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white overflow-hidden">
               {list.map((g) => (
-                <GameRow key={g.key} g={g} />
+                <GameRow key={g.key} g={g} crossLeague={crossLeague} />
               ))}
             </div>
           </div>
@@ -422,87 +420,6 @@ function useAllLeaguesGames(dateKey: DateKey, enabled: boolean): { games: HubGam
   return { games, isLoading };
 }
 
-/* ───────────── 跨聯盟單狀態清單 ───────────── */
-/**
- * games 已過濾成單一狀態。
- *  - 進行中 或 ≤4 場：flat（場次少，靠 badge 足夠）
- *  - 否則：按聯盟分組（降低跨聯盟掃描成本）
- */
-function CrossLeagueList({
-  games,
-  state,
-  isLoading,
-  onJump,
-}: {
-  games: HubGame[];
-  state: GameState;
-  isLoading: boolean;
-  onJump: (s: GameState) => void;
-}) {
-  if (isLoading) {
-    return (
-      <div className="p-3 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="h-11 rounded-lg bg-gray-100 animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-  if (games.length === 0) {
-    return (
-      <div className="px-4 py-10 text-center text-sm text-gray-400">
-        {state === 'Live' ? (
-          <>
-            現在沒有正在進行的比賽，
-            <button onClick={() => onJump('Preview')} className="text-blue-600 hover:underline">
-              看看尚未開賽 →
-            </button>
-          </>
-        ) : state === 'Preview' ? (
-          '這個日期沒有尚未開賽的比賽'
-        ) : (
-          '這個日期沒有已結束的比賽'
-        )}
-      </div>
-    );
-  }
-
-  const flat = state === 'Live' || games.length <= 4;
-  if (flat) {
-    return (
-      <div className="p-3 grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
-        {games.map((g) => (
-          <GameRow key={g.key} g={g} crossLeague />
-        ))}
-      </div>
-    );
-  }
-
-  // 按聯盟分組（依 LEAGUES 順序）
-  return (
-    <div className="p-3 space-y-4">
-      {LEAGUES.map((l) => {
-        const list = games.filter((g) => g.league === l.slug);
-        if (list.length === 0) return null;
-        return (
-          <div key={l.slug}>
-            <div className="flex items-center gap-2 mb-1.5 px-0.5">
-              <span className={`px-1.5 py-0.5 rounded font-bold text-[11px] leading-none ${l.badgeCls}`}>{l.label}</span>
-              <span className="text-[11px] text-gray-400">{list.length} 場</span>
-              <span className="flex-1 h-px bg-gray-100" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2">
-              {list.map((g) => (
-                <GameRow key={g.key} g={g} crossLeague />
-              ))}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 /* ───────────── 熱門討論精簡列 ───────────── */
 interface PostItem {
   id: string;
@@ -608,26 +525,20 @@ function HotRow({ post, rank, badge, badgeCls }: { post: PostItem; rank: number;
 
 /* ───────────── 主元件 ───────────── */
 export function HomeBaseballHub() {
+  // 運動別主切換（Phase 1：固定棒球，籃球/足球預留）
+  const [sport] = useState<SportKey>('baseball');
   const [league, setLeague] = useState<LeagueSlug>('mlb');
   const [dateKey, setDateKey] = useState<DateKey>('today');
-  // 全部聯盟模式（預設開啟）+ 跨聯盟狀態子 tab
+  // 全部聯盟模式（預設開啟）
   const [allLeagues, setAllLeagues] = useState(true);
-  const [stateTab, setStateTab] = useState<GameState>('Live');
   // 全部聯盟模式下右欄數據面板的聯盟（MLB / CPBL 切換，預設 MLB）
   const [panelLeague, setPanelLeague] = useState<'mlb' | 'cpbl'>('mlb');
 
   const { games, isLoading } = useHubGames(league, dateKey);
   const { games: allGames, isLoading: allLoading } = useAllLeaguesGames(dateKey, allLeagues);
 
-  // 跨聯盟各狀態場次數（給狀態子 tab 顯示）
-  const stateCounts = {
-    Live: allGames.filter((g) => g.state === 'Live').length,
-    Preview: allGames.filter((g) => g.state === 'Preview').length,
-    Final: allGames.filter((g) => g.state === 'Final').length,
-  };
   // masthead LIVE 徽章：依模式取對應資料源
   const liveCount = (allLeagues ? allGames : games).filter((g) => g.state === 'Live').length;
-  const crossGames = allGames.filter((g) => g.state === stateTab);
 
   // 單聯盟貼文（單聯盟模式用）
   const { data: posts, isLoading: postsLoading } = useQuery({
@@ -655,8 +566,8 @@ export function HomeBaseballHub() {
         <div className="flex items-center justify-between gap-3 mb-2.5">
           <div className="min-w-0">
             <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2 leading-tight">
-              <span>⚾</span>
-              <span>棒球即時賽事</span>
+              <span>{SPORTS.find((s) => s.key === sport)!.icon}</span>
+              <span>即時賽事</span>
               {liveCount > 0 && (
                 <span className="flex items-center gap-1 text-xs bg-red-500/90 text-white px-2 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
@@ -673,7 +584,34 @@ export function HomeBaseballHub() {
             {sectionLabel}討論區 →
           </Link>
         </div>
-        {/* 全部聯盟（最左、預設）+ 分隔 + 各聯盟切換 */}
+        {/* 運動別主切換（Phase 1：棒球可用，籃球/足球即將開放） */}
+        <div className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-hide -mx-1 px-1">
+          {SPORTS.map((s) => {
+            const active = sport === s.key;
+            return (
+              <button
+                key={s.key}
+                disabled={!s.enabled}
+                title={s.enabled ? undefined : '即將開放'}
+                className={`shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-sm font-bold transition-colors ${
+                  active
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : s.enabled
+                      ? 'text-blue-50 hover:bg-white/15'
+                      : 'text-blue-200/50 cursor-not-allowed'
+                }`}
+              >
+                <span>{s.icon}</span>
+                {s.label}
+                {!s.enabled && (
+                  <span className="text-[9px] font-medium bg-white/15 px-1 py-0.5 rounded leading-none">即將開放</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* 聯盟切換（棒球的聯盟）：全部聯盟（最左、預設）+ 分隔 + 各聯盟 */}
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
           <button
             onClick={() => setAllLeagues(true)}
@@ -724,32 +662,9 @@ export function HomeBaseballHub() {
           ))}
         </div>
 
+        {/* 狀態用分段排序呈現（進行中→尚未開賽→已結束），不再用狀態子 tab */}
         {allLeagues ? (
-          <>
-            {/* 狀態子列（僅全部聯盟模式）：選中才上語意色 */}
-            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-gray-100">
-              {STATE_TABS.map((s) => {
-                const active = stateTab === s.state;
-                const count = stateCounts[s.state];
-                return (
-                  <button
-                    key={s.state}
-                    onClick={() => setStateTab(s.state)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                      active ? s.activeCls : count === 0 ? 'text-gray-300 hover:bg-gray-50' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-                    }`}
-                  >
-                    {s.state === 'Live' && count > 0 && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                    )}
-                    {s.label}
-                    <span className="tabular-nums opacity-70">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <CrossLeagueList games={crossGames} state={stateTab} isLoading={allLoading} onJump={setStateTab} />
-          </>
+          <ThreeStateList games={allGames} isLoading={allLoading} crossLeague />
         ) : (
           <ThreeStateList games={games} isLoading={isLoading} />
         )}
