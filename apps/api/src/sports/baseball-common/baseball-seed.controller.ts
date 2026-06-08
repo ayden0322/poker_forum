@@ -46,13 +46,16 @@ export class BaseballSeedController {
   }
 
   @Post('all')
-  @ApiOperation({ summary: '播種所有非 MLB 棒球聯賽翻譯（CPBL/NPB/KBO）' })
+  @ApiOperation({ summary: '播種非 MLB 棒球聯賽翻譯（預設 CPBL/NPB/KBO；other-baseball 刻意排除，LMB 顯示英文）' })
   async startSeed(@Body() body: { leagues?: string[] } = {}) {
     if (this.status.running) {
       return { success: false, message: '已有播種任務執行中', data: this.status };
     }
 
-    const targetLeagues = (body.leagues ?? [...BASEBALL_LEAGUES]).filter(
+    // 預設排除 other-baseball(LMB)：刻意顯示英文隊名，不花 LLM budget 翻譯
+    // 若仍要翻譯可顯式帶 leagues:['other-baseball']
+    const defaultLeagues = BASEBALL_LEAGUES.filter((l) => l !== 'other-baseball');
+    const targetLeagues = (body.leagues ?? defaultLeagues).filter(
       (l) => BASEBALL_LEAGUES.includes(l as BaseballLeague),
     ) as BaseballLeague[];
 

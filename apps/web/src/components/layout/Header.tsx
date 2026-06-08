@@ -25,7 +25,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: '討論區', href: '/' },
+  { label: '首頁', href: '/' },
   {
     label: '體育賽事',
     megaMenu: [
@@ -100,7 +100,8 @@ const navItems: NavItem[] = [
       { label: '線上對獎', href: '/lottery/check' },
     ],
   },
-  { label: '閒聊灌水', href: '/board/chat' },
+  // 閒聊灌水：暫時隱藏（看板仍存在，僅 header 不顯示）
+  // { label: '閒聊灌水', href: '/board/chat' },
 ];
 
 export function Header() {

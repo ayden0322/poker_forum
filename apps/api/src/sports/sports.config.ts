@@ -42,6 +42,7 @@ export const LEAGUE_CONFIG: Record<string, LeagueConfig> = {
   cpbl:             { sportType: 'baseball', displayName: '中華職棒',  apiHost: API_HOSTS.baseball, leagueId: 29, season: 2026 },
   npb:              { sportType: 'baseball', displayName: '日本職棒',  apiHost: API_HOSTS.baseball, leagueId: 2,  season: 2026 },
   kbo:              { sportType: 'baseball', displayName: '韓國職棒',  apiHost: API_HOSTS.baseball, leagueId: 5,  season: 2026 },
+  'other-baseball': { sportType: 'baseball', displayName: '墨西哥職棒',  apiHost: API_HOSTS.baseball, leagueId: 21, season: 2026 },
 };
 
 export const VALID_BOARD_SLUGS = Object.keys(LEAGUE_CONFIG);

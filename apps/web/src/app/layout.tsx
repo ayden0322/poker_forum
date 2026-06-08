@@ -4,6 +4,7 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner';
 import { Providers } from './providers';
+import { SITE_URL } from '@/lib/site';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -12,6 +13,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: '博客邦 - 亞洲最大賽事論壇',
     template: '%s | 博客邦',

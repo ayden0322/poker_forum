@@ -17,7 +17,7 @@ import { NBASidePanel } from '@/components/sports/nba/NBASidePanel';
 import { NBAGamesWidget } from '@/components/sports/nba/NBAGamesWidget';
 import { BaseballGamesWidget } from '@/components/sports/BaseballGamesWidget';
 import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
-import { CpblStandingsWidget } from '@/components/sports/cpbl/CpblStandingsWidget';
+import { BaseballStandingsWidget } from '@/components/sports/BaseballStandingsWidget';
 import { CpblInjuriesWidget } from '@/components/sports/cpbl/CpblInjuriesWidget';
 import { WorldCupActivityStrip } from '@/components/sports/world-cup/WorldCupActivityStrip';
 import { WorldCupMatchThreadShelf } from '@/components/sports/world-cup/WorldCupMatchThreadShelf';
@@ -25,7 +25,10 @@ import { WorldCupTagFilter } from '@/components/sports/world-cup/WorldCupTagFilt
 import { GameIcon } from '@/components/lottery/GameIcon';
 import { getMetaByBoardSlug } from '@/components/lottery/lottery-meta';
 
-const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo']);
+const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo', 'other-baseball']);
+
+/** 最新新聞區桌機預設顯示篇數（手機用 FEATURED_MOBILE_PREVIEW=2）；超過用「查看全部新聞」就地展開 */
+const NEWS_DESKTOP_PREVIEW = 4;
 
 export interface PostItem {
   id: string;
@@ -376,14 +379,12 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         <>
           {/* 視覺與 MLB 同步：橫向滾動賽事卡 + Tab 整合的排行榜/動態面板 */}
           <BaseballGamesWidget league={board.slug} />
-          {/* CPBL 專屬：戰績排行榜 + 傷兵動態（其他聯賽資料源稀缺，先不顯示） */}
-          {board.slug === 'cpbl' && (
-            <>
-              <CpblStandingsWidget />
-              <CpblInjuriesWidget />
-            </>
-          )}
-          <BaseballStatsPanel league={board.slug} />
+          {/* 戰績排行榜：CPBL / NPB / KBO / 其他棒球(LMB) 皆有 API-Sports 資料（NPB 自動分央聯/太平洋聯盟） */}
+          <BaseballStandingsWidget league={board.slug} />
+          {/* 傷兵動態：CPBL 專屬（爬 cpbl.com.tw）；NPB/KBO 暫無傷兵資料源 */}
+          {board.slug === 'cpbl' && <CpblInjuriesWidget />}
+          {/* 排行榜/動態面板：僅 CPBL/NPB/KBO 有官網爬蟲；other-baseball(LMB) 無 leaders 源，故略過 */}
+          {board.slug !== 'other-baseball' && <BaseballStatsPanel league={board.slug} />}
         </>
       ) : board.slug === 'nba' ? (
         <>
@@ -489,30 +490,50 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
               <div className="mb-2 px-1 text-[11px] font-medium text-blue-500">
                 📰 最新新聞
               </div>
-              {/* Desktop：全顯示。Mobile：預設只顯示前 N 篇，點按鈕展開 */}
+              {/* 桌機預設 4 篇、手機預設 2 篇；超過的用「查看全部新聞」就地展開（NEWS 上限 20） */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {news
-                  .slice(0, newsExpanded ? news.length : Number.POSITIVE_INFINITY)
-                  .map((post, i) => (
-                    <div
-                      key={post.id}
-                      className={
-                        !newsExpanded && i >= FEATURED_MOBILE_PREVIEW
-                          ? 'hidden md:block'
-                          : ''
-                      }
-                    >
-                      <FeaturedPostCard post={post} />
-                    </div>
-                  ))}
+                {news.map((post, i) => (
+                  <div
+                    key={post.id}
+                    className={
+                      newsExpanded
+                        ? ''
+                        : i < FEATURED_MOBILE_PREVIEW
+                          ? ''
+                          : i < NEWS_DESKTOP_PREVIEW
+                            ? 'hidden md:block'
+                            : 'hidden'
+                    }
+                  >
+                    <FeaturedPostCard post={post} />
+                  </div>
+                ))}
               </div>
-              {news.length > FEATURED_MOBILE_PREVIEW && !newsExpanded && (
-                <button
-                  onClick={() => setNewsExpanded(true)}
-                  className="md:hidden mt-2 w-full py-2 text-xs text-slate-500 hover:text-slate-700 border border-dashed border-slate-300 rounded-lg"
+              {news.length > FEATURED_MOBILE_PREVIEW && (
+                <div
+                  className={`mt-2 flex md:justify-end ${
+                    news.length <= NEWS_DESKTOP_PREVIEW ? 'md:hidden' : ''
+                  }`}
                 >
-                  展開全部新聞（還有 {news.length - FEATURED_MOBILE_PREVIEW} 篇）
-                </button>
+                  <button
+                    onClick={() => setNewsExpanded((v) => !v)}
+                    className="inline-flex items-center justify-center gap-1 w-full md:w-auto py-2 md:py-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    {newsExpanded ? (
+                      <>
+                        收合新聞 <span aria-hidden>↑</span>
+                      </>
+                    ) : (
+                      <>
+                        查看全部新聞
+                        <span className="font-normal text-slate-400">
+                          （共 {news.length} 篇）
+                        </span>
+                        <span aria-hidden>→</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -538,7 +559,7 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
                           : ''
                       }
                     >
-                      <FeaturedPostCard post={post} />
+                      <FeaturedPostCard post={post} variant="announcement" />
                     </div>
                   ))}
               </div>

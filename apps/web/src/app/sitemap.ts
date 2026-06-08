@@ -1,12 +1,13 @@
 import { MetadataRoute } from 'next';
 import { apiFetch } from '@/lib/api';
+import { SITE_URL } from '@/lib/site';
 
 interface Category {
   boards: { slug: string }[];
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://forum.example.com';
+  const baseUrl = SITE_URL;
 
   const staticPages: MetadataRoute.Sitemap = [
     { url: baseUrl, lastModified: new Date(), changeFrequency: 'daily', priority: 1 },

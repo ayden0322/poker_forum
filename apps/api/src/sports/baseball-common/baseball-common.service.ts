@@ -10,6 +10,7 @@ import {
   NormalizedGame,
   ApiSportsBaseballGame,
 } from './baseball-common.types';
+import { STATIC_BASEBALL_TEAM_NAMES } from './baseball-team-names';
 
 /**
  * 通用棒球服務（CPBL / NPB / KBO）
@@ -86,7 +87,15 @@ export class BaseballCommonService {
       where: { entityType: 'team', sport: 'baseball', apiId: { in: teamIds } },
       select: { apiId: true, nameZhTw: true, shortName: true },
     });
-    return new Map(translations.map((t) => [t.apiId, { nameZhTw: t.nameZhTw, shortName: t.shortName }]));
+    const map = new Map(translations.map((t) => [t.apiId, { nameZhTw: t.nameZhTw, shortName: t.shortName }]));
+    // DB 缺漏時用靜態表 fallback（NPB/KBO 固定隊伍，官方譯名品質高於 LLM）
+    for (const id of teamIds) {
+      if (!map.has(id)) {
+        const stat = STATIC_BASEBALL_TEAM_NAMES[id];
+        if (stat) map.set(id, { nameZhTw: stat.nameZhTw, shortName: stat.shortName });
+      }
+    }
+    return map;
   }
 
   // ============ 比賽資料（核心） ============

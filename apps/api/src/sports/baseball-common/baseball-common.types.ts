@@ -1,5 +1,5 @@
-/** 支援的非 MLB 棒球聯賽 slug */
-export const BASEBALL_LEAGUES = ['cpbl', 'npb', 'kbo'] as const;
+/** 支援的非 MLB 棒球聯賽 slug（other-baseball = 墨西哥職棒 LMB，代表「其他棒球」） */
+export const BASEBALL_LEAGUES = ['cpbl', 'npb', 'kbo', 'other-baseball'] as const;
 export type BaseballLeague = (typeof BASEBALL_LEAGUES)[number];
 
 /** 聯賽時區對應（用於台灣時間轉換） */
@@ -7,6 +7,7 @@ export const LEAGUE_TIMEZONE: Record<BaseballLeague, string> = {
   cpbl: 'Asia/Taipei',   // UTC+8（台灣本土，零時差）
   npb: 'Asia/Tokyo',     // UTC+9
   kbo: 'Asia/Seoul',     // UTC+9
+  'other-baseball': 'America/Mexico_City', // LMB 墨西哥職棒（UTC-6）
 };
 
 /** 聯賽中文名稱 */
@@ -14,6 +15,7 @@ export const LEAGUE_DISPLAY_NAME: Record<BaseballLeague, string> = {
   cpbl: '中華職棒',
   npb: '日本職棒',
   kbo: '韓國職棒',
+  'other-baseball': '墨西哥職棒',
 };
 
 /** API-Sports 棒球回傳的比賽資料格式（簡化型別） */

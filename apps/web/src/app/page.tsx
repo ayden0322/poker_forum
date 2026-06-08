@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { CategorySection } from '@/components/home/CategorySection';
+import { HomeBaseballHub } from '@/components/home/HomeBaseballHub';
+import { SITE_URL } from '@/lib/site';
 
 interface MarqueeItem {
   id: string;
@@ -8,37 +8,12 @@ interface MarqueeItem {
   url: string | null;
 }
 
-interface Board {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  icon: string | null;
-  _count: { posts: number };
-}
-
-interface Category {
-  id: string;
-  name: string;
-  slug: string;
-  boards: Board[];
-}
-
-interface CategoriesResponse {
-  data: Category[];
-}
-
 export const revalidate = 60;
 
 export default async function HomePage() {
-  let categories: Category[] = [];
   let marquees: MarqueeItem[] = [];
   try {
-    const [catRes, marqRes] = await Promise.all([
-      apiFetch<CategoriesResponse>('/boards/categories'),
-      apiFetch<{ data: MarqueeItem[] }>('/boards/marquees'),
-    ]);
-    categories = catRes.data;
+    const marqRes = await apiFetch<{ data: MarqueeItem[] }>('/boards/marquees');
     marquees = marqRes.data;
   } catch {
     // API 可能尚未啟動
@@ -49,22 +24,23 @@ export default async function HomePage() {
     '@type': 'WebSite',
     name: '博客邦',
     description: '亞洲最大賽事論壇 - 博客邦',
-    url: process.env.NEXT_PUBLIC_SITE_URL ?? 'https://forum.example.com',
+    url: SITE_URL,
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold mb-2">博客邦</h1>
-        <p className="text-gray-500">亞洲最大賽事論壇</p>
+
+      <div className="mb-4 flex items-baseline gap-2">
+        <h1 className="text-xl font-bold text-gray-900">博客邦</h1>
+        <span className="text-sm text-gray-500">亞洲最大賽事論壇 · 棒球即時賽事 × 玩家討論</span>
       </div>
 
       {marquees.length > 0 && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2.5 overflow-hidden">
+        <div className="mb-5 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2.5 overflow-hidden">
           <div className="flex items-center gap-3 animate-marquee">
             <span className="text-yellow-600 font-medium shrink-0">📢 最新</span>
             <div className="flex items-center gap-6 text-sm text-yellow-800">
@@ -80,15 +56,8 @@ export default async function HomePage() {
         </div>
       )}
 
-      {categories.length === 0 && (
-        <div className="text-center text-gray-400 py-20">
-          論壇正在準備中，請稍後再回來看看
-        </div>
-      )}
-
-      {categories.map((category) => (
-        <CategorySection key={category.id} category={category} />
-      ))}
+      {/* 棒球賽事中心：多聯盟三狀態即時賽事 + 新聞/討論/數據（看板與體育賽事走 header 導覽） */}
+      <HomeBaseballHub />
     </div>
   );
 }

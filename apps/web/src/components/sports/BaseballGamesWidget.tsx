@@ -18,6 +18,7 @@ const LEAGUE_META: Record<string, { label: string }> = {
   cpbl: { label: '中華職棒' },
   npb: { label: '日本職棒' },
   kbo: { label: '韓國職棒' },
+  'other-baseball': { label: '墨西哥職棒' },
 };
 
 interface ApiTeam {
