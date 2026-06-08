@@ -23,6 +23,7 @@ import { RedisModule } from './common/redis.module';
 import { SportsModule } from './sports/sports.module';
 import { TranslationModule } from './translation/translation.module';
 import { SearchModule } from './search/search.module';
+import { EconomyModule } from './economy/economy.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
 
@@ -57,6 +58,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     SportsModule,
     TranslationModule,
     SearchModule,
+    EconomyModule,
     ScheduleModule.forRoot(),
   ],
   providers: [

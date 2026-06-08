@@ -49,6 +49,7 @@ model User {
   phoneVerifications PhoneVerification[]
   emailVerifications EmailVerification[]
   lotteryPicks       UserLotteryPick[]
+  walletAccounts     WalletAccount[]
 
   @@map("users")
 }
@@ -635,4 +636,56 @@ model AdminPagePermission {
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("admin_page_permissions")
+}
+
+// ===== 會員經濟（G幣/P幣 帳本） =====
+// 設計：錢包存「目前餘額」，帳本（ledger）append-only 記每一筆異動。
+// 任何時點餘額 = 該帳戶所有 ledger amount 的累加（可稽核）。
+// 發/扣幣一律帶 idempotencyKey（@unique），同 key 重送不重複入帳。
+
+enum Currency {
+  G // G幣：行為獎勵、論壇積分
+  P // P幣：預測籌碼（只能用 G幣換）
+}
+
+enum LedgerReason {
+  TASK_REWARD       // 每日任務獎勵
+  SHOP_PURCHASE     // 裝飾商店購買（扣）
+  SHOP_REFUND       // 商店退款（入）
+  EXCHANGE_G_TO_P   // G→P 兌換
+  PREDICTION_STAKE  // 預測下注（扣 P）
+  PREDICTION_PAYOUT // 預測派彩（入 P）
+  PREDICTION_REFUND // 延賽/平盤退本（入 P）
+  ADMIN_ADJUST      // 後台手動調整
+}
+
+model WalletAccount {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency  Currency
+  balance   Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  ledgerEntries LedgerEntry[]
+
+  @@unique([userId, currency])
+  @@map("wallet_accounts")
+}
+
+model LedgerEntry {
+  id             String        @id @default(cuid())
+  accountId      String        @map("account_id")
+  account        WalletAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount         Int // 正=入帳、負=出帳
+  reason         LedgerReason
+  refType        String?       @map("ref_type") // 關聯來源類型（如 task / shopOrder / bet）
+  refId          String?       @map("ref_id")
+  idempotencyKey String        @unique @map("idempotency_key")
+  balanceAfter   Int           @map("balance_after") // 此筆異動後的餘額快照
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  @@index([accountId, createdAt])
+  @@map("ledger_entries")
 }
