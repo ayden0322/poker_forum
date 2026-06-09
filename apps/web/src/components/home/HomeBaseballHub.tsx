@@ -246,7 +246,7 @@ function normalizeNba(games: NbaRecentGame[]): HubGame[] {
       badge: meta.badge,
       badgeCls: meta.badgeCls,
       state,
-      href: `/match/baseball/nba/${g.id}`,
+      href: `/match/nba/apisports-${g.id}`,
       detail,
       away: { name: g.teams.away.name, logo: g.teams.away.logo ?? '', score: as, winner: state === 'Final' && as != null && hs != null && as > hs },
       home: { name: g.teams.home.name, logo: g.teams.home.logo ?? '', score: hs, winner: state === 'Final' && as != null && hs != null && hs > as },
