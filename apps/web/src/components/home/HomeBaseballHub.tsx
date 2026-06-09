@@ -669,6 +669,81 @@ function HotRow({ post, rank, badge, badgeCls }: { post: PostItem; rank: number;
   );
 }
 
+/* ───────────── 右欄：棒球即時比分小卡（單列精簡） ───────────── */
+function RailScoreRow({ g }: { g: HubGame }) {
+  const isLive = g.state === 'Live';
+  const showScore = g.state !== 'Preview';
+  return (
+    <Link href={g.href} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors">
+      {isLive ? (
+        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+      ) : (
+        <span className="shrink-0 text-[10px] text-gray-400 font-semibold tabular-nums w-9 text-center">{g.detail}</span>
+      )}
+      <div className="flex-1 min-w-0 text-[13px] leading-tight">
+        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold leading-none mb-1 ${g.badgeCls}`}>{g.badge}</span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate flex items-center gap-1.5 text-gray-700"><TeamLogo src={g.away.logo} />{g.away.name}</span>
+          {showScore && <span className={`font-bold tabular-nums ${isLive ? 'text-red-600' : 'text-gray-900'}`}>{g.away.score ?? '-'}</span>}
+        </div>
+        <div className="flex items-center justify-between gap-2 mt-0.5">
+          <span className="truncate flex items-center gap-1.5 text-gray-700"><TeamLogo src={g.home.logo} />{g.home.name}</span>
+          {showScore && <span className={`font-bold tabular-nums ${isLive ? 'text-red-600' : 'text-gray-900'}`}>{g.home.score ?? '-'}</span>}
+        </div>
+      </div>
+      {isLive && <span className="shrink-0 text-[10px] text-red-500 font-semibold whitespace-nowrap">{g.detail}</span>}
+    </Link>
+  );
+}
+
+/**
+ * 右欄棒球即時比分小卡 — 三態動態：
+ *  live：今天有進行中 → 顯示進行中比分（局數紅字）
+ *  schedule：今天有賽程但無進行中 → 顯示「棒球今日賽程」（誰打誰＋時間，無比分）
+ *  off：今天完全無賽程（深休賽季）→ 不露空卡，縮成「近期賽事」連結
+ * 資料永遠抓「今日棒球全聯盟」，與下方板塊的運動別/日期切換解耦。
+ */
+function RailLiveScores({ games, isLoading }: { games: HubGame[]; isLoading: boolean }) {
+  const live = games.filter((g) => g.state === 'Live');
+  const upcoming = games.filter((g) => g.state === 'Preview');
+  const finals = games.filter((g) => g.state === 'Final');
+  const hasLive = live.length > 0;
+
+  if (!isLoading && games.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+        <div className="flex items-center gap-2 mb-1"><span>⚾</span><h3 className="font-bold text-sm text-gray-800">棒球賽事</h3></div>
+        <p className="text-xs text-gray-400 mb-2">目前沒有進行中或今日賽事</p>
+        <Link href="/board/baseball" className="block text-center text-xs text-blue-600 font-medium py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors">看近期賽事與賽程 →</Link>
+      </div>
+    );
+  }
+
+  const shown = hasLive ? live.slice(0, 5) : [...upcoming, ...finals].slice(0, 4);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-3 py-2.5 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white flex items-center gap-2">
+        <span>⚾</span>
+        <h3 className="font-bold text-sm text-gray-800">{isLoading || hasLive ? '棒球即時比分' : '棒球今日賽程'}</h3>
+        {hasLive ? (
+          <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />{live.length} LIVE
+          </span>
+        ) : (
+          games.length > 0 && <span className="ml-auto text-[10px] text-gray-500 font-bold bg-gray-100 px-1.5 py-0.5 rounded-full">今日 {games.length} 場</span>
+        )}
+      </div>
+      {isLoading ? (
+        <div className="px-3 py-6 text-center text-xs text-gray-400">載入賽事中…</div>
+      ) : (
+        <div className="divide-y divide-gray-50">{shown.map((g) => <RailScoreRow key={g.key} g={g} />)}</div>
+      )}
+      <a href="#live-board" className="block text-center text-xs text-blue-600 font-medium py-2 border-t border-gray-50 hover:bg-blue-50 transition-colors">看下方完整賽事（含籃球·足球）↓</a>
+    </div>
+  );
+}
+
 /* ───────────── 主元件 ───────────── */
 export function HomeBaseballHub() {
   // 運動別主切換（Phase 2：棒球/籃球/足球）
@@ -685,6 +760,10 @@ export function HomeBaseballHub() {
   const { games: bbGames, isLoading: bbLoading } = useAllLeaguesGames(dateKey, sport === 'baseball');
   const { games: bkGames, isLoading: bkLoading } = useBasketballGames(dateKey, sport === 'basketball');
   const { games: fbGames, isLoading: fbLoading } = useFootballGames(dateKey, sport === 'football');
+
+  // 右欄棒球即時比分：永遠抓「今日」棒球全聯盟（與下方板塊的運動別/日期切換解耦）
+  // 當下方板塊本身就是棒球+今日時，queryKey 相同 → 與上面共用快取、不重複抓
+  const { games: railToday, isLoading: railLoading } = useAllLeaguesGames('today', true);
 
   // 當前運動的聯盟清單 + 全部場次
   const sportLeagues = sport === 'baseball' ? LEAGUES : sport === 'basketball' ? BASKETBALL_LEAGUES : FOOTBALL_LEAGUES;
@@ -726,9 +805,150 @@ export function HomeBaseballHub() {
   const sectionLabel = baseballSingle ? LEAGUES.find((l) => l.slug === baseballSingle)!.label : '棒球';
   const boardHref = baseballSingle ? `/board/${baseballSingle}` : '/board/baseball';
 
+  // 右欄熱門標籤：從首頁新聞+熱門討論的 tags 聚合（用現成資料，不打新 API），連到站內搜尋
+  const hotTags = (() => {
+    const m = new Map<string, { name: string; slug: string; n: number }>();
+    [...hot, ...news].forEach((p) =>
+      (p.tags ?? []).forEach(({ tag }) => {
+        const e = m.get(tag.slug) ?? { name: tag.name, slug: tag.slug, n: 0 };
+        e.n += 1;
+        m.set(tag.slug, e);
+      }),
+    );
+    return [...m.values()].sort((a, b) => b.n - a.n).slice(0, 10);
+  })();
+
   return (
     <section className="mb-10">
-      {/* masthead：聚焦深 teal，棒球賽事中心 + 聯盟切換 */}
+      {/* ── 上半部：左 新聞+熱門討論（棒球專區） / 右 sticky rail（棒球即時比分 + 競猜 + 熱門標籤）── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div className="lg:col-span-2 space-y-6">
+          {news.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2 px-1">
+                <span className="text-sm font-bold text-blue-600">📰 {sectionLabel}最新新聞</span>
+                <Link href={boardHref} className="text-xs text-gray-400 hover:text-blue-600">更多 →</Link>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {news.slice(0, 4).map((post) => (
+                  <div key={post.id} className="relative">
+                    {!baseballSingle && (post as HubPost).badge && (
+                      <span className={`absolute top-1.5 right-1.5 z-10 px-1 rounded text-[10px] font-bold leading-none pointer-events-none ${(post as HubPost).badgeCls}`}>
+                        {(post as HubPost).badge}
+                      </span>
+                    )}
+                    <FeaturedPostCard post={post} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div>
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-sm font-bold text-blue-600">🔥 {sectionLabel}熱門討論</span>
+              <Link href={boardHref} className="text-xs text-gray-400 hover:text-blue-600">全部討論 →</Link>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-50 py-1">
+              {postsBusy ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">載入中…</div>
+              ) : hot.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-400">
+                  還沒有人開聊，
+                  <Link href={boardHref} className="text-blue-600 hover:underline">搶頭香 →</Link>
+                </div>
+              ) : (
+                hot.slice(0, 7).map((post, i) => (
+                  <HotRow
+                    key={post.id}
+                    post={post}
+                    rank={i + 1}
+                    badge={!baseballSingle ? (post as HubPost).badge : undefined}
+                    badgeCls={!baseballSingle ? (post as HubPost).badgeCls : undefined}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 右窄欄：sticky rail（棒球即時比分 → 競猜排行 → 熱門標籤） */}
+        <aside className="lg:col-span-1">
+          <div className="lg:sticky lg:top-20 space-y-4">
+            {/* ① 棒球即時比分小卡（三態動態） */}
+            <RailLiveScores games={railToday} isLoading={railLoading} />
+
+            {/* ② 本週會員競猜排行（功能開發中，先保留版位 + 預約 CTA） */}
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-3 py-2.5 border-b border-gray-100 bg-gradient-to-r from-accent-50 to-white flex items-center gap-2">
+                <span>🏆</span>
+                <h3 className="font-bold text-sm text-gray-800">本週競猜排行</h3>
+                <span className="ml-auto text-[10px] text-accent-500 bg-accent-50 px-1.5 py-0.5 rounded-full font-medium">
+                  即將開放
+                </span>
+              </div>
+              <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-50">
+                {([['mlb', 'MLB'], ['cpbl', '中職']] as const).map(([slug, label]) => (
+                  <button
+                    key={slug}
+                    onClick={() => setPanelLeague(slug)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                      panelLeague === slug ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="p-3 space-y-2">
+                {[
+                  { rank: 1, medal: '🥇' },
+                  { rank: 2, medal: '🥈' },
+                  { rank: 3, medal: '🥉' },
+                ].map((r) => (
+                  <div key={r.rank} className="flex items-center gap-3 px-2.5 py-2 rounded-lg bg-gray-50/70">
+                    <span className="text-base leading-none">{r.medal}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="h-2.5 w-20 bg-gray-200 rounded-full" />
+                    </div>
+                    <span className="text-xs text-gray-300 tabular-nums">-- 分</span>
+                  </div>
+                ))}
+                <p className="text-center text-[11px] text-gray-400 leading-relaxed pt-1">
+                  登入後競猜本週 {panelLeague === 'mlb' ? 'MLB' : '中職'} 賽事、比準度衝上排行榜
+                </p>
+                <button className="w-full text-center text-xs font-bold text-white bg-accent-500 hover:bg-accent-600 py-2 rounded-lg transition-colors">
+                  🔔 搶先預約競猜
+                </button>
+              </div>
+            </div>
+
+            {/* ③ 熱門標籤雲（從首頁貼文 tags 聚合，連站內搜尋；無資料時整塊不顯示） */}
+            {hotTags.length > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+                <div className="flex items-center gap-2 mb-2.5">
+                  <span>🔖</span>
+                  <h3 className="font-bold text-sm text-gray-800">熱門標籤</h3>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {hotTags.map((t) => (
+                    <Link
+                      key={t.slug}
+                      href={`/search?q=${encodeURIComponent(t.name)}`}
+                      className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                    >
+                      #{t.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* ── 下半部：完整即時賽事板塊（運動別/聯盟/日期切換 + 三狀態列）── */}
+      <div id="live-board" className="mt-8 scroll-mt-20">
+      {/* masthead：棒球賽事中心 + 聯盟切換 */}
       <div className="rounded-t-2xl bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 px-5 pt-3.5 pb-2">
         <div className="flex items-center justify-between gap-3 mb-2.5">
           <div className="min-w-0">
@@ -825,106 +1045,6 @@ export function HomeBaseballHub() {
         {/* 狀態用分段排序呈現（進行中→尚未開賽→已結束），不再用狀態子 tab */}
         <ThreeStateList games={displayGames} isLoading={displayLoading} crossLeague={crossLeague} />
       </div>
-
-      {/* 雙欄：左 新聞+熱門討論 / 右 數據面板（主詞跟著上半部模式走） */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-        <div className="lg:col-span-2 space-y-6">
-          {news.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2 px-1">
-                <span className="text-sm font-bold text-blue-600">📰 {sectionLabel}最新新聞</span>
-                <Link href={boardHref} className="text-xs text-gray-400 hover:text-blue-600">更多 →</Link>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {news.slice(0, 4).map((post) => (
-                  <div key={post.id} className="relative">
-                    {!baseballSingle && (post as HubPost).badge && (
-                      <span className={`absolute top-1.5 right-1.5 z-10 px-1 rounded text-[10px] font-bold leading-none pointer-events-none ${(post as HubPost).badgeCls}`}>
-                        {(post as HubPost).badge}
-                      </span>
-                    )}
-                    <FeaturedPostCard post={post} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div>
-            <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-sm font-bold text-blue-600">🔥 {sectionLabel}熱門討論</span>
-              <Link href={boardHref} className="text-xs text-gray-400 hover:text-blue-600">全部討論 →</Link>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm divide-y divide-gray-50 py-1">
-              {postsBusy ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">載入中…</div>
-              ) : hot.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">
-                  還沒有人開聊，
-                  <Link href={boardHref} className="text-blue-600 hover:underline">搶頭香 →</Link>
-                </div>
-              ) : (
-                hot.slice(0, 7).map((post, i) => (
-                  <HotRow
-                    key={post.id}
-                    post={post}
-                    rank={i + 1}
-                    badge={!baseballSingle ? (post as HubPost).badge : undefined}
-                    badgeCls={!baseballSingle ? (post as HubPost).badgeCls : undefined}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 右窄欄：本週會員競猜排行（會員競猜功能開發中，先保留版位） */}
-        <aside className="lg:col-span-1">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* 標題 */}
-            <div className="px-3 py-2.5 border-b border-gray-100 bg-gradient-to-r from-accent-50 to-white flex items-center gap-2">
-              <span>🏆</span>
-              <h3 className="font-bold text-sm text-gray-800">本週競猜排行</h3>
-              <span className="ml-auto text-[10px] text-accent-500 bg-accent-50 px-1.5 py-0.5 rounded-full font-medium">
-                即將開放
-              </span>
-            </div>
-            {/* MLB / 中職 切換 */}
-            <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-50">
-              {([['mlb', 'MLB'], ['cpbl', '中職']] as const).map(([slug, label]) => (
-                <button
-                  key={slug}
-                  onClick={() => setPanelLeague(slug)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                    panelLeague === slug ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {/* 前三名版位（會員競猜資料待開發，先放骨架） */}
-            <div className="p-3 space-y-2">
-              {[
-                { rank: 1, medal: '🥇' },
-                { rank: 2, medal: '🥈' },
-                { rank: 3, medal: '🥉' },
-              ].map((r) => (
-                <div key={r.rank} className="flex items-center gap-3 px-2.5 py-2 rounded-lg bg-gray-50/70">
-                  <span className="text-base leading-none">{r.medal}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="h-2.5 w-20 bg-gray-200 rounded-full" />
-                  </div>
-                  <span className="text-xs text-gray-300 tabular-nums">-- 分</span>
-                </div>
-              ))}
-              <p className="text-center text-[11px] text-gray-400 leading-relaxed pt-1">
-                會員競猜即將開放
-                <br />
-                登入後競猜本週 {panelLeague === 'mlb' ? 'MLB' : '中職'} 賽事、比準度衝上排行榜
-              </p>
-            </div>
-          </div>
-        </aside>
       </div>
     </section>
   );
