@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 
-interface BBScore {
+export interface BBScore {
   quarter_1: number | null;
   quarter_2: number | null;
   quarter_3: number | null;
@@ -10,7 +10,7 @@ interface BBScore {
   over_time: number | null;
   total: number | null;
 }
-interface BBTeam {
+export interface BBTeam {
   id: number;
   name: string;
   nameZhTw?: string | null;
@@ -18,7 +18,7 @@ interface BBTeam {
   logo: string;
   score: number | null;
 }
-interface BBGame {
+export interface BBGame {
   id: number;
   league: string;
   date: string;

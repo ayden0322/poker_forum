@@ -1,27 +1,7 @@
 import { apiFetch } from '@/lib/api';
 import { notFound } from 'next/navigation';
-import BasketballMatchClient from './BasketballMatchClient';
+import BasketballMatchClient, { BBGame, BBTeam } from './BasketballMatchClient';
 
-interface BBTeam {
-  id: number;
-  name: string;
-  nameZhTw?: string | null;
-  shortName?: string | null;
-  logo: string;
-  score: number | null;
-}
-interface BBGame {
-  id: number;
-  league: string;
-  date: string;
-  timestamp: number;
-  status: string;
-  statusShort: string;
-  stage: string | null;
-  venue: string | null;
-  teams: { home: BBTeam; away: BBTeam };
-  scores?: unknown;
-}
 interface LeagueConfig {
   displayName: string;
   capabilities: { boxScore: boolean; odds: boolean } | null;
