@@ -30,15 +30,40 @@ const navItems: NavItem[] = [
     label: '體育賽事',
     megaMenu: [
       {
-        title: '籃球',
+        title: '籃球·台亞',
         icon: '🏀',
         items: [
           { label: 'NBA', href: '/board/nba' },
-          { label: 'CBA', href: '/board/cba' },
-          { label: 'T1 聯盟', href: '/board/t1-league' },
-          { label: 'B.League', href: '/board/b-league' },
-          { label: 'KBL', href: '/board/kbl' },
+          { label: '台灣職籃總覽', href: '/basketball/taiwan' },
+          { label: 'P.League+', href: '/board/p-league-plus' },
+          { label: 'TPBL', href: '/board/tpbl' },
+          { label: 'SBL 超籃', href: '/board/sbl' },
+          { label: 'CBA 中國', href: '/board/cba' },
+          { label: 'B.League 日本', href: '/board/b-league' },
+          { label: 'KBL 韓國', href: '/board/kbl' },
+          { label: '東亞超級聯賽', href: '/board/easl' },
+          { label: 'VBA 越南', href: '/board/vba' },
+          { label: 'NBL 印尼', href: '/board/indonesia-nbl' },
+          { label: 'NBL 澳洲', href: '/board/australia-nbl' },
+          { label: 'PBA 菲律賓', href: '/board/pba' },
           { label: '其他籃球', href: '/board/other-basketball' },
+        ],
+      },
+      {
+        title: '籃球·歐洲',
+        icon: '🏀',
+        items: [
+          { label: 'Euroleague', href: '/board/euroleague' },
+          { label: 'EuroCup', href: '/board/eurocup' },
+          { label: 'ABA 聯賽', href: '/board/aba-league' },
+          { label: 'ACB 西班牙', href: '/board/spain-acb' },
+          { label: 'LNB 法國', href: '/board/france-lnb' },
+          { label: 'Lega A 義大利', href: '/board/italy-lega-a' },
+          { label: 'BBL 德國', href: '/board/germany-bbl' },
+          { label: '希臘籃球', href: '/board/greece-basket-league' },
+          { label: '土耳其籃球', href: '/board/turkey-super-ligi' },
+          { label: 'LKL 立陶宛', href: '/board/lithuania-lkl' },
+          { label: '波蘭籃球', href: '/board/poland-tbl' },
         ],
       },
       {
@@ -184,8 +209,8 @@ export function Header() {
                       {item.label}
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </span>
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-[520px] bg-white rounded-xl shadow-2xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
-                      <div className="grid grid-cols-4 gap-4">
+                    <div className="absolute left-0 top-full w-[820px] max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 p-4">
+                      <div className="grid grid-cols-5 gap-4">
                         {item.megaMenu.map((col) => (
                           <div key={col.title}>
                             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
