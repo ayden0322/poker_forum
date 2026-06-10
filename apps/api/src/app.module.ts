@@ -24,6 +24,7 @@ import { SportsModule } from './sports/sports.module';
 import { TranslationModule } from './translation/translation.module';
 import { SearchModule } from './search/search.module';
 import { EconomyModule } from './economy/economy.module';
+import { TasksModule } from './tasks/tasks.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
 
@@ -59,6 +60,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     TranslationModule,
     SearchModule,
     EconomyModule,
+    TasksModule,
     ScheduleModule.forRoot(),
   ],
   providers: [

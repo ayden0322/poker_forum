@@ -50,6 +50,7 @@ model User {
   emailVerifications EmailVerification[]
   lotteryPicks       UserLotteryPick[]
   walletAccounts     WalletAccount[]
+  dailyTaskProgress  DailyTaskProgress[]
 
   @@map("users")
 }
@@ -753,4 +754,40 @@ model LevelTier {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("level_tiers")
+}
+
+// ===== 每日任務 =====
+// 任務「類型」由程式定義（綁事件）；獎勵數值程式預設 + seed，後台 CRUD 為後續增量。
+
+enum DailyTaskKey {
+  LOGIN       // 每日登入
+  VIEW_POSTS  // 瀏覽 5 篇文章
+  CREATE_POST // 發表 1 篇文章
+  REPLY       // 回覆 3 篇文章
+  LIKE        // 按讚 5 次
+}
+
+model DailyTaskDef {
+  taskKey   DailyTaskKey @id @map("task_key")
+  label     String
+  rewardG   Int          @map("reward_g")
+  rewardExp Int          @map("reward_exp")
+  enabled   Boolean      @default(true)
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@map("daily_task_defs")
+}
+
+// 每日任務完成紀錄（一天一次去重；taskDate 為台灣日 YYYY-MM-DD）。
+model DailyTaskProgress {
+  id          String       @id @default(cuid())
+  userId      String       @map("user_id")
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taskKey     DailyTaskKey @map("task_key")
+  taskDate    String       @map("task_date") // 台灣日 YYYY-MM-DD
+  completedAt DateTime     @default(now()) @map("completed_at")
+
+  @@unique([userId, taskKey, taskDate])
+  @@index([userId, taskDate])
+  @@map("daily_task_progress")
 }
