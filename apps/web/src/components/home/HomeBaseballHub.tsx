@@ -669,77 +669,104 @@ function HotRow({ post, rank, badge, badgeCls }: { post: PostItem; rank: number;
   );
 }
 
-/* ───────────── 右欄：棒球即時比分小卡（單列精簡） ───────────── */
-function RailScoreRow({ g }: { g: HubGame }) {
-  const isLive = g.state === 'Live';
-  const showScore = g.state !== 'Preview';
-  return (
-    <Link href={g.href} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors">
-      {isLive ? (
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
-      ) : (
-        <span className="shrink-0 text-[10px] text-gray-400 font-semibold tabular-nums w-9 text-center">{g.detail}</span>
-      )}
-      <div className="flex-1 min-w-0 text-[13px] leading-tight">
-        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold leading-none mb-1 ${g.badgeCls}`}>{g.badge}</span>
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate flex items-center gap-1.5 text-gray-700"><TeamLogo src={g.away.logo} />{g.away.name}</span>
-          {showScore && <span className={`font-bold tabular-nums ${isLive ? 'text-red-600' : 'text-gray-900'}`}>{g.away.score ?? '-'}</span>}
-        </div>
-        <div className="flex items-center justify-between gap-2 mt-0.5">
-          <span className="truncate flex items-center gap-1.5 text-gray-700"><TeamLogo src={g.home.logo} />{g.home.name}</span>
-          {showScore && <span className={`font-bold tabular-nums ${isLive ? 'text-red-600' : 'text-gray-900'}`}>{g.home.score ?? '-'}</span>}
-        </div>
-      </div>
-      {isLive && <span className="shrink-0 text-[10px] text-red-500 font-semibold whitespace-nowrap">{g.detail}</span>}
-    </Link>
-  );
+/* ───────────── 右欄：MLB 數據排行（全壘打/打點/防禦率） ───────────── */
+/** 三個榜：對應 statsapi leaderCategories；其餘類別走「看完整」概念但本版不外連 */
+const LEADER_CATS = [
+  { key: 'homeRuns', label: '全壘打', unit: '轟' },
+  { key: 'runsBattedIn', label: '打點', unit: '分' },
+  { key: 'earnedRunAverage', label: '防禦率', unit: '' },
+] as const;
+
+interface LeaderRow {
+  rank: number;
+  value: string;
+  player: { id: number; nameEn: string; nameZhTw: string; shortName?: string };
+  team: { id: number; nameEn: string };
 }
 
 /**
- * 右欄棒球即時比分小卡 — 三態動態：
- *  live：今天有進行中 → 顯示進行中比分（局數紅字）
- *  schedule：今天有賽程但無進行中 → 顯示「棒球今日賽程」（誰打誰＋時間，無比分）
- *  off：今天完全無賽程（深休賽季）→ 不露空卡，縮成「近期賽事」連結
- * 資料永遠抓「今日棒球全聯盟」，與下方板塊的運動別/日期切換解耦。
+ * MLB 數據排行卡（常駐）— 顧問拍板：明講 MLB、不做聯盟切換（API-Sports 其餘棒球聯盟無球員數據）。
+ * 預設顯示前 5，點「顯示更多」內嵌展開到前 10，不外連。
+ * 球隊名以 /mlb/teams 的中文短名翻譯（與賽事列共用 queryKey 快取）。
  */
-function RailLiveScores({ games, isLoading }: { games: HubGame[]; isLoading: boolean }) {
-  const live = games.filter((g) => g.state === 'Live');
-  const upcoming = games.filter((g) => g.state === 'Preview');
-  const finals = games.filter((g) => g.state === 'Final');
-  const hasLive = live.length > 0;
+function RailLeaders() {
+  const [cat, setCat] = useState<string>('homeRuns');
+  const [expanded, setExpanded] = useState(false);
 
-  if (!isLoading && games.length === 0) {
-    return (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
-        <div className="flex items-center gap-2 mb-1"><span>⚾</span><h3 className="font-bold text-sm text-gray-800">棒球賽事</h3></div>
-        <p className="text-xs text-gray-400 mb-2">目前沒有進行中或今日賽事</p>
-        <Link href="/board/baseball" className="block text-center text-xs text-blue-600 font-medium py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors">看近期賽事與賽程 →</Link>
-      </div>
-    );
-  }
+  const { data, isLoading } = useQuery({
+    queryKey: ['mlb-leaders', cat],
+    queryFn: () => apiFetch<{ data: LeaderRow[] }>(`/mlb/leaders/${cat}?limit=10`),
+    staleTime: 60 * 60 * 1000,
+  });
+  // 球隊中文短名（與 useAllLeaguesGames 同 queryKey → 共用快取）
+  const { data: teamTr } = useQuery({
+    queryKey: ['mlb-team-translations'],
+    queryFn: async () => {
+      const res = await apiFetch<{ data: Array<{ id: number; nameZhTw: string; shortName?: string }> }>('/mlb/teams');
+      return new Map(res.data.map((t) => [t.id, t]));
+    },
+    staleTime: 24 * 60 * 60 * 1000,
+  });
 
-  const shown = hasLive ? live.slice(0, 5) : [...upcoming, ...finals].slice(0, 4);
+  const rows = data?.data ?? [];
+  const shown = expanded ? rows.slice(0, 10) : rows.slice(0, 5);
+  const unit = LEADER_CATS.find((c) => c.key === cat)!.unit;
+  const teamName = (r: LeaderRow) => {
+    const tr = teamTr?.get(r.team.id);
+    return tr?.shortName || tr?.nameZhTw || r.team.nameEn;
+  };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
       <div className="px-3 py-2.5 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-white flex items-center gap-2">
-        <span>⚾</span>
-        <h3 className="font-bold text-sm text-gray-800">{isLoading || hasLive ? '棒球即時比分' : '棒球今日賽程'}</h3>
-        {hasLive ? (
-          <span className="ml-auto flex items-center gap-1 text-[10px] text-red-500 font-bold bg-red-50 px-1.5 py-0.5 rounded-full">
-            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />{live.length} LIVE
-          </span>
-        ) : (
-          games.length > 0 && <span className="ml-auto text-[10px] text-gray-500 font-bold bg-gray-100 px-1.5 py-0.5 rounded-full">今日 {games.length} 場</span>
-        )}
+        <span>📊</span>
+        <h3 className="font-bold text-sm text-gray-800">MLB 數據排行</h3>
+        <span className="ml-auto text-[10px] text-gray-400">本季</span>
+      </div>
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-50">
+        {LEADER_CATS.map((c) => (
+          <button
+            key={c.key}
+            onClick={() => { setCat(c.key); setExpanded(false); }}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+              cat === c.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
       {isLoading ? (
-        <div className="px-3 py-6 text-center text-xs text-gray-400">載入賽事中…</div>
+        <div className="px-3 py-6 text-center text-xs text-gray-400">載入中…</div>
+      ) : rows.length === 0 ? (
+        <div className="px-3 py-6 text-center text-xs text-gray-400">本季暫無數據</div>
       ) : (
-        <div className="divide-y divide-gray-50">{shown.map((g) => <RailScoreRow key={g.key} g={g} />)}</div>
+        <>
+          <div className="py-1 divide-y divide-gray-50">
+            {shown.map((r, i) => (
+              <div key={r.player.id} className="flex items-center gap-2.5 px-3 py-1.5">
+                <span className={`w-4 text-center text-sm font-bold ${i === 0 ? 'text-amber-500' : i < 3 ? 'text-blue-600' : 'text-gray-300'}`}>{r.rank}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-[13px] text-gray-800">{r.player.shortName || r.player.nameZhTw || r.player.nameEn}</div>
+                  <div className="text-[10px] text-gray-400 truncate">{teamName(r)}</div>
+                </div>
+                <span className="tabular-nums font-bold text-sm text-gray-900 text-right">
+                  {r.value}
+                  {unit && <span className="text-[10px] text-gray-400 font-normal ml-0.5">{unit}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+          {rows.length > 5 && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="block w-full text-center text-xs text-blue-600 font-medium py-2 border-t border-gray-50 hover:bg-blue-50 transition-colors"
+            >
+              {expanded ? '收起 ▴' : '顯示更多（前 10 名）▾'}
+            </button>
+          )}
+        </>
       )}
-      <a href="#live-board" className="block text-center text-xs text-blue-600 font-medium py-2 border-t border-gray-50 hover:bg-blue-50 transition-colors">看下方完整賽事（含籃球·足球）↓</a>
     </div>
   );
 }
@@ -760,10 +787,6 @@ export function HomeBaseballHub() {
   const { games: bbGames, isLoading: bbLoading } = useAllLeaguesGames(dateKey, sport === 'baseball');
   const { games: bkGames, isLoading: bkLoading } = useBasketballGames(dateKey, sport === 'basketball');
   const { games: fbGames, isLoading: fbLoading } = useFootballGames(dateKey, sport === 'football');
-
-  // 右欄棒球即時比分：永遠抓「今日」棒球全聯盟（與下方板塊的運動別/日期切換解耦）
-  // 當下方板塊本身就是棒球+今日時，queryKey 相同 → 與上面共用快取、不重複抓
-  const { games: railToday, isLoading: railLoading } = useAllLeaguesGames('today', true);
 
   // 當前運動的聯盟清單 + 全部場次
   const sportLeagues = sport === 'baseball' ? LEAGUES : sport === 'basketball' ? BASKETBALL_LEAGUES : FOOTBALL_LEAGUES;
@@ -874,8 +897,8 @@ export function HomeBaseballHub() {
         {/* 右窄欄：sticky rail（棒球即時比分 → 競猜排行 → 熱門標籤） */}
         <aside className="lg:col-span-1">
           <div className="lg:sticky lg:top-20 space-y-4">
-            {/* ① 棒球即時比分小卡（三態動態） */}
-            <RailLiveScores games={railToday} isLoading={railLoading} />
+            {/* ① MLB 數據排行（常駐，全壘打/打點/防禦率，前 5 可展開到前 10） */}
+            <RailLeaders />
 
             {/* ② 本週會員競猜排行（功能開發中，先保留版位 + 預約 CTA） */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
