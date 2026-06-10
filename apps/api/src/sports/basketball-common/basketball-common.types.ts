@@ -126,6 +126,60 @@ export interface NormalizedBasketballTeam {
   score: number | null;
 }
 
+/** 正規化球員單場數據（box score 一行）— 跨資料源統一 */
+export interface BoxScorePlayerLine {
+  teamId: number;
+  name: string;
+  starter: boolean;
+  minutes: string | null;
+  points: number | null;
+  rebounds: number | null;
+  assists: number | null;
+  fgm: number | null;
+  fga: number | null;
+  tpm: number | null;
+  tpa: number | null;
+  ftm: number | null;
+  fta: number | null;
+}
+
+/** 正規化球隊單場統計 */
+export interface BoxScoreTeamLine {
+  teamId: number;
+  points: number | null;
+  fgm: number | null;
+  fga: number | null;
+  tpm: number | null;
+  tpa: number | null;
+  ftm: number | null;
+  fta: number | null;
+  rebounds: number | null;
+  offReb: number | null;
+  defReb: number | null;
+  assists: number | null;
+  steals: number | null;
+  blocks: number | null;
+  turnovers: number | null;
+  fouls: number | null;
+}
+
+/** 正規化 box score（前端依 teamId 對應主/客）*/
+export interface NormalizedBoxScore {
+  teams: BoxScoreTeamLine[];
+  players: BoxScorePlayerLine[];
+}
+
+/** 正規化賠率（取單一博彩商的主要市場，前端友善）*/
+export interface OddsMarket {
+  name: string;
+  values: { label: string; odd: string }[];
+}
+export interface NormalizedOdds {
+  bookmaker: string | null;
+  updateAt?: string | null;
+  markets: OddsMarket[];
+}
+
 /**
  * 正規化排行榜（跨資料源統一）：API-Sports 與 TPBL 官方 API 都映射成此形狀，
  * 前端同一個 StandingsWidget 即可通吃。

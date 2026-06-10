@@ -1,6 +1,41 @@
 'use client';
 
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
+
+interface BoxPlayer {
+  teamId: number;
+  name: string;
+  starter: boolean;
+  minutes: string | null;
+  points: number | null;
+  rebounds: number | null;
+  assists: number | null;
+  fgm: number | null;
+  fga: number | null;
+  tpm: number | null;
+  tpa: number | null;
+  ftm: number | null;
+  fta: number | null;
+}
+interface BoxScore {
+  teams: { teamId: number; rebounds: number | null; assists: number | null; steals: number | null; blocks: number | null; turnovers: number | null }[];
+  players: BoxPlayer[];
+}
+interface OddsData {
+  bookmaker: string | null;
+  markets: { name: string; values: { label: string; odd: string }[] }[];
+}
+
+const MARKET_ZH: Record<string, string> = {
+  'Home/Away': '勝負',
+  '3Way Result': '三式（含平手）',
+  'Asian Handicap': '亞洲讓分',
+  'Handicap Result': '讓分',
+  'Over/Under': '大小分',
+  'Double Chance': '雙重機會',
+};
 
 export interface BBScore {
   quarter_1: number | null;
@@ -73,10 +108,102 @@ function TeamBlock({ league, t }: { league: string; t: BBTeam }) {
   );
 }
 
+function pct(m: number | null, a: number | null): string {
+  if (!a) return '-';
+  return `${m ?? 0}/${a}`;
+}
+
+function BoxScoreSection({ box, home, away }: { box?: { data: BoxScore }; home: BBTeam; away: BBTeam }) {
+  const players = box?.data?.players ?? [];
+  if (players.length === 0) return null;
+  const cols = ['分', '籃板', '助攻', '投籃', '三分', '罰球', '時間'];
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+      <div className="px-4 py-2 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white text-sm font-bold text-gray-700">
+        📊 Box Score 球員數據
+      </div>
+      {[away, home].map((t) => {
+        const rows = players
+          .filter((p) => p.teamId === t.id)
+          .sort((a, b) => (b.points ?? 0) - (a.points ?? 0));
+        if (rows.length === 0) return null;
+        return (
+          <div key={t.id}>
+            <div className="px-4 py-1.5 bg-gray-50/80 border-b border-gray-100 text-xs font-medium text-gray-600 flex items-center gap-2">
+              {t.logo && <img src={t.logo} alt="" className="w-4 h-4 object-contain" />}
+              {t.nameZhTw ?? t.name}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="text-left px-3 py-1.5 font-medium">球員</th>
+                    {cols.map((c) => (
+                      <th key={c} className="text-center px-2 py-1.5 font-medium whitespace-nowrap">{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((p, i) => (
+                    <tr key={i} className="border-b border-gray-50">
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        <span className="text-gray-800">{p.name}</span>
+                        {p.starter && <span className="ml-1 text-[9px] text-orange-500">先發</span>}
+                      </td>
+                      <td className="text-center px-2 py-1.5 tabular-nums font-bold text-gray-900">{p.points ?? '-'}</td>
+                      <td className="text-center px-2 py-1.5 tabular-nums text-gray-600">{p.rebounds ?? '-'}</td>
+                      <td className="text-center px-2 py-1.5 tabular-nums text-gray-600">{p.assists ?? '-'}</td>
+                      <td className="text-center px-2 py-1.5 tabular-nums text-gray-500">{pct(p.fgm, p.fga)}</td>
+                      <td className="text-center px-2 py-1.5 tabular-nums text-gray-500">{pct(p.tpm, p.tpa)}</td>
+                      <td className="text-center px-2 py-1.5 tabular-nums text-gray-500">{pct(p.ftm, p.fta)}</td>
+                      <td className="text-center px-2 py-1.5 tabular-nums text-gray-400">{p.minutes ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OddsPanel({ odds }: { odds?: { data: OddsData | null } }) {
+  const data = odds?.data;
+  if (!data?.markets?.length) return null;
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
+      <div className="px-4 py-2 border-b border-gray-100 bg-gradient-to-r from-orange-50 to-white text-sm font-bold text-gray-700 flex items-center">
+        🎯 賠率
+        {data.bookmaker && <span className="ml-auto text-[10px] text-gray-400 font-normal">{data.bookmaker}</span>}
+      </div>
+      <div className="p-3 space-y-3">
+        {data.markets.map((m) => (
+          <div key={m.name}>
+            <div className="text-xs font-medium text-gray-500 mb-1">{MARKET_ZH[m.name] ?? m.name}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {m.values.map((v, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-50 border border-gray-100">
+                  <span className="text-gray-500">{v.label}</span>
+                  <span className="font-bold text-orange-600 tabular-nums">{v.odd}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="px-4 pb-2 text-[10px] text-gray-300">賠率僅供參考，實際以下注平台為準</div>
+    </div>
+  );
+}
+
 export default function BasketballMatchClient({
   league,
   leagueName,
   game,
+  canBoxScore,
   canOdds,
 }: {
   league: string;
@@ -88,6 +215,20 @@ export default function BasketballMatchClient({
   const badge = statusBadge(game.statusShort);
   const home = game.teams.home;
   const away = game.teams.away;
+  const started = game.statusShort === 'FT' || game.statusShort === 'LIVE';
+
+  const { data: box } = useQuery({
+    queryKey: ['bb-boxscore', league, game.id],
+    queryFn: () => apiFetch<{ data: BoxScore }>(`/basketball/${league}/games/${game.id}/boxscore`),
+    enabled: canBoxScore && started,
+    staleTime: 60 * 1000,
+  });
+  const { data: odds } = useQuery({
+    queryKey: ['bb-odds', league, game.id],
+    queryFn: () => apiFetch<{ data: OddsData | null }>(`/basketball/${league}/odds?gameId=${game.id}`),
+    enabled: canOdds,
+    staleTime: 5 * 60 * 1000,
+  });
   const sc = game.scores;
   const hasScore = home.score != null && away.score != null;
   const quarters: { key: keyof BBScore; label: string }[] = [
@@ -172,6 +313,12 @@ export default function BasketballMatchClient({
           </div>
         )}
       </div>
+
+      {/* 賠率（有 odds 能力的聯賽）*/}
+      {canOdds && <OddsPanel odds={odds} />}
+
+      {/* Box Score 球員數據（有 boxScore 能力的聯賽）*/}
+      {canBoxScore && <BoxScoreSection box={box} home={home} away={away} />}
 
       {/* inline CTA：接在「看完比分的動作」後 */}
       <div className="flex gap-3">

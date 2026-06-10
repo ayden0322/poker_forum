@@ -4,6 +4,9 @@ import { LEAGUE_CONFIG } from '../sports.config';
 import {
   NormalizedBasketballGame,
   NormalizedStanding,
+  NormalizedBoxScore,
+  BoxScoreTeamLine,
+  BoxScorePlayerLine,
 } from '../basketball-common/basketball-common.types';
 
 /**
@@ -131,16 +134,69 @@ export class TpblStatsService {
     });
   }
 
-  /** 單場 box score（球員/球隊統計）*/
-  async getBoxScore(gameId: number) {
-    const caps = this.getCapabilities();
-    if (!caps?.boxScore) return { teams: [], players: [] };
+  /** 單場 box score（正規化成 NormalizedBoxScore，用官方 players.total / teams.total）*/
+  async getBoxScore(gameId: number): Promise<NormalizedBoxScore> {
     const cacheKey = `tpbl:boxscore:${gameId}`;
-    const data = await this.cached(cacheKey, 60, async () => {
+    const data = await this.cached<NormalizedBoxScore>(cacheKey, 60, async () => {
       const stats = await this.get<any>(`/games/${gameId}/stats`);
-      return stats ?? { teams: [], players: [] };
+      if (!stats) return { teams: [], players: [] };
+
+      const teams: BoxScoreTeamLine[] = [];
+      const players: BoxScorePlayerLine[] = [];
+
+      for (const side of ['home_team', 'away_team'] as const) {
+        const t = stats[side];
+        if (!t) continue;
+        const teamId = t.id;
+        const tt = t.teams?.total ?? {};
+        teams.push({
+          teamId,
+          points: tt.won_score ?? null,
+          fgm: tt.field_goals_made ?? null,
+          fga: tt.field_goals_attempted ?? null,
+          tpm: tt.three_pointers_made ?? null,
+          tpa: tt.three_pointers_attempted ?? null,
+          ftm: tt.free_throws_made ?? null,
+          fta: tt.free_throws_attempted ?? null,
+          rebounds: tt.rebounds ?? null,
+          offReb: tt.offensive_rebounds ?? null,
+          defReb: tt.defensive_rebounds ?? null,
+          assists: tt.assists ?? null,
+          steals: tt.steals ?? null,
+          blocks: tt.blocks ?? null,
+          turnovers: tt.turnovers ?? null,
+          fouls: tt.personal_fouls ?? null,
+        });
+
+        const pTotal = t.players?.total ?? {};
+        for (const p of Object.values<any>(pTotal)) {
+          players.push({
+            teamId,
+            name: p.name ?? '',
+            starter: !!p.is_starting,
+            minutes: this.secToMin(p.time_on_court),
+            points: p.score ?? null,
+            rebounds: p.rebounds ?? null,
+            assists: p.assists ?? null,
+            fgm: p.field_goals_made ?? null,
+            fga: p.field_goals_attempted ?? null,
+            tpm: p.three_pointers_made ?? null,
+            tpa: p.three_pointers_attempted ?? null,
+            ftm: p.free_throws_made ?? null,
+            fta: p.free_throws_attempted ?? null,
+          });
+        }
+      }
+      return { teams, players };
     });
     return data ?? { teams: [], players: [] };
+  }
+
+  private secToMin(sec?: number): string | null {
+    if (typeof sec !== 'number') return null;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
   }
 
   // ============ 排名 ============

@@ -10,6 +10,11 @@ import {
   ApiSportsBasketballGame,
   NormalizedBasketballGame,
   NormalizedStanding,
+  NormalizedBoxScore,
+  BoxScoreTeamLine,
+  BoxScorePlayerLine,
+  NormalizedOdds,
+  OddsMarket,
 } from './basketball-common.types';
 import { TpblStatsService } from '../tpbl-stats/tpbl-stats.service';
 
@@ -187,19 +192,53 @@ export class BasketballCommonService {
     return result ?? null;
   }
 
-  /** 單場 box score（球隊統計 + 球員統計）— 需 capabilities.boxScore */
-  async getBoxScore(league: string, gameId: number) {
+  /** 單場 box score（正規化成 NormalizedBoxScore）— 需 capabilities.boxScore */
+  async getBoxScore(league: string, gameId: number): Promise<NormalizedBoxScore> {
     if (this.isTpbl(league)) return this.tpbl.getBoxScore(gameId);
     const caps = this.getCapabilities(league);
     if (!caps?.boxScore) return { teams: [], players: [] };
 
     const cacheKey = `basketball:${league}:boxscore:${gameId}`;
-    const data = await this.cached(cacheKey, CACHE_TTL.LIVE, async () => {
+    const data = await this.cached<NormalizedBoxScore>(cacheKey, CACHE_TTL.LIVE, async () => {
       const [teams, players] = await Promise.all([
         this.callApi<any[]>('/games/statistics/teams', { id: gameId }),
         this.callApi<any[]>('/games/statistics/players', { id: gameId }),
       ]);
-      return { teams: teams ?? [], players: players ?? [] };
+      return {
+        teams: (teams ?? []).map((t): BoxScoreTeamLine => ({
+          teamId: t.team?.id,
+          points: null,
+          fgm: t.field_goals?.total ?? null,
+          fga: t.field_goals?.attempts ?? null,
+          tpm: t.threepoint_goals?.total ?? null,
+          tpa: t.threepoint_goals?.attempts ?? null,
+          ftm: t.freethrows_goals?.total ?? null,
+          fta: t.freethrows_goals?.attempts ?? null,
+          rebounds: t.rebounds?.total ?? null,
+          offReb: t.rebounds?.offence ?? null,
+          defReb: t.rebounds?.defense ?? null,
+          assists: t.assists ?? null,
+          steals: t.steals ?? null,
+          blocks: t.blocks ?? null,
+          turnovers: t.turnovers ?? null,
+          fouls: t.personal_fouls ?? null,
+        })),
+        players: (players ?? []).map((p): BoxScorePlayerLine => ({
+          teamId: p.team?.id,
+          name: p.player?.name ?? '',
+          starter: p.type === 'starters',
+          minutes: p.minutes ?? null,
+          points: p.points ?? null,
+          rebounds: p.rebounds?.total ?? null,
+          assists: p.assists ?? null,
+          fgm: p.field_goals?.total ?? null,
+          fga: p.field_goals?.attempts ?? null,
+          tpm: p.threepoint_goals?.total ?? null,
+          tpa: p.threepoint_goals?.attempts ?? null,
+          ftm: p.freethrows_goals?.total ?? null,
+          fta: p.freethrows_goals?.attempts ?? null,
+        })),
+      };
     });
     return data ?? { teams: [], players: [] };
   }
@@ -293,18 +332,37 @@ export class BasketballCommonService {
 
   // ============ 賠率（需 capabilities.odds）============
 
-  async getOdds(league: string, gameId?: number) {
+  /** 主要市場白名單（避免塞爆，挑常用的）*/
+  private static readonly ODDS_MARKETS = [
+    'Home/Away',
+    '3Way Result',
+    'Asian Handicap',
+    'Handicap Result',
+    'Over/Under',
+    'Double Chance',
+  ];
+
+  async getOdds(league: string, gameId?: number): Promise<NormalizedOdds | null> {
     const caps = this.getCapabilities(league);
-    if (!caps?.odds) return null;
+    if (!caps?.odds || !gameId) return null;
     const cfg = this.getLeagueConfig(league);
     if (!cfg) return null;
 
-    const cacheKey = `basketball:${league}:odds:${gameId ?? 'league'}`;
-    return this.cached(cacheKey, CACHE_TTL.ODDS, async () => {
-      const params: Record<string, string | number> = gameId
-        ? { game: gameId }
-        : { league: cfg.leagueId, season: cfg.season };
-      return this.callApi('/odds', params);
+    const cacheKey = `basketball:${league}:odds:${gameId}`;
+    return this.cached<NormalizedOdds>(cacheKey, CACHE_TTL.ODDS, async () => {
+      const raw = await this.callApi<any[]>('/odds', { game: gameId });
+      const entry = raw?.[0];
+      const bm = entry?.bookmakers?.[0];
+      if (!bm) return null;
+
+      const markets: OddsMarket[] = (bm.bets ?? [])
+        .filter((b: any) => BasketballCommonService.ODDS_MARKETS.includes(b.name))
+        .map((b: any) => ({
+          name: b.name,
+          values: (b.values ?? []).slice(0, 6).map((v: any) => ({ label: String(v.value), odd: String(v.odd) })),
+        }));
+
+      return { bookmaker: bm.name ?? null, updateAt: entry?.update ?? null, markets };
     });
   }
 
