@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
 import { apiFetch } from '@/lib/api';
 import { SITE_URL } from '@/lib/site';
+import { isBoardIndexable } from '@/lib/board-seo';
 
 interface Category {
   boards: { slug: string }[];
@@ -18,12 +19,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const res = await apiFetch<{ data: Category[] }>('/boards/categories');
     const boardPages = res.data.flatMap((cat) =>
-      cat.boards.map((board) => ({
-        url: `${baseUrl}/board/${board.slug}`,
-        lastModified: new Date(),
-        changeFrequency: 'daily' as const,
-        priority: 0.8,
-      })),
+      cat.boards
+        // 薄內容板塊（尚未補賽事數據）一併排除，與 page.tsx 的 noindex 保持一致信號
+        .filter((board) => isBoardIndexable(board.slug))
+        .map((board) => ({
+          url: `${baseUrl}/board/${board.slug}`,
+          lastModified: new Date(),
+          changeFrequency: 'daily' as const,
+          priority: 0.8,
+        })),
     );
     return [...staticPages, ...boardPages];
   } catch {

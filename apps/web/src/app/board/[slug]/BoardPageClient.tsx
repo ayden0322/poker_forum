@@ -18,6 +18,8 @@ import { NBAGamesWidget } from '@/components/sports/nba/NBAGamesWidget';
 import { BaseballGamesWidget } from '@/components/sports/BaseballGamesWidget';
 import { BaseballStatsPanel } from '@/components/sports/BaseballStatsPanel';
 import { BaseballStandingsWidget } from '@/components/sports/BaseballStandingsWidget';
+import { BasketballGamesWidget } from '@/components/sports/basketball/BasketballGamesWidget';
+import { BasketballStandingsWidget } from '@/components/sports/basketball/BasketballStandingsWidget';
 import { CpblInjuriesWidget } from '@/components/sports/cpbl/CpblInjuriesWidget';
 import { WorldCupActivityStrip } from '@/components/sports/world-cup/WorldCupActivityStrip';
 import { FriendlyActivityStrip } from '@/components/sports/friendlies/FriendlyActivityStrip';
@@ -398,6 +400,12 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
               <NBASidePanel />
             </div>
           </div>
+        </>
+      ) : board.category?.slug === 'basketball' && board.slug !== 'nba' && board.slug !== 'other-basketball' ? (
+        <>
+          {/* 通用籃球（API-Sports 各聯賽 + TPBL 官方源）：三日賽事 + 戰績排行，能力驅動共用一套 widget */}
+          <BasketballGamesWidget league={board.slug} leagueName={board.name} />
+          <BasketballStandingsWidget league={board.slug} leagueName={board.name} />
         </>
       ) : board.slug === 'world-cup' ? (
         <>

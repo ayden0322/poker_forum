@@ -43,15 +43,37 @@ async function main() {
   });
 
   // ===== 籃球看板 =====
+  // ⚠️ slug / 名稱對齊 apps/api LEAGUE_CONFIG（能力驅動板塊系統）。名稱帶 disambiguator 避免縮寫撞名（CBA/SBL…）。
+  // t1-league 已移除（T1 併入 TPBL、API 無現役資料）；舊 DB 若有 t1-league 板塊為孤兒、已 noindex，待無貼文時手動清除。
   const basketballBoards = [
     { name: 'NBA', slug: 'nba', icon: '🇺🇸', description: '美國職業籃球聯賽', sortOrder: 1 },
-    { name: 'CBA', slug: 'cba', icon: '🇨🇳', description: '中國男子職業籃球聯賽', sortOrder: 2 },
-    { name: 'T1 聯盟', slug: 't1-league', icon: '🇹🇼', description: '台灣 T1 籃球聯盟', sortOrder: 3 },
-    { name: 'TPBL', slug: 'tpbl', icon: '🇹🇼', description: '台灣職業籃球大聯盟', sortOrder: 4 },
-    { name: 'B.League', slug: 'b-league', icon: '🇯🇵', description: '日本 B 聯賽', sortOrder: 5 },
-    { name: 'KBL', slug: 'kbl', icon: '🇰🇷', description: '韓國籃球聯賽', sortOrder: 6 },
-    { name: '歐洲籃球', slug: 'euroleague', icon: '🇪🇺', description: '歐洲籃球冠軍聯賽', sortOrder: 7 },
-    { name: '其他籃球', slug: 'other-basketball', icon: '🏀', description: '國際賽、亞洲盃等籃球討論', sortOrder: 8 },
+    // 台灣
+    { name: 'P.League+', slug: 'p-league-plus', icon: '🇹🇼', description: '台灣職業籃球聯盟 P.League+（含賠率）', sortOrder: 2 },
+    { name: 'TPBL', slug: 'tpbl', icon: '🇹🇼', description: '台灣職業籃球大聯盟（官方數據源）', sortOrder: 3 },
+    { name: 'SBL 超籃', slug: 'sbl', icon: '🇹🇼', description: '台灣超級籃球聯賽', sortOrder: 4 },
+    // 東亞
+    { name: 'CBA 中國職籃', slug: 'cba', icon: '🇨🇳', description: '中國男子職業籃球聯賽', sortOrder: 5 },
+    { name: 'B.League 日本職籃', slug: 'b-league', icon: '🇯🇵', description: '日本 B.League 職業籃球聯賽', sortOrder: 6 },
+    { name: 'KBL 韓國職籃', slug: 'kbl', icon: '🇰🇷', description: '韓國籃球聯賽 KBL', sortOrder: 7 },
+    { name: '東亞超級聯賽', slug: 'easl', icon: '🌏', description: 'East Asia Super League 跨國職籃賽事', sortOrder: 8 },
+    // 東南亞 / 大洋洲
+    { name: 'VBA 越南職籃', slug: 'vba', icon: '🇻🇳', description: '越南職業籃球聯賽（含賠率）', sortOrder: 9 },
+    { name: 'NBL 印尼職籃', slug: 'indonesia-nbl', icon: '🇮🇩', description: '印尼國家籃球聯賽（含賠率）', sortOrder: 10 },
+    { name: 'NBL 澳洲職籃', slug: 'australia-nbl', icon: '🇦🇺', description: '澳洲國家籃球聯賽', sortOrder: 11 },
+    { name: 'PBA 菲律賓職籃', slug: 'pba', icon: '🇵🇭', description: '菲律賓職業籃球協會', sortOrder: 12 },
+    // 歐洲
+    { name: 'Euroleague', slug: 'euroleague', icon: '🇪🇺', description: '歐洲籃球冠軍聯賽', sortOrder: 13 },
+    { name: 'EuroCup', slug: 'eurocup', icon: '🇪🇺', description: '歐洲籃球次級聯賽', sortOrder: 14 },
+    { name: 'ABA 亞得里亞海聯賽', slug: 'aba-league', icon: '🇪🇺', description: '亞得里亞海籃球聯賽（含賠率）', sortOrder: 15 },
+    { name: 'ACB 西班牙籃球', slug: 'spain-acb', icon: '🇪🇸', description: '西班牙 ACB 籃球聯賽（含賠率）', sortOrder: 16 },
+    { name: 'LNB 法國籃球', slug: 'france-lnb', icon: '🇫🇷', description: '法國 LNB 籃球聯賽（含賠率）', sortOrder: 17 },
+    { name: 'Lega A 義大利籃球', slug: 'italy-lega-a', icon: '🇮🇹', description: '義大利 Lega A 籃球聯賽（含賠率）', sortOrder: 18 },
+    { name: 'BBL 德國籃球', slug: 'germany-bbl', icon: '🇩🇪', description: '德國 BBL 籃球聯賽（含賠率）', sortOrder: 19 },
+    { name: '希臘籃球聯賽', slug: 'greece-basket-league', icon: '🇬🇷', description: '希臘籃球聯賽（含賠率）', sortOrder: 20 },
+    { name: '土耳其籃球超級聯賽', slug: 'turkey-super-ligi', icon: '🇹🇷', description: '土耳其籃球超級聯賽（含賠率）', sortOrder: 21 },
+    { name: 'LKL 立陶宛籃球', slug: 'lithuania-lkl', icon: '🇱🇹', description: '立陶宛 LKL 籃球聯賽（含賠率）', sortOrder: 22 },
+    { name: '波蘭籃球聯賽', slug: 'poland-tbl', icon: '🇵🇱', description: '波蘭籃球聯賽（含賠率）', sortOrder: 23 },
+    { name: '其他籃球', slug: 'other-basketball', icon: '🏀', description: '國際賽、亞洲盃等籃球討論', sortOrder: 99 },
   ];
 
   for (const board of basketballBoards) {
