@@ -61,6 +61,10 @@ export const LEAGUE_CONFIG: Record<string, LeagueConfig> = {
   nba:              { sportType: 'basketball', displayName: 'NBA', apiHost: API_HOSTS.basketball, leagueId: 12, season: '2025-2026',
                       dataSource: 'espn', capabilities: caps({ standings: true, schedule: true, boxScore: true, players: true, live: true }) },
 
+  // 國際賽（國家隊；league 281 含資格賽 2024~2026 + 2027 正賽，現階段皆資格賽）
+  'fiba-wc-qualifiers': { sportType: 'basketball', displayName: 'FIBA 世界盃資格賽', apiHost: API_HOSTS.basketball, leagueId: 281, season: '2027',
+                      dataSource: 'apisports', capabilities: caps({ standings: true, schedule: true, boxScore: true, players: true }) },
+
   // 台灣
   'p-league-plus':  { sportType: 'basketball', displayName: 'P.League+', apiHost: API_HOSTS.basketball, leagueId: 403, season: '2025-2026',
                       dataSource: 'apisports', capabilities: caps({ standings: true, schedule: true, boxScore: true, players: true, odds: true }) },

@@ -47,6 +47,8 @@ async function main() {
   // t1-league 已移除（T1 併入 TPBL、API 無現役資料）；舊 DB 若有 t1-league 板塊為孤兒、已 noindex，待無貼文時手動清除。
   const basketballBoards = [
     { name: 'NBA', slug: 'nba', icon: '🇺🇸', description: '美國職業籃球聯賽', sortOrder: 1 },
+    // 國際賽
+    { name: 'FIBA 世界盃資格賽', slug: 'fiba-wc-qualifiers', icon: '🌍', description: 'FIBA 籃球世界盃 2027 資格賽（國家隊）', sortOrder: 12 },
     // 台灣
     { name: 'P.League+', slug: 'p-league-plus', icon: '🇹🇼', description: '台灣職業籃球聯盟 P.League+（含賠率）', sortOrder: 2 },
     { name: 'TPBL', slug: 'tpbl', icon: '🇹🇼', description: '台灣職業籃球大聯盟（官方數據源）', sortOrder: 3 },
