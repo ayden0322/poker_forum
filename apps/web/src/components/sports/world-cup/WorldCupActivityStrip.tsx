@@ -15,6 +15,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { wcHasScore } from '@/lib/world-cup-status';
 import { useEffect, useState } from 'react';
 
 const KICKOFF_UTC = new Date('2026-06-11T19:00:00Z');
@@ -213,37 +214,44 @@ export function WorldCupActivityStrip() {
               LIVE NOW
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-              {live.slice(0, 4).map((m) => (
-                <Link
-                  key={m.id}
-                  href={`/match/world-cup/${m.matchNumber}`}
-                  className="block rounded-lg border-2 border-red-300 bg-white p-2 hover:border-red-500 transition-colors"
-                >
-                  <div className="text-[9px] text-gray-400 mb-1 truncate">
-                    {m.group} · {m.round}
-                  </div>
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1 truncate">
-                        <span className="text-sm">{m.home.flag}</span>
-                        <span className="text-xs truncate">{m.home.nameZh}</span>
-                      </span>
-                      <span className="font-bold text-sm tabular-nums text-red-600">{m.homeScore}</span>
+              {live.slice(0, 4).map((m) => {
+                const scored = wcHasScore(m.homeScore, m.awayScore);
+                return (
+                  <Link
+                    key={m.id}
+                    href={`/match/world-cup/${m.matchNumber}`}
+                    className="block rounded-lg border-2 border-red-300 bg-white p-2 hover:border-red-500 transition-colors"
+                  >
+                    <div className="text-[9px] text-gray-400 mb-1 truncate">
+                      {m.group} · {m.round}
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1 truncate">
-                        <span className="text-sm">{m.away.flag}</span>
-                        <span className="text-xs truncate">{m.away.nameZh}</span>
-                      </span>
-                      <span className="font-bold text-sm tabular-nums text-red-600">{m.awayScore}</span>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 truncate">
+                          <span className="text-sm">{m.home.flag}</span>
+                          <span className="text-xs truncate">{m.home.nameZh}</span>
+                        </span>
+                        {scored && (
+                          <span className="font-bold text-sm tabular-nums text-red-600">{m.homeScore}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 truncate">
+                          <span className="text-sm">{m.away.flag}</span>
+                          <span className="text-xs truncate">{m.away.nameZh}</span>
+                        </span>
+                        {scored && (
+                          <span className="font-bold text-sm tabular-nums text-red-600">{m.awayScore}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-1 text-[9px] text-red-600 font-bold flex items-center gap-1">
-                    <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse" />
-                    LIVE {m.liveMinute}'
-                  </div>
-                </Link>
-              ))}
+                    <div className="mt-1 text-[9px] text-red-600 font-bold flex items-center gap-1">
+                      <span className="w-1 h-1 bg-red-500 rounded-full animate-pulse" />
+                      {scored ? `LIVE${m.liveMinute != null ? ` ${m.liveMinute}'` : ''}` : '進行中 · 比分待更新'}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </>
         ) : (

@@ -286,8 +286,10 @@ function GroupDetailModal({
             {groupMatches.map((m) => {
               const fin = m.status === 'finished';
               const live = m.status === 'live';
-              const homeWins = fin && m.homeScore != null && m.awayScore != null && m.homeScore > m.awayScore;
-              const awayWins = fin && m.homeScore != null && m.awayScore != null && m.awayScore > m.homeScore;
+              // 未開賽不顯示比分（即使 seed 預填了分數）
+              const showScore = m.homeScore != null && m.awayScore != null && m.status !== 'scheduled';
+              const homeWins = showScore && fin && m.homeScore! > m.awayScore!;
+              const awayWins = showScore && fin && m.awayScore! > m.homeScore!;
               return (
                 <Link
                   key={m.id}
@@ -314,7 +316,7 @@ function GroupDetailModal({
                         : 'border-stone-200 text-stone-400'
                     }`}
                   >
-                    {fin || live ? `${m.homeScore} - ${m.awayScore}` : 'vs'}
+                    {showScore ? `${m.homeScore} - ${m.awayScore}` : live ? 'LIVE' : fin ? '完場' : 'vs'}
                   </span>
                   <span className="flex items-center gap-1.5 flex-1 min-w-0">
                     <span className="text-base">{m.away.flag}</span>
@@ -324,7 +326,7 @@ function GroupDetailModal({
                       {m.away.nameZh}
                     </span>
                   </span>
-                  {live && (
+                  {live && m.liveMinute != null && (
                     <span className="font-mono-stadium text-[9px] text-red-600 font-bold tracking-wider">
                       {m.liveMinute}'
                     </span>

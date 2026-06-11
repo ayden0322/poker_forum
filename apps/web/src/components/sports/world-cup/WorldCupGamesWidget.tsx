@@ -12,6 +12,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { wcHasScore } from '@/lib/world-cup-status';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
@@ -128,8 +129,10 @@ export function WorldCupGamesWidget() {
     const isLive = m.status === 'live';
     const isFinal = m.status === 'finished';
     const isScheduled = m.status === 'scheduled';
-    const homeWins = isFinal && m.homeScore != null && m.awayScore != null && m.homeScore > m.awayScore;
-    const awayWins = isFinal && m.homeScore != null && m.awayScore != null && m.awayScore > m.homeScore;
+    // 未開賽不顯示比分（即使 seed 預填了分數）
+    const showScore = wcHasScore(m.homeScore, m.awayScore) && !isScheduled;
+    const homeWins = showScore && isFinal && m.homeScore! > m.awayScore!;
+    const awayWins = showScore && isFinal && m.awayScore! > m.homeScore!;
 
     const borderCls = isLive
       ? 'border-2 border-red-400 shadow-[0_0_0_3px_rgba(248,113,113,0.2)]'
@@ -167,7 +170,7 @@ export function WorldCupGamesWidget() {
               homeWins ? 'font-bold text-gray-900' : isLive ? 'font-bold text-red-600' : 'text-gray-500'
             }`}
           >
-            {m.homeScore ?? '-'}
+            {showScore ? m.homeScore : ''}
           </span>
         </div>
 
@@ -181,7 +184,7 @@ export function WorldCupGamesWidget() {
               awayWins ? 'font-bold text-gray-900' : isLive ? 'font-bold text-red-600' : 'text-gray-500'
             }`}
           >
-            {m.awayScore ?? '-'}
+            {showScore ? m.awayScore : ''}
           </span>
         </div>
 
