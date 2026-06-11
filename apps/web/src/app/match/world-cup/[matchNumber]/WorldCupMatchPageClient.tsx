@@ -3,18 +3,18 @@
 /**
  * FIFA 世界盃 2026 — 單場比賽詳情頁
  *
- * 因為目前資料源是 GitHub JSON（無球員陣容、無 play-by-play），
- * 這個頁只呈現基本資訊：
- *   - 對戰雙方（旗幟 + 中文隊名 + 比分 + 即時分鐘）
- *   - 階段、組別、場館、開賽時間
- *   - 同組其他比賽（小組賽才顯示）
- *
- * 升級 API-Sports 後可在此擴充：陣容、進球紀錄、賠率
+ * 資料源為 GitHub 賽程（無球員陣容、無即時比分），狀態一律由開賽時間推算
+ * （見 lib/world-cup-status.ts）。主卡片依狀態條件式呈現：
+ *   - 尚未開賽：開賽倒數
+ *   - 比賽中：進行中提示（無資料源時不顯示假比分）
+ *   - 已結束：完場 / 若 admin 有輸入比分則顯示比分與勝方
  */
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { deriveWcStatus, wcHasScore, type WcStatus } from '@/lib/world-cup-status';
 
 interface TeamView {
   id: number | null;
@@ -37,7 +37,7 @@ interface Match {
   away: TeamView;
   homeScore: number | null;
   awayScore: number | null;
-  status: 'scheduled' | 'live' | 'finished';
+  status: WcStatus;
   liveMinute: number | null;
 }
 
@@ -54,12 +54,34 @@ function fmtTw(iso: string) {
   });
 }
 
-function StatusBadge({ status, liveMinute }: { status: Match['status']; liveMinute: number | null }) {
+/** 掛載後每秒更新；SSR/首幀回傳 null 以避免 hydration 不一致 */
+function useNow(): number | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
+
+function fmtCountdown(ms: number): string {
+  if (ms <= 0) return '即將開球';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d} 天 ${String(h).padStart(2, '0')} 小時`;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function StatusBadge({ status }: { status: WcStatus }) {
   if (status === 'live') {
     return (
       <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-500 text-white rounded-full text-sm font-bold">
         <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-        LIVE {liveMinute != null && `· ${liveMinute}'`}
+        比賽中
       </span>
     );
   }
@@ -77,22 +99,83 @@ function StatusBadge({ status, liveMinute }: { status: Match['status']; liveMinu
   );
 }
 
-function TeamBlock({ team, score, isWinner, align }: { team: TeamView; score: number | null; isWinner: boolean; align: 'left' | 'right' }) {
+function TeamBlock({
+  team,
+  score,
+  showScore,
+  isWinner,
+  align,
+}: {
+  team: TeamView;
+  score: number | null;
+  showScore: boolean;
+  isWinner: boolean;
+  align: 'left' | 'right';
+}) {
   return (
-    <div className={`flex flex-col items-center text-center min-w-0 ${align === 'left' ? 'md:items-end md:text-right' : 'md:items-start md:text-left'}`}>
+    <div
+      className={`flex flex-col items-center text-center min-w-0 ${
+        align === 'left' ? 'md:items-end md:text-right' : 'md:items-start md:text-left'
+      }`}
+    >
       <div className="text-6xl mb-2 leading-none">{team.flag ?? '⚪'}</div>
-      <div className={`text-lg md:text-xl font-bold mb-1 ${team.isPlaceholder ? 'text-gray-400 italic' : 'text-gray-900'}`}>
+      <div
+        className={`text-lg md:text-xl font-bold mb-1 ${
+          team.isPlaceholder ? 'text-gray-400 italic' : 'text-gray-900'
+        }`}
+      >
         {team.nameZh}
       </div>
       {team.fifaCode && <div className="text-xs text-gray-400 tracking-wider">{team.fifaCode}</div>}
-      <div className={`text-5xl md:text-6xl font-bold mt-2 tabular-nums ${isWinner ? 'text-blue-600' : 'text-gray-700'}`}>
-        {score ?? '-'}
+      {showScore && (
+        <div
+          className={`text-5xl md:text-6xl font-bold mt-2 tabular-nums ${
+            isWinner ? 'text-blue-600' : 'text-gray-700'
+          }`}
+        >
+          {score ?? '-'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 主卡片中央：依狀態切換倒數 / 進行中 / 完場 */
+function CenterZone({ status, kickoffAt, now }: { status: WcStatus; kickoffAt: string; now: number | null }) {
+  if (status === 'scheduled') {
+    const remaining = now == null ? null : new Date(kickoffAt).getTime() - now;
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <div className="text-3xl text-gray-300 font-light">VS</div>
+        <div className="text-[11px] text-gray-400 tracking-wider">距開賽</div>
+        <div className="text-xl font-bold tabular-nums text-blue-600">
+          {remaining == null ? '--:--:--' : fmtCountdown(remaining)}
+        </div>
       </div>
+    );
+  }
+  if (status === 'live') {
+    return (
+      <div className="flex flex-col items-center gap-1.5">
+        <div className="text-3xl text-gray-300 font-light">VS</div>
+        <span className="inline-flex items-center gap-1.5 text-red-500 font-bold text-sm">
+          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+          進行中
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <div className="text-3xl text-gray-300 font-light">VS</div>
+      <div className="text-sm font-medium text-gray-500">完場</div>
     </div>
   );
 }
 
 export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: number }) {
+  const now = useNow();
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['world-cup-match', matchNumber],
     queryFn: () => apiFetch<{ data: Match }>(`/sports/world-cup/match/${matchNumber}`),
@@ -113,9 +196,14 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
   if (error || !data) return <div className="max-w-4xl mx-auto p-8 text-center text-red-400">找不到比賽</div>;
 
   const m = data.data;
-  const isFinal = m.status === 'finished';
-  const homeWins = isFinal && m.homeScore != null && m.awayScore != null && m.homeScore > m.awayScore;
-  const awayWins = isFinal && m.homeScore != null && m.awayScore != null && m.awayScore > m.homeScore;
+  // 顯示狀態以「掛載後的即時時間」推算，跨開賽/完場邊界時 UI 會自動翻轉；
+  // 首幀 fallback 用伺服器已推算好的 m.status，避免 hydration 不一致
+  const displayStatus: WcStatus = now == null ? m.status : deriveWcStatus(m.kickoffAt, now);
+  const scored = wcHasScore(m.homeScore, m.awayScore);
+  const showScore = scored && displayStatus !== 'scheduled';
+  const isFinal = displayStatus === 'finished';
+  const homeWins = showScore && isFinal && m.homeScore! > m.awayScore!;
+  const awayWins = showScore && isFinal && m.awayScore! > m.homeScore!;
 
   return (
     <div className="max-w-4xl mx-auto pb-8">
@@ -129,24 +217,38 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
       </nav>
 
       {/* 主卡片 */}
-      <div className="bg-gradient-to-br from-blue-50 via-white to-blue-50 border border-gray-200 rounded-xl p-6 md:p-8 mb-4 shadow-sm">
+      <div className="bg-gradient-to-br from-blue-50 via-white to-blue-50 border border-gray-200 rounded-xl p-6 md:p-8 mb-3 shadow-sm">
         <div className="flex flex-col items-center mb-6 gap-2">
           <div className="text-xs text-gray-500 tracking-wider">
             {m.group ? `${m.group} · ` : ''}{m.round}
           </div>
-          <StatusBadge status={m.status} liveMinute={m.liveMinute} />
+          <StatusBadge status={displayStatus} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-6 md:gap-8 items-center">
-          <TeamBlock team={m.home} score={m.homeScore} isWinner={homeWins} align="left" />
-
-          <div className="flex flex-col items-center text-gray-300 font-light">
-            <div className="text-3xl">VS</div>
-          </div>
-
-          <TeamBlock team={m.away} score={m.awayScore} isWinner={awayWins} align="right" />
+          <TeamBlock team={m.home} score={m.homeScore} showScore={showScore} isWinner={homeWins} align="left" />
+          <CenterZone status={displayStatus} kickoffAt={m.kickoffAt} now={now} />
+          <TeamBlock team={m.away} score={m.awayScore} showScore={showScore} isWinner={awayWins} align="right" />
         </div>
+
+        {/* 無比分資料源時的誠實提示 */}
+        {!scored && displayStatus !== 'scheduled' && (
+          <div className="mt-6 text-center text-sm text-gray-500">
+            {displayStatus === 'live'
+              ? '即時比分請鎖定電視轉播，戰況討論移步看板'
+              : '賽事已結束 · 比分整理中'}
+          </div>
+        )}
       </div>
+
+      {/* 戰報 CTA */}
+      <Link
+        href="/board/world-cup"
+        className="flex items-center justify-center gap-2 mb-4 px-4 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-colors shadow-sm"
+      >
+        💬 看本場戰報與鄉民討論
+        <span aria-hidden>→</span>
+      </Link>
 
       {/* 賽事資訊 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
@@ -168,9 +270,11 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
             {groupData.data
               .filter((g) => g.matchNumber !== m.matchNumber)
               .map((g) => {
-                const fin = g.status === 'finished';
-                const hWin = fin && g.homeScore != null && g.awayScore != null && g.homeScore > g.awayScore;
-                const aWin = fin && g.homeScore != null && g.awayScore != null && g.awayScore > g.homeScore;
+                // 未開賽不顯示比分（即使 seed 預填了分數）
+                const gShowScore = wcHasScore(g.homeScore, g.awayScore) && g.status !== 'scheduled';
+                const gFin = g.status === 'finished';
+                const hWin = gShowScore && gFin && g.homeScore! > g.awayScore!;
+                const aWin = gShowScore && gFin && g.awayScore! > g.homeScore!;
                 return (
                   <Link
                     key={g.id}
@@ -183,7 +287,7 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
                       <span className="text-base">{g.home.flag ?? '⚪'}</span>
                     </span>
                     <span className="px-2 py-0.5 bg-gray-100 rounded text-xs tabular-nums font-medium min-w-[44px] text-center">
-                      {g.status === 'scheduled' ? 'vs' : `${g.homeScore ?? '-'} - ${g.awayScore ?? '-'}`}
+                      {gShowScore ? `${g.homeScore} - ${g.awayScore}` : 'vs'}
                     </span>
                     <span className="flex items-center gap-1.5 flex-1 min-w-0">
                       <span className="text-base">{g.away.flag ?? '⚪'}</span>
@@ -204,7 +308,7 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
 
       {/* 提示卡片 — 標示功能限制 */}
       <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-        💡 目前資料源為 GitHub 公開賽程，僅含基本資訊。升級 API-Sports 後將提供：球員陣容、進球紀錄、即時統計、賠率等完整資料。
+        💡 目前資料源為 GitHub 公開賽程，僅含基本賽程資訊。升級 API-Sports 後將提供：即時比分、球員陣容、進球紀錄、賠率等完整資料。
       </div>
     </div>
   );

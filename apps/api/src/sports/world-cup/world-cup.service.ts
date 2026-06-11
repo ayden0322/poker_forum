@@ -8,14 +8,31 @@ export interface MatchListFilter {
   date?: string; // YYYY-MM-DD（UTC）
 }
 
+/**
+ * 開球到視為完場的視窗：90 分鐘 + 中場 15 + 傷停/賽後緩衝 ≈ 130 分鐘
+ * ⚠️ 與前端 apps/web/src/lib/world-cup-status.ts 的 WC_LIVE_WINDOW_MS 必須一致
+ */
+const LIVE_WINDOW_MS = 130 * 60 * 1000;
+
 @Injectable()
 export class WorldCupService {
   constructor(private prisma: PrismaService) {}
 
-  /** 賽程列表，支援多重篩選 */
+  /**
+   * 依開賽時間推算狀態（忽略 DB 手動欄位）
+   * 因目前資料源無即時狀態 feed，狀態一律由時間推算
+   */
+  private deriveStatus(kickoffAt: Date): 'scheduled' | 'live' | 'finished' {
+    const now = Date.now();
+    const k = kickoffAt.getTime();
+    if (now < k) return 'scheduled';
+    if (now < k + LIVE_WINDOW_MS) return 'live';
+    return 'finished';
+  }
+
+  /** 賽程列表，支援多重篩選（status 改用開賽時間推算後在記憶體篩） */
   async listMatches(filter: MatchListFilter = {}) {
     const where: any = {};
-    if (filter.status) where.status = filter.status;
     if (filter.stage) where.stage = filter.stage;
     if (filter.group) where.groupName = `Group ${filter.group.toUpperCase()}`;
     if (filter.date) {
@@ -31,7 +48,9 @@ export class WorldCupService {
       include: { homeTeam: true, awayTeam: true },
     });
 
-    return matches.map((m) => this.serializeMatch(m));
+    let list = matches.map((m) => this.serializeMatch(m));
+    if (filter.status) list = list.filter((m) => m.status === filter.status);
+    return list;
   }
 
   /** 單場比賽詳情 */
@@ -57,11 +76,20 @@ export class WorldCupService {
    * 規則：勝 3 分 / 平 1 分 / 負 0 分；同分比淨勝球 → 進球數
    */
   async getGroupStandings() {
+    // 狀態改時間推算後 DB status 不可靠；積分只算「開賽時間已過 + 有比分」的場次，
+    // 避免 seed/預填比分的未來場次污染積分榜
+    const now = new Date();
+    const playedWhere = {
+      stage: 'group',
+      kickoffAt: { lt: now },
+      homeScore: { not: null },
+      awayScore: { not: null },
+    } as const;
     const teams = await this.prisma.worldCupTeam.findMany({
       where: { groupName: { not: null } },
       include: {
-        matchesAsHome: { where: { status: 'finished', stage: 'group' } },
-        matchesAsAway: { where: { status: 'finished', stage: 'group' } },
+        matchesAsHome: { where: playedWhere },
+        matchesAsAway: { where: playedWhere },
       },
     });
 
@@ -187,7 +215,7 @@ export class WorldCupService {
       away: teamView(m.awayTeam, m.awayPlaceholder),
       homeScore: m.homeScore,
       awayScore: m.awayScore,
-      status: m.status,
+      status: this.deriveStatus(m.kickoffAt),
       liveMinute: m.liveMinute,
     };
   }
