@@ -34,7 +34,6 @@ const navItems: NavItem[] = [
         icon: '🏀',
         items: [
           { label: 'NBA', href: '/board/nba' },
-          { label: '台灣職籃總覽', href: '/basketball/taiwan' },
           { label: 'P.League+', href: '/board/p-league-plus' },
           { label: 'TPBL', href: '/board/tpbl' },
           { label: 'SBL 超籃', href: '/board/sbl' },
