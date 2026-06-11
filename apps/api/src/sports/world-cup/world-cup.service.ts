@@ -1,5 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma.service';
+import {
+  callFootballApi,
+  syncWorldCupScores,
+  WC_LEAGUE_ID,
+  WC_SEASON,
+  ApiFixture,
+} from './world-cup.apisports';
 
 export interface MatchListFilter {
   status?: 'scheduled' | 'live' | 'finished';
@@ -16,7 +24,21 @@ const LIVE_WINDOW_MS = 130 * 60 * 1000;
 
 @Injectable()
 export class WorldCupService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {}
+
+  /** 手動觸發：從 API-Sports 全量同步小組賽比分（admin 鈕用） */
+  async syncFromApiSports() {
+    const apiKey = this.config.get<string>('API_SPORTS_KEY', '');
+    if (!apiKey) throw new Error('API_SPORTS_KEY 未設定');
+    const fixtures = await callFootballApi<ApiFixture[]>(apiKey, '/fixtures', {
+      league: WC_LEAGUE_ID,
+      season: WC_SEASON,
+    });
+    return syncWorldCupScores(this.prisma, fixtures);
+  }
 
   /**
    * 依開賽時間推算狀態（忽略 DB 手動欄位）

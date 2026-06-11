@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseIntPipe, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -31,5 +31,11 @@ export class WorldCupAdminController {
   @ApiOperation({ summary: '手動更新單場比分與狀態' })
   async updateMatch(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateMatchDto) {
     return { data: await this.svc.updateMatch(id, dto) };
+  }
+
+  @Post('sync')
+  @ApiOperation({ summary: '立即從 API-Sports 同步小組賽比分' })
+  async sync() {
+    return { data: await this.svc.syncFromApiSports() };
   }
 }
