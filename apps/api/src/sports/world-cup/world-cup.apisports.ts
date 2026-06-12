@@ -42,6 +42,144 @@ export interface ApiFixture {
   goals: { home: number | null; away: number | null };
 }
 
+function namesMatch(dbName: string, apiName: string): boolean {
+  return dbName === apiName || NAME_ALIAS[apiName] === dbName;
+}
+
+/** 在 API fixtures 中用隊名找出對應的 fixtureId（小組賽，雙向容錯配對） */
+export function findFixtureId(
+  fixtures: ApiFixture[],
+  homeNameEn: string,
+  awayNameEn: string,
+): number | null {
+  for (const f of fixtures) {
+    if (!/Group Stage/i.test(f.league.round)) continue;
+    if (namesMatch(homeNameEn, f.teams.home.name) && namesMatch(awayNameEn, f.teams.away.name)) {
+      return f.fixture.id;
+    }
+  }
+  return null;
+}
+
+// ===== 賽事細節（進球/事件、數據、陣容）=====
+export interface ApiEvent {
+  time: { elapsed: number | null; extra: number | null };
+  team: { name: string };
+  player: { name: string | null };
+  assist: { name: string | null };
+  type: string; // Goal | Card | subst | Var
+  detail: string;
+}
+export interface ApiStatTeam {
+  team: { name: string };
+  statistics: { type: string; value: string | number | null }[];
+}
+export interface ApiLineupTeam {
+  team: { name: string };
+  formation: string | null;
+  coach: { name: string | null };
+  startXI: { player: { name: string; number: number | null; pos: string | null } }[];
+  substitutes: { player: { name: string; number: number | null; pos: string | null } }[];
+}
+
+export interface MatchDetails {
+  available: boolean;
+  events: {
+    minute: number;
+    extra: number | null;
+    side: 'home' | 'away' | null;
+    type: string;
+    detail: string;
+    player: string | null;
+    assist: string | null;
+  }[];
+  statistics: { type: string; home: string | number | null; away: string | number | null }[];
+  lineups: {
+    home: LineupSide | null;
+    away: LineupSide | null;
+  };
+}
+interface LineupSide {
+  formation: string | null;
+  coach: string | null;
+  startXI: { name: string; number: number | null; pos: string | null }[];
+  substitutes: { name: string; number: number | null; pos: string | null }[];
+}
+
+const EMPTY_DETAILS: MatchDetails = {
+  available: false,
+  events: [],
+  statistics: [],
+  lineups: { home: null, away: null },
+};
+
+/** 把 API-Sports 三組原始資料正規化成前端友善、依 home/away 配對的結構 */
+export function normalizeDetails(
+  homeNameEn: string,
+  events: ApiEvent[],
+  stats: ApiStatTeam[],
+  lineups: ApiLineupTeam[],
+): MatchDetails {
+  const sideOf = (apiName: string): 'home' | 'away' | null =>
+    namesMatch(homeNameEn, apiName) ? 'home' : 'away';
+
+  const normEvents = (events ?? [])
+    .map((e) => ({
+      minute: e.time?.elapsed ?? 0,
+      extra: e.time?.extra ?? null,
+      side: e.team?.name ? sideOf(e.team.name) : null,
+      type: e.type,
+      detail: e.detail,
+      player: e.player?.name ?? null,
+      assist: e.assist?.name ?? null,
+    }))
+    .sort((a, b) => a.minute - b.minute || (a.extra ?? 0) - (b.extra ?? 0));
+
+  // 數據依 type 把 home/away 配成一列
+  const homeStat = (stats ?? []).find((s) => namesMatch(homeNameEn, s.team.name));
+  const awayStat = (stats ?? []).find((s) => !namesMatch(homeNameEn, s.team.name));
+  const types = Array.from(
+    new Set([
+      ...(homeStat?.statistics.map((s) => s.type) ?? []),
+      ...(awayStat?.statistics.map((s) => s.type) ?? []),
+    ]),
+  );
+  const statistics = types.map((type) => ({
+    type,
+    home: homeStat?.statistics.find((s) => s.type === type)?.value ?? null,
+    away: awayStat?.statistics.find((s) => s.type === type)?.value ?? null,
+  }));
+
+  const toSide = (l: ApiLineupTeam | undefined): LineupSide | null =>
+    l
+      ? {
+          formation: l.formation,
+          coach: l.coach?.name ?? null,
+          startXI: (l.startXI ?? []).map((p) => ({
+            name: p.player.name,
+            number: p.player.number,
+            pos: p.player.pos,
+          })),
+          substitutes: (l.substitutes ?? []).map((p) => ({
+            name: p.player.name,
+            number: p.player.number,
+            pos: p.player.pos,
+          })),
+        }
+      : null;
+  const homeLineup = (lineups ?? []).find((l) => namesMatch(homeNameEn, l.team.name));
+  const awayLineup = (lineups ?? []).find((l) => !namesMatch(homeNameEn, l.team.name));
+
+  return {
+    available: normEvents.length > 0 || statistics.length > 0 || !!homeLineup,
+    events: normEvents,
+    statistics,
+    lineups: { home: toSide(homeLineup), away: toSide(awayLineup) },
+  };
+}
+
+export { EMPTY_DETAILS };
+
 /** api-sports status short code → 內部三態 */
 export function wcStatusFromApi(short: string): 'scheduled' | 'live' | 'finished' {
   if (['FT', 'AET', 'PEN', 'AWD', 'WO'].includes(short)) return 'finished';

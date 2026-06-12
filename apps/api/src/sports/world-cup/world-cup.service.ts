@@ -4,9 +4,16 @@ import { PrismaService } from '../../common/prisma.service';
 import {
   callFootballApi,
   syncWorldCupScores,
+  findFixtureId,
+  normalizeDetails,
+  EMPTY_DETAILS,
   WC_LEAGUE_ID,
   WC_SEASON,
   ApiFixture,
+  ApiEvent,
+  ApiStatTeam,
+  ApiLineupTeam,
+  MatchDetails,
 } from './world-cup.apisports';
 
 export interface MatchListFilter {
@@ -28,6 +35,55 @@ export class WorldCupService {
     private prisma: PrismaService,
     private config: ConfigService,
   ) {}
+
+  // 賽事細節用的輕量記憶體快取（避免每次請求都打 API-Sports）
+  private detailCache = new Map<string, { exp: number; val: any }>();
+  private async cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
+    const hit = this.detailCache.get(key);
+    if (hit && hit.exp > Date.now()) return hit.val as T;
+    const val = await fn();
+    this.detailCache.set(key, { exp: Date.now() + ttlMs, val });
+    return val;
+  }
+
+  /**
+   * 單場賽事細節（進球/事件、數據、先發陣容），整合自 API-Sports。
+   * 未開賽（距開賽 >1 小時）或找不到 fixture 時回 available:false。
+   */
+  async getMatchDetails(matchNumber: number): Promise<MatchDetails> {
+    const m = await this.prisma.worldCupMatch.findUnique({
+      where: { matchNumber },
+      include: { homeTeam: true, awayTeam: true },
+    });
+    if (!m || !m.homeTeam || !m.awayTeam) return EMPTY_DETAILS;
+    // 距開賽超過 1 小時的未來場次沒有 events/陣容，省 API 直接回空
+    if (Date.now() < m.kickoffAt.getTime() - 60 * 60 * 1000) return EMPTY_DETAILS;
+
+    const apiKey = this.config.get<string>('API_SPORTS_KEY', '');
+    if (!apiKey) return EMPTY_DETAILS;
+
+    try {
+      const fixtures = await this.cached('wc:fixtures', 60_000, () =>
+        callFootballApi<ApiFixture[]>(apiKey, '/fixtures', { league: WC_LEAGUE_ID, season: WC_SEASON }),
+      );
+      const fid = findFixtureId(fixtures, m.homeTeam.nameEn, m.awayTeam.nameEn);
+      if (!fid) return EMPTY_DETAILS;
+
+      // 完賽資料固定，長快取；進行中短快取保即時
+      const finished = this.deriveStatus(m.kickoffAt) === 'finished';
+      const ttl = finished ? 60 * 60 * 1000 : 30_000;
+      return await this.cached(`wc:det:${fid}`, ttl, async () => {
+        const [events, stats, lineups] = await Promise.all([
+          callFootballApi<ApiEvent[]>(apiKey, '/fixtures/events', { fixture: fid }),
+          callFootballApi<ApiStatTeam[]>(apiKey, '/fixtures/statistics', { fixture: fid }),
+          callFootballApi<ApiLineupTeam[]>(apiKey, '/fixtures/lineups', { fixture: fid }),
+        ]);
+        return normalizeDetails(m.homeTeam!.nameEn, events, stats, lineups);
+      });
+    } catch {
+      return EMPTY_DETAILS;
+    }
+  }
 
   /** 手動觸發：從 API-Sports 全量同步小組賽比分（admin 鈕用） */
   async syncFromApiSports() {
