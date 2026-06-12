@@ -41,6 +41,32 @@ interface Match {
   liveMinute: number | null;
 }
 
+interface LineupPlayer {
+  name: string;
+  number: number | null;
+  pos: string | null;
+}
+interface LineupSide {
+  formation: string | null;
+  coach: string | null;
+  startXI: LineupPlayer[];
+  substitutes: LineupPlayer[];
+}
+interface MatchDetails {
+  available: boolean;
+  events: {
+    minute: number;
+    extra: number | null;
+    side: 'home' | 'away' | null;
+    type: string;
+    detail: string;
+    player: string | null;
+    assist: string | null;
+  }[];
+  statistics: { type: string; home: string | number | null; away: string | number | null }[];
+  lineups: { home: LineupSide | null; away: LineupSide | null };
+}
+
 function fmtTw(iso: string) {
   return new Date(iso).toLocaleString('zh-TW', {
     timeZone: 'Asia/Taipei',
@@ -173,6 +199,167 @@ function CenterZone({ status, kickoffAt, now }: { status: WcStatus; kickoffAt: s
   );
 }
 
+function eventLabel(type: string, detail: string): { text: string; cls: string } {
+  if (type === 'Goal') return { text: '進球', cls: 'text-teal-700 bg-teal-50 border-teal-200' };
+  if (type === 'Card')
+    return detail.includes('Red')
+      ? { text: '紅牌', cls: 'text-red-600 bg-red-50 border-red-200' }
+      : { text: '黃牌', cls: 'text-amber-600 bg-amber-50 border-amber-200' };
+  if (type === 'subst') return { text: '換人', cls: 'text-gray-500 bg-gray-50 border-gray-200' };
+  if (type === 'Var') return { text: 'VAR', cls: 'text-purple-600 bg-purple-50 border-purple-200' };
+  return { text: type, cls: 'text-gray-500 bg-gray-50 border-gray-200' };
+}
+
+/** API-Sports 數據項目英文 → 中文 */
+const STAT_ZH: Record<string, string> = {
+  'Shots on Goal': '射正',
+  'Shots off Goal': '射偏',
+  'Total Shots': '總射門',
+  'Blocked Shots': '被擋射門',
+  'Shots insidebox': '禁區內射門',
+  'Shots outsidebox': '禁區外射門',
+  Fouls: '犯規',
+  'Corner Kicks': '角球',
+  Offsides: '越位',
+  'Ball Possession': '控球率',
+  'Yellow Cards': '黃牌',
+  'Red Cards': '紅牌',
+  'Goalkeeper Saves': '撲救',
+  'Total passes': '總傳球',
+  'Passes accurate': '成功傳球',
+  'Passes %': '傳球成功率',
+  expected_goals: '預期進球 (xG)',
+  goals_prevented: '防止失球',
+};
+
+function statNum(v: string | number | null): number {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v;
+  return parseFloat(String(v).replace('%', '')) || 0;
+}
+
+/** 賽事細節：進球時間軸 + 數據對比 + 先發陣容 */
+function MatchDetailsSections({ m, details }: { m: Match; details: MatchDetails }) {
+  const keyEvents = details.events.filter((e) => ['Goal', 'Card', 'subst', 'Var'].includes(e.type));
+
+  return (
+    <>
+      {/* 進球與事件 */}
+      {keyEvents.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-3">
+          <div className="text-sm font-bold text-gray-800 mb-3">⚽ 進球與事件</div>
+          <div className="space-y-2">
+            {keyEvents.map((e, i) => {
+              const lbl = eventLabel(e.type, e.detail);
+              const isHome = e.side === 'home';
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 text-sm ${isHome ? '' : 'flex-row-reverse text-right'}`}
+                >
+                  <span className="text-xs tabular-nums text-gray-400 w-9 flex-shrink-0">
+                    {e.minute}&apos;{e.extra ? `+${e.extra}` : ''}
+                  </span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${lbl.cls}`}>
+                    {lbl.text}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`${e.type === 'Goal' ? 'font-bold text-gray-900' : 'text-gray-700'}`}>
+                      {e.player ?? '—'}
+                    </span>
+                    {e.type === 'Goal' && e.assist && (
+                      <span className="text-xs text-gray-400"> （助攻 {e.assist}）</span>
+                    )}
+                    {e.type === 'subst' && e.assist && (
+                      <span className="text-xs text-gray-400"> ↔ {e.assist}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 比賽數據 */}
+      {details.statistics.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-3">
+          <div className="flex items-center justify-between text-sm font-bold text-gray-800 mb-3">
+            <span className="flex items-center gap-1.5">
+              <span>{m.home.flag}</span>
+              {m.home.nameZh}
+            </span>
+            <span className="text-xs text-gray-400">比賽數據</span>
+            <span className="flex items-center gap-1.5">
+              {m.away.nameZh}
+              <span>{m.away.flag}</span>
+            </span>
+          </div>
+          <div className="space-y-2.5">
+            {details.statistics.map((s) => {
+              const h = statNum(s.home);
+              const a = statNum(s.away);
+              const total = h + a || 1;
+              const hPct = (h / total) * 100;
+              return (
+                <div key={s.type}>
+                  <div className="flex items-center justify-between text-xs mb-0.5">
+                    <span className="font-medium tabular-nums text-gray-800 w-10">{s.home ?? '-'}</span>
+                    <span className="text-gray-400">{STAT_ZH[s.type] ?? s.type}</span>
+                    <span className="font-medium tabular-nums text-gray-800 w-10 text-right">{s.away ?? '-'}</span>
+                  </div>
+                  <div className="flex h-1.5 rounded-full overflow-hidden bg-gray-100">
+                    <div className="bg-teal-500" style={{ width: `${hPct}%` }} />
+                    <div className="bg-gray-300" style={{ width: `${100 - hPct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 先發陣容 */}
+      {(details.lineups.home || details.lineups.away) && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 mb-3">
+          <div className="text-sm font-bold text-gray-800 mb-3">📋 先發陣容</div>
+          <div className="grid grid-cols-2 gap-4">
+            {([['home', m.home], ['away', m.away]] as const).map(([side, team]) => {
+              const lu = details.lineups[side];
+              return (
+                <div key={side}>
+                  <div className="flex items-center gap-1.5 mb-2 text-sm font-medium">
+                    <span>{team.flag}</span>
+                    <span className="truncate">{team.nameZh}</span>
+                    {lu?.formation && (
+                      <span className="text-[10px] text-gray-400 tabular-nums">{lu.formation}</span>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {(lu?.startXI ?? []).map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs text-gray-700">
+                        <span className="w-5 text-gray-400 tabular-nums text-right">{p.number ?? ''}</span>
+                        <span className="truncate">{p.name}</span>
+                        {p.pos && <span className="text-[10px] text-gray-300 ml-auto">{p.pos}</span>}
+                      </div>
+                    ))}
+                    {!lu && <div className="text-xs text-gray-400">陣容未公布</div>}
+                  </div>
+                  {lu?.coach && (
+                    <div className="mt-2 pt-2 border-t border-gray-100 text-[11px] text-gray-400">
+                      教練 {lu.coach}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: number }) {
   const now = useNow();
 
@@ -180,6 +367,15 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
     queryKey: ['world-cup-match', matchNumber],
     queryFn: () => apiFetch<{ data: Match }>(`/sports/world-cup/match/${matchNumber}`),
     refetchInterval: (q) => (q.state.data?.data.status === 'live' ? 30_000 : false),
+  });
+
+  // 賽事細節（進球/數據/陣容，整合自 API-Sports）
+  const { data: detailsData } = useQuery({
+    queryKey: ['world-cup-match-details', matchNumber],
+    enabled: !!data && data.data.status !== 'scheduled',
+    queryFn: () => apiFetch<{ data: MatchDetails }>(`/sports/world-cup/match/${matchNumber}/details`),
+    refetchInterval: (q) =>
+      data?.data.status === 'live' && q.state.data?.data.available ? 30_000 : false,
   });
 
   // 同組其他比賽
@@ -204,6 +400,8 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
   const isFinal = displayStatus === 'finished';
   const homeWins = showScore && isFinal && m.homeScore! > m.awayScore!;
   const awayWins = showScore && isFinal && m.awayScore! > m.homeScore!;
+  const details = detailsData?.data;
+  const hasDetails = !!details?.available;
 
   return (
     <div className="max-w-4xl mx-auto pb-8">
@@ -262,6 +460,9 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
         </div>
       </div>
 
+      {/* 賽事細節（進球/數據/陣容，整合自 API-Sports） */}
+      {hasDetails && <MatchDetailsSections m={m} details={details!} />}
+
       {/* 同組其他比賽 */}
       {m.stage === 'group' && groupData?.data && groupData.data.length > 0 && (
         <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -306,10 +507,12 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
         </div>
       )}
 
-      {/* 提示卡片 — 標示功能限制 */}
-      <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-        💡 目前資料源為 GitHub 公開賽程，僅含基本賽程資訊。升級 API-Sports 後將提供：即時比分、球員陣容、進球紀錄、賠率等完整資料。
-      </div>
+      {/* 提示卡片 — 僅在尚無細節時顯示（開賽前 / 細節整理中） */}
+      {!hasDetails && (
+        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+          💡 進球紀錄、比賽數據與先發陣容將於開賽後整合自 API-Sports 即時呈現。
+        </div>
+      )}
     </div>
   );
 }

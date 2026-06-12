@@ -145,6 +145,12 @@ export function WorldCupActivityStrip() {
     queryFn: () => apiFetch<{ data: Match[] }>('/sports/world-cup/matches?status=scheduled'),
   });
 
+  const { data: finishedData } = useQuery({
+    queryKey: ['wc-strip-finished'],
+    queryFn: () => apiFetch<{ data: Match[] }>('/sports/world-cup/matches?status=finished'),
+    refetchInterval: 60_000,
+  });
+
   const { data: groupsData } = useQuery({
     queryKey: ['wc-strip-groups'],
     queryFn: () => apiFetch<{ data: Group[] }>('/sports/world-cup/groups'),
@@ -153,6 +159,9 @@ export function WorldCupActivityStrip() {
   const live = liveData?.data ?? [];
   const upcoming =
     scheduledData?.data.filter((m) => !m.home.isPlaceholder && !m.away.isPlaceholder).slice(0, 4) ?? [];
+  // 賽果：最近完賽（最新在前），只取有比分的
+  const finished =
+    finishedData?.data.filter((m) => wcHasScore(m.homeScore, m.awayScore)).slice().reverse().slice(0, 8) ?? [];
   const groupMap = new Map(groupsData?.data.map((g) => [g.groupName, g]) ?? []);
   const orderedGroups: Group[] = GROUP_LETTERS.map(
     (l) => groupMap.get(l) ?? { groupName: l, rows: [] },
@@ -270,6 +279,9 @@ export function WorldCupActivityStrip() {
                       timeZone: 'Asia/Taipei',
                       month: '2-digit',
                       day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false,
                     })}
                   </div>
                   <div className="text-xs flex items-center justify-between gap-1">
@@ -287,6 +299,57 @@ export function WorldCupActivityStrip() {
               ))}
             </div>
           </>
+        )}
+
+        {/* 賽果（已結束，最新在前）*/}
+        {finished.length > 0 && (
+          <div className="mt-3 pt-3 border-t border-blue-100">
+            <div className="text-[10px] font-bold tracking-wider text-teal-700 mb-2">賽果</div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              {finished.map((m) => {
+                const homeWin = (m.homeScore ?? 0) > (m.awayScore ?? 0);
+                const awayWin = (m.awayScore ?? 0) > (m.homeScore ?? 0);
+                return (
+                  <Link
+                    key={m.id}
+                    href={`/match/world-cup/${m.matchNumber}`}
+                    className="block rounded-lg border border-gray-200 bg-white p-2 hover:border-teal-400 transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] text-gray-400 truncate">
+                        {m.group ? `${m.group} · ` : ''}{m.round}
+                      </span>
+                      <span className="text-[9px] font-medium text-gray-400 flex-shrink-0">完場</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 truncate">
+                          <span className="text-sm">{m.home.flag}</span>
+                          <span className={`text-xs truncate ${homeWin ? 'font-bold text-gray-900' : 'text-gray-600'}`}>
+                            {m.home.nameZh}
+                          </span>
+                        </span>
+                        <span className={`text-sm tabular-nums ${homeWin ? 'font-bold text-teal-700' : 'text-gray-500'}`}>
+                          {m.homeScore}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 truncate">
+                          <span className="text-sm">{m.away.flag}</span>
+                          <span className={`text-xs truncate ${awayWin ? 'font-bold text-gray-900' : 'text-gray-600'}`}>
+                            {m.away.nameZh}
+                          </span>
+                        </span>
+                        <span className={`text-sm tabular-nums ${awayWin ? 'font-bold text-teal-700' : 'text-gray-500'}`}>
+                          {m.awayScore}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         <div className="mt-3 pt-3 border-t border-blue-100">

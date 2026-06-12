@@ -40,4 +40,10 @@ export class WorldCupController {
   async getMatch(@Param('id', ParseIntPipe) id: number) {
     return { data: await this.svc.getMatch(id) };
   }
+
+  @Get('match/:matchNumber/details')
+  @ApiOperation({ summary: '單場賽事細節（進球/數據/陣容，整合自 API-Sports）' })
+  async getMatchDetails(@Param('matchNumber', ParseIntPipe) matchNumber: number) {
+    return { data: await this.svc.getMatchDetails(matchNumber) };
+  }
 }
