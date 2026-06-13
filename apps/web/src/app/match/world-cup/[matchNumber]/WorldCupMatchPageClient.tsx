@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { deriveWcStatus, wcHasScore, type WcStatus } from '@/lib/world-cup-status';
+import { WorldCupLiveBoard } from '@/components/sports/world-cup/live/WorldCupLiveBoard';
 
 interface TeamView {
   id: number | null;
@@ -438,6 +439,20 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
           </div>
         )}
       </div>
+
+      {/* 即時賽事動畫板（進行中 / 已結束有細節時） */}
+      {hasDetails && (
+        <WorldCupLiveBoard
+          home={m.home}
+          away={m.away}
+          homeScore={m.homeScore}
+          awayScore={m.awayScore}
+          status={displayStatus}
+          liveMinute={m.liveMinute}
+          events={details!.events}
+          statistics={details!.statistics}
+        />
+      )}
 
       {/* 戰報 CTA */}
       <Link
