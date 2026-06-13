@@ -39,9 +39,29 @@ const SPORTS = [
 ] as const;
 type SportKey = (typeof SPORTS)[number]['key'];
 
-/** 籃球聯盟（目前只接 NBA，走 /sports/nba/recent） */
+/**
+ * 籃球聯盟：NBA 走 /sports/nba/recent（ESPN）；
+ * 其餘走通用 /basketball/:slug/games/recent（api-sports，淡季空、開季自動亮）。
+ */
 const BASKETBALL_LEAGUES = [
-  { slug: 'nba', label: 'NBA', badge: 'NBA', badgeCls: 'bg-orange-50 text-orange-600' },
+  { slug: 'nba', label: 'NBA', badge: 'NBA', badgeCls: 'bg-orange-50 text-orange-600', source: 'nba' as const },
+  { slug: 'spain-acb', label: '西籃甲', badge: '西籃', badgeCls: 'bg-red-50 text-red-600', source: 'generic' as const },
+  { slug: 'italy-lega-a', label: '義籃', badge: '義籃', badgeCls: 'bg-blue-50 text-blue-700', source: 'generic' as const },
+  { slug: 'germany-bbl', label: '德籃', badge: '德籃', badgeCls: 'bg-rose-50 text-rose-600', source: 'generic' as const },
+  { slug: 'france-lnb', label: '法籃', badge: '法籃', badgeCls: 'bg-indigo-50 text-indigo-600', source: 'generic' as const },
+  { slug: 'turkey-super-ligi', label: '土籃', badge: '土籃', badgeCls: 'bg-amber-50 text-amber-700', source: 'generic' as const },
+  { slug: 'greece-basket-league', label: '希臘籃', badge: '希籃', badgeCls: 'bg-sky-50 text-sky-700', source: 'generic' as const },
+  { slug: 'lithuania-lkl', label: '立陶宛籃', badge: '立籃', badgeCls: 'bg-emerald-50 text-emerald-700', source: 'generic' as const },
+  { slug: 'aba-league', label: 'ABA', badge: 'ABA', badgeCls: 'bg-slate-100 text-slate-700', source: 'generic' as const },
+  { slug: 'poland-tbl', label: '波蘭籃', badge: '波籃', badgeCls: 'bg-red-50 text-red-700', source: 'generic' as const },
+  { slug: 'cba', label: 'CBA 中國', badge: 'CBA', badgeCls: 'bg-red-50 text-red-600', source: 'generic' as const },
+  { slug: 'b-league', label: '日籃 B1', badge: '日籃', badgeCls: 'bg-pink-50 text-pink-600', source: 'generic' as const },
+  { slug: 'kbl', label: '韓籃', badge: '韓籃', badgeCls: 'bg-blue-50 text-blue-700', source: 'generic' as const },
+  { slug: 'easl', label: '東亞超級聯賽', badge: '東亞', badgeCls: 'bg-cyan-50 text-cyan-700', source: 'generic' as const },
+  { slug: 'p-league-plus', label: 'P+ 台籃', badge: 'P+', badgeCls: 'bg-teal-50 text-teal-700', source: 'generic' as const },
+  { slug: 'australia-nbl', label: '澳籃', badge: '澳籃', badgeCls: 'bg-yellow-50 text-yellow-700', source: 'generic' as const },
+  { slug: 'indonesia-nbl', label: '印尼籃', badge: '印籃', badgeCls: 'bg-red-50 text-red-600', source: 'generic' as const },
+  { slug: 'fiba-wc-qualifiers', label: '世籃資格賽', badge: '世籃資', badgeCls: 'bg-amber-50 text-amber-700', source: 'generic' as const },
 ] as const;
 
 /**
@@ -50,7 +70,7 @@ const BASKETBALL_LEAGUES = [
  */
 const FOOTBALL_LEAGUES = [
   { slug: 'friendlies', label: '友誼賽', badge: '友誼', badgeCls: 'bg-teal-50 text-teal-600', source: 'friendlies' as const },
-  { slug: 'world-cup', label: '世界盃', badge: '世界盃', badgeCls: 'bg-amber-50 text-amber-700', source: 'generic' as const },
+  { slug: 'world-cup', label: '世界盃', badge: '世界盃', badgeCls: 'bg-amber-50 text-amber-700', source: 'world-cup' as const },
   { slug: 'epl', label: '英超', badge: '英超', badgeCls: 'bg-purple-50 text-purple-700', source: 'generic' as const },
   { slug: 'la-liga', label: '西甲', badge: '西甲', badgeCls: 'bg-red-50 text-red-600', source: 'generic' as const },
   { slug: 'serie-a', label: '義甲', badge: '義甲', badgeCls: 'bg-blue-50 text-blue-700', source: 'generic' as const },
@@ -254,6 +274,44 @@ function normalizeNba(games: NbaRecentGame[]): HubGame[] {
   });
 }
 
+/** 其他籃球聯賽（通用 /basketball/:slug/games/recent，api-sports basketball） */
+interface BasketballGame {
+  id: number;
+  date?: string;
+  timestamp?: number;
+  statusShort?: string;
+  teams: {
+    home: { name?: string; nameZhTw?: string; shortName?: string; logo?: string };
+    away: { name?: string; nameZhTw?: string; shortName?: string; logo?: string };
+  };
+  scores: { home: { total: number | null }; away: { total: number | null } };
+}
+function normalizeBasketballGeneric(
+  games: BasketballGame[],
+  meta: { slug: string; badge: string; badgeCls: string },
+): HubGame[] {
+  return games.map((g) => {
+    const state = nbaState(g.statusShort); // 籃球狀態碼與 NBA 同族（NS/Q1-Q4/FT…）
+    const time = g.timestamp ? twTime(new Date(g.timestamp * 1000).toISOString()) : twTime(g.date);
+    const detail = state === 'Live' ? (g.statusShort || '進行中') : state === 'Final' ? '終' : time;
+    const hs = g.scores?.home?.total ?? null;
+    const as = g.scores?.away?.total ?? null;
+    const tn = (t?: { name?: string; nameZhTw?: string; shortName?: string }) =>
+      t?.nameZhTw || t?.shortName || t?.name || '未知';
+    return {
+      key: `${meta.slug}-${g.id}`,
+      league: meta.slug,
+      badge: meta.badge,
+      badgeCls: meta.badgeCls,
+      state,
+      href: `/match/basketball/${meta.slug}/${g.id}`,
+      detail,
+      away: { name: tn(g.teams?.away), logo: g.teams?.away?.logo ?? '', score: as, winner: state === 'Final' && as != null && hs != null && as > hs },
+      home: { name: tn(g.teams?.home), logo: g.teams?.home?.logo ?? '', score: hs, winner: state === 'Final' && as != null && hs != null && hs > as },
+    };
+  });
+}
+
 /* ───────────── 足球來源 ───────────── */
 /** 友誼賽（專屬 /sports/friendlies/matches，有中文名+真 logo） */
 interface FriendlyMatch {
@@ -325,6 +383,40 @@ function normalizeFootballGeneric(games: FootballFixture[], meta: { slug: string
       detail,
       away: { name: tn(g.teams?.away), logo: g.teams?.away?.logo ?? '', score: as, winner: state === 'Final' && as != null && hs != null && as > hs },
       home: { name: tn(g.teams?.home), logo: g.teams?.home?.logo ?? '', score: hs, winner: state === 'Final' && as != null && hs != null && hs > as },
+    };
+  });
+}
+
+/** 世界盃（專屬 /sports/world-cup/matches?date=，有中文名+旗幟+我們同步的比分） */
+interface WorldCupHubMatch {
+  matchNumber: number;
+  kickoffAt: string;
+  home: { nameZh: string; flag: string | null };
+  away: { nameZh: string; flag: string | null };
+  homeScore: number | null;
+  awayScore: number | null;
+  status: 'scheduled' | 'live' | 'finished';
+  liveMinute: number | null;
+}
+function normalizeWorldCup(matches: WorldCupHubMatch[]): HubGame[] {
+  const meta = FOOTBALL_LEAGUES.find((l) => l.slug === 'world-cup')!;
+  return matches.map((m) => {
+    const state: GameState = m.status === 'finished' ? 'Final' : m.status === 'live' ? 'Live' : 'Preview';
+    const detail = state === 'Live' ? (m.liveMinute != null ? `${m.liveMinute}'` : '進行中') : state === 'Final' ? '終' : twTime(m.kickoffAt);
+    const hs = m.homeScore;
+    const as = m.awayScore;
+    // 世界盃用旗幟 emoji（非 logo URL），併入隊名顯示
+    const nm = (t: { nameZh: string; flag: string | null }) => `${t.flag ?? ''} ${t.nameZh}`.trim();
+    return {
+      key: `world-cup-${m.matchNumber}`,
+      league: 'world-cup',
+      badge: meta.badge,
+      badgeCls: meta.badgeCls,
+      state,
+      href: `/match/world-cup/${m.matchNumber}`,
+      detail,
+      away: { name: nm(m.away), logo: '', score: as, winner: state === 'Final' && as != null && hs != null && as > hs },
+      home: { name: nm(m.home), logo: '', score: hs, winner: state === 'Final' && as != null && hs != null && hs > as },
     };
   });
 }
@@ -501,9 +593,10 @@ function useAllLeaguesGames(dateKey: DateKey, enabled: boolean): { games: HubGam
   return { games, isLoading };
 }
 
-/* ───────────── 籃球（NBA）抓取 ───────────── */
+/* ───────────── 籃球抓取（NBA 專屬 + 其他聯賽通用，依日期合併） ───────────── */
 function useBasketballGames(dateKey: DateKey, enabled: boolean): { games: HubGame[]; isLoading: boolean } {
-  const { data, isLoading } = useQuery({
+  // NBA（ESPN，/sports/nba/recent）
+  const { data: nbaData, isLoading: nbaLoading } = useQuery({
     queryKey: ['hub-nba-recent'],
     queryFn: async () => {
       const res = await apiFetch<{ data: { yesterday: NbaRecentGame[]; today: NbaRecentGame[]; tomorrow: NbaRecentGame[] } }>(
@@ -515,8 +608,36 @@ function useBasketballGames(dateKey: DateKey, enabled: boolean): { games: HubGam
     refetchInterval: 20 * 1000,
     enabled,
   });
-  const bucket = dateKey === 'yesterday' ? data?.yesterday : dateKey === 'tomorrow' ? data?.tomorrow : data?.today;
-  return { games: normalizeNba(bucket ?? []), isLoading: enabled && isLoading };
+
+  // 其他籃球聯賽（通用 /basketball/:slug/games/recent）
+  const genericLeagues = BASKETBALL_LEAGUES.filter((l) => l.source === 'generic');
+  const results = useQueries({
+    queries: genericLeagues.map((l) => ({
+      queryKey: ['hub-basketball-recent', l.slug],
+      queryFn: async () => {
+        const res = await apiFetch<{ data: { yesterday: BasketballGame[]; today: BasketballGame[]; tomorrow: BasketballGame[] } }>(
+          `/basketball/${l.slug}/games/recent`,
+        );
+        return res.data;
+      },
+      staleTime: 30 * 1000,
+      refetchInterval: 60 * 1000,
+      enabled,
+    })),
+  });
+
+  const nbaBucket = dateKey === 'yesterday' ? nbaData?.yesterday : dateKey === 'tomorrow' ? nbaData?.tomorrow : nbaData?.today;
+  const isLoading = enabled && (nbaLoading || results.some((r) => r.isLoading));
+  const games: HubGame[] = [
+    ...normalizeNba(nbaBucket ?? []),
+    ...genericLeagues.flatMap((l, i) => {
+      const d = results[i].data;
+      if (!d) return [];
+      const bucket = dateKey === 'yesterday' ? d.yesterday : dateKey === 'tomorrow' ? d.tomorrow : d.today;
+      return normalizeBasketballGeneric(bucket ?? [], l);
+    }),
+  ];
+  return { games, isLoading };
 }
 
 /* ───────────── 足球抓取（友誼賽專屬 + 其他聯賽通用，依日期合併） ───────────── */
@@ -529,6 +650,18 @@ function useFootballGames(dateKey: DateKey, enabled: boolean): { games: HubGame[
     queryKey: ['hub-friendlies', date],
     queryFn: async () => {
       const res = await apiFetch<{ data: FriendlyMatch[] }>(`/sports/friendlies/matches?date=${date}`);
+      return res.data ?? [];
+    },
+    staleTime: 15 * 1000,
+    refetchInterval: 20 * 1000,
+    enabled,
+  });
+
+  // 世界盃（專屬 endpoint，有中文名/旗幟/我們同步的比分）
+  const { data: worldCup, isLoading: wcLoading } = useQuery({
+    queryKey: ['hub-world-cup', date],
+    queryFn: async () => {
+      const res = await apiFetch<{ data: WorldCupHubMatch[] }>(`/sports/world-cup/matches?date=${date}`);
       return res.data ?? [];
     },
     staleTime: 15 * 1000,
@@ -553,8 +686,9 @@ function useFootballGames(dateKey: DateKey, enabled: boolean): { games: HubGame[
     })),
   });
 
-  const isLoading = enabled && (fLoading || results.some((r) => r.isLoading));
+  const isLoading = enabled && (fLoading || wcLoading || results.some((r) => r.isLoading));
   const games: HubGame[] = [
+    ...normalizeWorldCup(worldCup ?? []),
     ...normalizeFriendly(friendly ?? []),
     ...genericLeagues.flatMap((l, i) => {
       const d = results[i].data;
