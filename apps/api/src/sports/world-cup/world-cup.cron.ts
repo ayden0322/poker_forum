@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -12,7 +12,7 @@ import {
 
 /**
  * FIFA 世界盃 2026 即時資料排程
- * - 每 1 分鐘：刷新 LIVE 進行中場次的比分/分鐘（live=all，回應快）
+ * - 每 30 秒：刷新 LIVE 進行中場次的比分/分鐘（live=all，回應快；只在有 live 場時才打到資料）
  * - 每 5 分鐘：整季全量同步（補完賽比分定版、開賽後狀態轉換）
  *
  * 業主為 API-Sports Pro（7500/日），要求高同步性，故採高頻。
@@ -30,8 +30,8 @@ export class WorldCupCron {
     this.apiKey = this.config.get<string>('API_SPORTS_KEY', '');
   }
 
-  /** 每 1 分鐘刷新進行中的場次 */
-  @Cron(CronExpression.EVERY_MINUTE)
+  /** 每 30 秒刷新進行中的場次（6 欄位 cron，含秒）*/
+  @Cron('*/30 * * * * *')
   async refreshLive() {
     if (!this.apiKey) return;
     try {
