@@ -994,7 +994,7 @@ export function HomeBaseballHub() {
                         {(post as HubPost).badge}
                       </span>
                     )}
-                    <FeaturedPostCard post={post} />
+                    <FeaturedPostCard post={post} league={baseballSingle ?? (post as HubPost).league} />
                   </div>
                 ))}
               </div>

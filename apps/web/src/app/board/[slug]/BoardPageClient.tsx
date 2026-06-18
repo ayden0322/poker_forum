@@ -517,7 +517,7 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
                             : 'hidden'
                     }
                   >
-                    <FeaturedPostCard post={post} />
+                    <FeaturedPostCard post={post} league={board.slug} />
                   </div>
                 ))}
               </div>
