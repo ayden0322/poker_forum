@@ -1,20 +1,31 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Table, Button, Modal, Form, Input, InputNumber, Space, message, Popconfirm } from 'antd';
+import { Table, Button, Modal, Form, Input, InputNumber, Select, Tag, Space, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 
 import { adminApiFetch } from '@/lib/api';
 
+type CategoryType = 'SPORTS' | 'LOTTERY' | 'GENERAL';
+
 interface Category {
   id: string;
   name: string;
   slug: string;
+  type: CategoryType;
   sortOrder: number;
   _count: { boards: number };
 }
+
+// 分類型別：決定此分類底下看板可用的標籤集合（對齊後端 Tag.scope）
+const TYPE_OPTIONS: { value: CategoryType; label: string; color: string }[] = [
+  { value: 'SPORTS', label: '體育（吃通用＋體育共用標籤）', color: 'blue' },
+  { value: 'LOTTERY', label: '彩券（吃通用＋彩券標籤）', color: 'gold' },
+  { value: 'GENERAL', label: '綜合（只吃通用標籤）', color: 'default' },
+];
+const TYPE_MAP = Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o]));
 
 export default function CategoriesPage() {
   const queryClient = useQueryClient();
@@ -28,7 +39,7 @@ export default function CategoriesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: (values: { name: string; slug: string; sortOrder: number }) => {
+    mutationFn: (values: { name: string; slug: string; sortOrder: number; type: CategoryType }) => {
       if (editing) {
         return adminApiFetch(`/admin/categories/${editing.id}`, { method: 'PATCH', body: JSON.stringify(values) });
       }
@@ -55,19 +66,23 @@ export default function CategoriesPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ sortOrder: 0 });
+    form.setFieldsValue({ sortOrder: 0, type: 'GENERAL' });
     setModalOpen(true);
   };
 
   const openEdit = (cat: Category) => {
     setEditing(cat);
-    form.setFieldsValue({ name: cat.name, slug: cat.slug, sortOrder: cat.sortOrder });
+    form.setFieldsValue({ name: cat.name, slug: cat.slug, sortOrder: cat.sortOrder, type: cat.type });
     setModalOpen(true);
   };
 
   const columns: ColumnsType<Category> = [
     { title: '名稱', dataIndex: 'name', key: 'name' },
     { title: 'Slug', dataIndex: 'slug', key: 'slug' },
+    {
+      title: '型別', dataIndex: 'type', key: 'type', width: 90,
+      render: (t: CategoryType) => <Tag color={TYPE_MAP[t]?.color}>{TYPE_MAP[t]?.label.split('（')[0] ?? t}</Tag>,
+    },
     { title: '排序', dataIndex: 'sortOrder', key: 'sortOrder', width: 80 },
     { title: '看板數', key: 'boards', width: 80, render: (_, r) => r._count.boards },
     {
@@ -116,6 +131,9 @@ export default function CategoriesPage() {
           </Form.Item>
           <Form.Item label="Slug" name="slug" rules={[{ required: true, message: '請輸入 Slug' }]}>
             <Input />
+          </Form.Item>
+          <Form.Item label="型別" name="type" rules={[{ required: true }]} extra="決定此分類看板在發文與篩選看到哪些標籤">
+            <Select options={TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} />
           </Form.Item>
           <Form.Item label="排序" name="sortOrder">
             <InputNumber min={0} style={{ width: '100%' }} />

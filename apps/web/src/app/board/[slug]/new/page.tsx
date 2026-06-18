@@ -19,6 +19,7 @@ interface Board {
   id: string;
   name: string;
   slug: string;
+  category?: { slug: string };
 }
 
 export default function NewPostPage() {
@@ -36,13 +37,21 @@ export default function NewPostPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
     apiFetch<{ data: Board }>(`/boards/${slug}`)
-      .then((res) => setBoard(res.data))
-      .catch(() => router.push('/'));
-
-    apiFetch<{ data: Tag[] }>('/tags')
-      .then((res) => setTags(res.data))
-      .catch(() => {});
+      .then((res) => {
+        if (cancelled) return;
+        setBoard(res.data);
+        // 依看板所屬分類撈可用標籤（體育板不跳彩券標籤，反之亦然）。
+        // 缺 category 時帶 __none__ 讓後端只回通用標籤，絕不退回「全部標籤」。
+        const categorySlug = res.data.category?.slug ?? '__none__';
+        // 標籤撈失敗只留空、不影響發文與導頁；唯有看板本身撈不到才導回首頁。
+        apiFetch<{ data: Tag[] }>(`/tags?category=${categorySlug}`)
+          .then((r) => { if (!cancelled) setTags(r.data); })
+          .catch(() => {});
+      })
+      .catch(() => { if (!cancelled) router.push('/'); });
+    return () => { cancelled = true; };
   }, [slug, router]);
 
   const toggleTag = (tagId: string) => {

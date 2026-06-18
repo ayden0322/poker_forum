@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
@@ -24,7 +24,6 @@ import { CpblInjuriesWidget } from '@/components/sports/cpbl/CpblInjuriesWidget'
 import { WorldCupActivityStrip } from '@/components/sports/world-cup/WorldCupActivityStrip';
 import { FriendlyActivityStrip } from '@/components/sports/friendlies/FriendlyActivityStrip';
 import { WorldCupMatchThreadShelf } from '@/components/sports/world-cup/WorldCupMatchThreadShelf';
-import { WorldCupTagFilter } from '@/components/sports/world-cup/WorldCupTagFilter';
 import { GameIcon } from '@/components/lottery/GameIcon';
 import { getMetaByBoardSlug } from '@/components/lottery/lottery-meta';
 
@@ -299,14 +298,24 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
     return { pinnedPosts: pinned, normalPosts: normal };
   }, [posts]);
 
-  // 收集所有出現的 tag（用於篩選按鈕）
-  const allTags = useMemo(() => {
-    const tagMap = new Map<string, { id: string; name: string; slug: string }>();
-    [...news, ...featured, ...posts].forEach((p) =>
-      p.tags.forEach((t) => tagMap.set(t.tag.slug, t.tag))
-    );
-    return Array.from(tagMap.values());
-  }, [news, featured, posts]);
+  // 篩選用標籤：依看板所屬分類撈「允許集合」，而非從現有貼文蒐集。
+  // 後者會把歷史錯標的彩券標籤漏進體育板篩選列（Codex 對審指出的洞）。
+  const { data: boardTagsRes } = useQuery({
+    queryKey: ['board-tags', board.category.slug],
+    queryFn: () =>
+      apiFetch<{ data: { id: string; name: string; slug: string }[] }>(
+        `/tags?category=${board.category.slug}`,
+      ),
+  });
+  const allTags = boardTagsRes?.data ?? [];
+
+  // 防禦：若 activeTag 不在此分類的允許清單內（例如切換看板後殘留），清掉避免「按鈕看不到卻仍在過濾」的空結果
+  useEffect(() => {
+    if (activeTag && allTags.length > 0 && !allTags.some((t) => t.slug === activeTag)) {
+      setActiveTag('');
+      setPage(1);
+    }
+  }, [allTags, activeTag]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -416,14 +425,6 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
         <FriendlyActivityStrip />
       ) : (
         <ScoreWidget boardSlug={board.slug} />
-      )}
-
-      {/* 世界盃專屬：賽事相關 tag 快速篩選 */}
-      {board.slug === 'world-cup' && (
-        <WorldCupTagFilter
-          activeTag={activeTag}
-          onChange={(slug) => { setActiveTag(slug); setPage(1); }}
-        />
       )}
 
       {/* 搜尋列 */}

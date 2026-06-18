@@ -6,8 +6,19 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
-import { Role, UserStatus, FeedbackType, FeedbackStatus, PostStatus } from '@betting-forum/database';
+import { Role, UserStatus, FeedbackType, FeedbackStatus, PostStatus, TagScope, CategoryType } from '@betting-forum/database';
 import { rankOf } from '../common/role-hierarchy';
+
+/** 驗證傳入值屬於某 enum；undefined 視為「不更動」放行，非法值回 400。 */
+function assertEnum<T extends Record<string, string>>(
+  value: string | undefined,
+  enumObj: T,
+  label: string,
+): void {
+  if (value !== undefined && !Object.values(enumObj).includes(value)) {
+    throw new BadRequestException(`無效的${label}：${value}`);
+  }
+}
 
 @Injectable()
 export class AdminService {
@@ -246,11 +257,21 @@ export class AdminService {
     });
   }
 
-  async createCategory(data: { name: string; slug: string; sortOrder?: number }) {
+  async createCategory(data: {
+    name: string;
+    slug: string;
+    sortOrder?: number;
+    type?: CategoryType;
+  }) {
+    assertEnum(data.type, CategoryType, '分類型別');
     return this.prisma.category.create({ data });
   }
 
-  async updateCategory(id: string, data: { name?: string; slug?: string; sortOrder?: number }) {
+  async updateCategory(
+    id: string,
+    data: { name?: string; slug?: string; sortOrder?: number; type?: CategoryType },
+  ) {
+    assertEnum(data.type, CategoryType, '分類型別');
     const cat = await this.prisma.category.findUnique({ where: { id } });
     if (!cat) throw new NotFoundException('找不到此分類');
     return this.prisma.category.update({ where: { id }, data });
@@ -588,16 +609,21 @@ export class AdminService {
   // ===== 標籤管理 =====
   async getTags() {
     return this.prisma.tag.findMany({
-      orderBy: { name: 'asc' },
+      orderBy: [{ scope: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
       include: { _count: { select: { posts: true } } },
     });
   }
 
-  async createTag(data: { name: string; slug: string }) {
+  async createTag(data: { name: string; slug: string; scope?: TagScope; sortOrder?: number }) {
+    assertEnum(data.scope, TagScope, '標籤範圍');
     return this.prisma.tag.create({ data });
   }
 
-  async updateTag(id: string, data: { name?: string; slug?: string }) {
+  async updateTag(
+    id: string,
+    data: { name?: string; slug?: string; scope?: TagScope; sortOrder?: number },
+  ) {
+    assertEnum(data.scope, TagScope, '標籤範圍');
     return this.prisma.tag.update({ where: { id }, data });
   }
 

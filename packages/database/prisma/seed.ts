@@ -8,38 +8,38 @@ async function main() {
   // ===== 分類 =====
   const basketball = await prisma.category.upsert({
     where: { slug: 'basketball' },
-    update: { name: '籃球', sortOrder: 1 },
-    create: { name: '籃球', slug: 'basketball', sortOrder: 1 },
+    update: { name: '籃球', sortOrder: 1, type: 'SPORTS' },
+    create: { name: '籃球', slug: 'basketball', sortOrder: 1, type: 'SPORTS' },
   });
 
   const soccer = await prisma.category.upsert({
     where: { slug: 'soccer' },
-    update: { name: '足球', sortOrder: 2 },
-    create: { name: '足球', slug: 'soccer', sortOrder: 2 },
+    update: { name: '足球', sortOrder: 2, type: 'SPORTS' },
+    create: { name: '足球', slug: 'soccer', sortOrder: 2, type: 'SPORTS' },
   });
 
   const baseball = await prisma.category.upsert({
     where: { slug: 'baseball' },
-    update: { name: '棒球', sortOrder: 3 },
-    create: { name: '棒球', slug: 'baseball', sortOrder: 3 },
+    update: { name: '棒球', sortOrder: 3, type: 'SPORTS' },
+    create: { name: '棒球', slug: 'baseball', sortOrder: 3, type: 'SPORTS' },
   });
 
   const otherSports = await prisma.category.upsert({
     where: { slug: 'other-sports' },
-    update: { name: '其他運動', sortOrder: 4 },
-    create: { name: '其他運動', slug: 'other-sports', sortOrder: 4 },
+    update: { name: '其他運動', sortOrder: 4, type: 'SPORTS' },
+    create: { name: '其他運動', slug: 'other-sports', sortOrder: 4, type: 'SPORTS' },
   });
 
   const lottery = await prisma.category.upsert({
     where: { slug: 'lottery' },
-    update: {},
-    create: { name: '台灣彩票', slug: 'lottery', sortOrder: 5 },
+    update: { type: 'LOTTERY' },
+    create: { name: '台灣彩票', slug: 'lottery', sortOrder: 5, type: 'LOTTERY' },
   });
 
   const general = await prisma.category.upsert({
     where: { slug: 'general' },
-    update: {},
-    create: { name: '綜合', slug: 'general', sortOrder: 6 },
+    update: { type: 'GENERAL' },
+    create: { name: '綜合', slug: 'general', sortOrder: 6, type: 'GENERAL' },
   });
 
   // ===== 籃球看板 =====
@@ -178,21 +178,32 @@ async function main() {
     });
   }
 
-  // ===== 常用標籤 =====
-  const tags = [
-    { name: '分析', slug: 'analysis' },
-    { name: '曬單', slug: 'show-ticket' },
-    { name: '求推薦', slug: 'recommend' },
-    { name: '開獎', slug: 'draw-result' },
-    { name: '心得', slug: 'review' },
-    { name: '教學', slug: 'tutorial' },
-    { name: '討論', slug: 'discussion' },
+  // ===== 常用標籤（scope 決定哪些分類看板能用）=====
+  // GLOBAL = 所有看板通用；SPORTS = 體育四分類共用；LOTTERY = 台灣彩票專用。
+  // SPORTS 四個（戰報/預測/球員/陣容）沿用前端 WorldCupTagFilter 原本寫死、但 DB 不存在的 slug，
+  // 一次補上資料層，讓原本的「死鈕」變成跨運動板真正可用、可篩選的標籤。
+  const tags: { name: string; slug: string; scope: 'GLOBAL' | 'SPORTS' | 'LOTTERY'; sortOrder: number }[] = [
+    // 通用層
+    { name: '分析', slug: 'analysis', scope: 'GLOBAL', sortOrder: 1 },
+    { name: '心得', slug: 'review', scope: 'GLOBAL', sortOrder: 2 },
+    { name: '討論', slug: 'discussion', scope: 'GLOBAL', sortOrder: 3 },
+    { name: '教學', slug: 'tutorial', scope: 'GLOBAL', sortOrder: 4 },
+    // 運動共用層
+    { name: '戰報', slug: 'match-thread', scope: 'SPORTS', sortOrder: 1 },
+    { name: '預測', slug: 'prediction', scope: 'SPORTS', sortOrder: 2 },
+    { name: '球員', slug: 'player', scope: 'SPORTS', sortOrder: 3 },
+    { name: '陣容', slug: 'lineup', scope: 'SPORTS', sortOrder: 4 },
+    // 彩券層
+    { name: '曬單', slug: 'show-ticket', scope: 'LOTTERY', sortOrder: 1 },
+    { name: '求推薦', slug: 'recommend', scope: 'LOTTERY', sortOrder: 2 },
+    { name: '開獎', slug: 'draw-result', scope: 'LOTTERY', sortOrder: 3 },
   ];
 
   for (const tag of tags) {
     await prisma.tag.upsert({
       where: { slug: tag.slug },
-      update: {},
+      // update scope/sortOrder：既有標籤重新歸位（例如舊的 analysis 預設 GLOBAL）
+      update: { name: tag.name, scope: tag.scope, sortOrder: tag.sortOrder },
       create: tag,
     });
   }

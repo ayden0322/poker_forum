@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { TagsService } from '../tags/tags.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { Role, PostStatus } from '@betting-forum/database';
@@ -9,12 +10,31 @@ export const AUTO_POST_PIN_HOURS = 24;
 
 @Injectable()
 export class PostsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private tagsService: TagsService,
+  ) {}
+
+  /**
+   * 驗證 tagIds 是否都屬於「該看板分類允許的標籤集合」。
+   * 擋掉繞過前端、直接 POST 不屬於此分類的標籤（例如運動板硬塞彩券標籤）造成資料污染。
+   */
+  private async assertTagsAllowed(boardId: string, tagIds?: string[]) {
+    if (!tagIds?.length) return;
+    const allowed = await this.tagsService.getAllowedTagIds(boardId);
+    const invalid = tagIds.filter((id) => !allowed.has(id));
+    if (invalid.length > 0) {
+      throw new BadRequestException('所選標籤不適用於此看板');
+    }
+  }
 
   /** 建立文章 */
   async create(authorId: string, userRole: string, dto: CreatePostDto) {
     const board = await this.prisma.board.findUnique({ where: { id: dto.boardId } });
     if (!board || !board.isActive) throw new NotFoundException('看板不存在或已停用');
+
+    // 標籤必須屬於該看板分類的允許集合（後端閘門，不只靠前端過濾）
+    await this.assertTagsAllowed(dto.boardId, dto.tagIds);
 
     // 只有 ADMIN / SUPER_ADMIN 能標自己是自動發文（新聞 agent）；其他角色傳 true 也忽略
     const isAutoPosted =
@@ -91,6 +111,8 @@ export class PostsService {
 
     // 更新標籤
     if (dto.tagIds !== undefined) {
+      // 同 create：改文也要驗證標籤屬於此看板分類
+      await this.assertTagsAllowed(post.boardId, dto.tagIds);
       await this.prisma.postTag.deleteMany({ where: { postId: id } });
       if (dto.tagIds.length > 0) {
         await this.prisma.postTag.createMany({

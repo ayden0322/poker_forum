@@ -20,7 +20,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { PageGuard } from '../common/guards/page.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { Role, UserStatus, FeedbackType, FeedbackStatus } from '@betting-forum/database';
+import { Role, UserStatus, FeedbackType, FeedbackStatus, TagScope, CategoryType } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { getClientIp } from '../common/get-client-ip.util';
 
@@ -146,7 +146,9 @@ export class AdminController {
   }
 
   @Post('categories')
-  async createCategory(@Body() body: { name: string; slug: string; sortOrder?: number }) {
+  async createCategory(
+    @Body() body: { name: string; slug: string; sortOrder?: number; type?: CategoryType },
+  ) {
     const data = await this.adminService.createCategory(body);
     return { data };
   }
@@ -154,7 +156,7 @@ export class AdminController {
   @Patch('categories/:id')
   async updateCategory(
     @Param('id') id: string,
-    @Body() body: { name?: string; slug?: string; sortOrder?: number },
+    @Body() body: { name?: string; slug?: string; sortOrder?: number; type?: CategoryType },
   ) {
     const data = await this.adminService.updateCategory(id, body);
     return { data };
@@ -374,13 +376,18 @@ export class AdminController {
   }
 
   @Post('tags')
-  async createTag(@Body() body: { name: string; slug: string }) {
+  async createTag(
+    @Body() body: { name: string; slug: string; scope?: TagScope; sortOrder?: number },
+  ) {
     const data = await this.adminService.createTag(body);
     return { data };
   }
 
   @Patch('tags/:id')
-  async updateTag(@Param('id') id: string, @Body() body: { name?: string; slug?: string }) {
+  async updateTag(
+    @Param('id') id: string,
+    @Body() body: { name?: string; slug?: string; scope?: TagScope; sortOrder?: number },
+  ) {
     const data = await this.adminService.updateTag(id, body);
     return { data };
   }

@@ -81,11 +81,21 @@ model OAuthProvider {
 }
 
 // ===== 看板 =====
+// 分類型別：決定該分類底下看板可用的標籤集合（搭配 Tag.scope）
+// SPORTS = 體育（籃球/足球/棒球/其他運動）；LOTTERY = 台灣彩票；GENERAL = 綜合（只吃通用標籤）
+enum CategoryType {
+  SPORTS
+  LOTTERY
+  GENERAL
+}
+
 model Category {
-  id        String  @id @default(cuid())
+  id        String       @id @default(cuid())
   name      String
-  slug      String  @unique
-  sortOrder Int     @default(0) @map("sort_order")
+  slug      String       @unique
+  // 分類型別；標籤可用集合 = scope=GLOBAL 的通用標籤 ∪ scope 對應此 type 的標籤
+  type      CategoryType @default(GENERAL)
+  sortOrder Int          @default(0) @map("sort_order")
   boards    Board[]
 
   @@map("categories")
@@ -180,11 +190,23 @@ model PostTag {
   @@map("post_tags")
 }
 
+// 標籤適用範圍：決定哪些分類的看板能用此標籤（搭配 Category.type）
+// GLOBAL = 通用（所有看板）；SPORTS = 體育共用；LOTTERY = 彩券專用
+enum TagScope {
+  GLOBAL
+  SPORTS
+  LOTTERY
+}
+
 model Tag {
-  id    String    @id @default(cuid())
-  name  String    @unique
-  slug  String    @unique
-  posts PostTag[]
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  // 適用範圍；發文頁與篩選列依「board.category.type」決定要顯示哪些標籤
+  scope     TagScope  @default(GLOBAL)
+  // UI 顯示順序（同 scope 內由小到大）
+  sortOrder Int       @default(0) @map("sort_order")
+  posts     PostTag[]
 
   @@map("tags")
 }
