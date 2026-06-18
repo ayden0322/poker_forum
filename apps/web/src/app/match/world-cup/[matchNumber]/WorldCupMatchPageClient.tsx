@@ -375,6 +375,7 @@ export default function WorldCupMatchPageClient({ matchNumber }: { matchNumber: 
     queryKey: ['world-cup-match-details', matchNumber],
     enabled: !!data && data.data.status !== 'scheduled',
     queryFn: () => apiFetch<{ data: MatchDetails }>(`/sports/world-cup/match/${matchNumber}/details`),
+    // 細節由後端 cron 約每 1 分鐘刷新進 Redis，此處只讀我們的快取，30 秒輪詢即可貼近更新
     refetchInterval: (q) =>
       data?.data.status === 'live' && q.state.data?.data.available ? 30_000 : false,
   });

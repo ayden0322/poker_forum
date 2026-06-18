@@ -201,7 +201,65 @@ export async function callFootballApi<T>(
     throw new Error(`API-Sports ${endpoint} 失敗: ${res.status} ${await res.text()}`);
   }
   const data = (await res.json()) as { response: T; errors: unknown };
+  // ⚠️ api-sports 用 HTTP 200 + errors 欄位回報額度爆掉/權杖錯誤（成功時 errors 為空陣列 []）。
+  //    不檢查的話，「當日額度用罄」會被當成空資料靜默吞掉，只能用肉眼發現——這裡讓它明確 throw。
+  const errs = data.errors;
+  const hasErr = Array.isArray(errs)
+    ? errs.length > 0
+    : !!errs && Object.keys(errs as object).length > 0;
+  if (hasErr) {
+    throw new Error(`API-Sports ${endpoint} 回報錯誤: ${JSON.stringify(errs)}`);
+  }
   return data.response;
+}
+
+/** Redis 快取 key：單場賽事細節（cron 寫入、service 讀取，集中定義避免兩邊漂移） */
+export const wcDetailsCacheKey = (matchNumber: number) => `wc:details:${matchNumber}`;
+
+/** 抓單場 fixture 的 events/statistics/lineups 並正規化（cron 用，結果寫進 Redis） */
+export async function fetchFixtureDetails(
+  apiKey: string,
+  fixtureId: number,
+  homeNameEn: string,
+): Promise<MatchDetails> {
+  const [events, stats, lineups] = await Promise.all([
+    callFootballApi<ApiEvent[]>(apiKey, '/fixtures/events', { fixture: fixtureId }),
+    callFootballApi<ApiStatTeam[]>(apiKey, '/fixtures/statistics', { fixture: fixtureId }),
+    callFootballApi<ApiLineupTeam[]>(apiKey, '/fixtures/lineups', { fixture: fixtureId }),
+  ]);
+  return normalizeDetails(homeNameEn, events, stats, lineups);
+}
+
+/**
+ * 把進行中的 API 小組賽 fixtures 對應回 DB 場次（沿用隊名配對），供 cron 抓細節用。
+ * 回傳每場的 fixtureId / matchNumber / DB 端 homeNameEn（供 normalizeDetails 配 home/away）。
+ */
+export async function resolveLiveGroupMatches(
+  prisma: any,
+  fixtures: ApiFixture[],
+): Promise<{ fixtureId: number; matchNumber: number; homeNameEn: string }[]> {
+  const teams: { id: number; nameEn: string }[] = await prisma.worldCupTeam.findMany({
+    select: { id: true, nameEn: true },
+  });
+  const idByName = new Map<string, number>();
+  for (const t of teams) idByName.set(t.nameEn, t.id);
+  const resolve = (apiName: string) =>
+    idByName.get(apiName) ?? idByName.get(NAME_ALIAS[apiName] ?? apiName);
+
+  const out: { fixtureId: number; matchNumber: number; homeNameEn: string }[] = [];
+  for (const f of fixtures) {
+    if (!/Group Stage/i.test(f.league.round)) continue;
+    const homeId = resolve(f.teams.home.name);
+    const awayId = resolve(f.teams.away.name);
+    if (!homeId || !awayId) continue;
+    const m = await prisma.worldCupMatch.findFirst({
+      where: { stage: 'group', homeTeamId: homeId, awayTeamId: awayId },
+      select: { matchNumber: true, homeTeam: { select: { nameEn: true } } },
+    });
+    if (!m || !m.homeTeam) continue;
+    out.push({ fixtureId: f.fixture.id, matchNumber: m.matchNumber, homeNameEn: m.homeTeam.nameEn });
+  }
+  return out;
 }
 
 /**
