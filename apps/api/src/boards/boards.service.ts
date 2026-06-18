@@ -40,6 +40,122 @@ export class BoardsService {
     return categories.filter((c) => c.boards.length > 0);
   }
 
+  /**
+   * 依 slug 取得分類（含啟用看板），給分類聚合頁（例如 /board/baseball）用。
+   * baseball / basketball / soccer 這類是「分類」而非「看板」，單一看板查詢會 404，
+   * 故另開分類層級的查詢。沒有啟用看板的空分類視同不存在。
+   */
+  async getCategoryBySlug(slug: string) {
+    const category = await this.prisma.category.findUnique({
+      where: { slug },
+      include: {
+        boards: {
+          where: { isActive: true },
+          orderBy: { sortOrder: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            _count: { select: { posts: { where: { status: PostStatus.PUBLISHED } } } },
+          },
+        },
+      },
+    });
+    if (!category || category.boards.length === 0) throw new NotFoundException('找不到此分類');
+    const totalPosts = category.boards.reduce((sum, b) => sum + b._count.posts, 0);
+    return {
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      boards: category.boards.map((b) => ({ id: b.id, name: b.name, slug: b.slug, postCount: b._count.posts })),
+      _count: { posts: totalPosts },
+    };
+  }
+
+  /**
+   * 分類聚合文章：跨該分類底下所有啟用看板的 NEWS / FEATURED / DISCUSSION。
+   * 結構與 getBoardPosts 一致，差別在 boardId 由單一改為 { in: 看板清單 }，
+   * 並在每篇帶上所屬看板（board.slug/name），讓前端能標出聯盟 badge。
+   */
+  async getCategoryPosts(
+    slug: string,
+    params: { page: number; limit: number; sort: 'latest' | 'popular' | 'lastReply'; tag?: string; search?: string },
+  ) {
+    const category = await this.prisma.category.findUnique({
+      where: { slug },
+      include: { boards: { where: { isActive: true }, select: { id: true } } },
+    });
+    if (!category || category.boards.length === 0) throw new NotFoundException('找不到此分類');
+    const boardIds = category.boards.map((b) => b.id);
+
+    const { page, limit, sort, tag, search } = params;
+    const skip = (page - 1) * limit;
+
+    const tagFilter = tag ? { tags: { some: { tag: { slug: tag } } } } : {};
+    const searchFilter = search
+      ? {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' as const } },
+            { content: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+
+    const discussionWhere = {
+      boardId: { in: boardIds },
+      status: PostStatus.PUBLISHED,
+      section: PostSection.DISCUSSION,
+      ...tagFilter,
+      ...searchFilter,
+    };
+
+    const orderBy =
+      sort === 'popular'
+        ? [{ isPinned: 'desc' as const }, { pushCount: 'desc' as const }, { createdAt: 'desc' as const }]
+        : sort === 'lastReply'
+          ? [{ isPinned: 'desc' as const }, { lastReplyAt: 'desc' as const }, { createdAt: 'desc' as const }]
+          : [{ isPinned: 'desc' as const }, { createdAt: 'desc' as const }];
+
+    // 聚合頁的 include 多帶 board（slug/name），讓前端標聯盟 badge
+    const aggregatedInclude = {
+      author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+      tags: { include: { tag: true } },
+      board: { select: { slug: true, name: true } },
+      _count: { select: { replies: true, pushes: true } },
+    };
+
+    const newsPromise = search
+      ? Promise.resolve([])
+      : this.prisma.post.findMany({
+          where: { boardId: { in: boardIds }, status: PostStatus.PUBLISHED, section: PostSection.NEWS, ...tagFilter },
+          take: NEWS_MAX,
+          orderBy: [{ createdAt: 'desc' }],
+          include: aggregatedInclude,
+        });
+
+    const featuredPromise = search
+      ? Promise.resolve([])
+      : this.prisma.post.findMany({
+          where: { boardId: { in: boardIds }, status: PostStatus.PUBLISHED, section: PostSection.FEATURED, ...tagFilter },
+          take: FEATURED_MAX,
+          orderBy: [{ createdAt: 'desc' }],
+          include: aggregatedInclude,
+        });
+
+    const [news, featured, items, total] = await Promise.all([
+      newsPromise,
+      featuredPromise,
+      this.prisma.post.findMany({ where: discussionWhere, skip, take: limit, orderBy, include: aggregatedInclude }),
+      this.prisma.post.count({ where: discussionWhere }),
+    ]);
+
+    return {
+      news,
+      featured,
+      discussion: { items, total, page, limit },
+    };
+  }
+
   /** 依 slug 取得看板 */
   async getBoardBySlug(slug: string) {
     const board = await this.prisma.board.findUnique({
