@@ -23,6 +23,7 @@ const NAME_ALIAS: Record<string, string> = {
   'Cape Verde Islands': 'Cape Verde',
   'Congo DR': 'DR Congo',
   Türkiye: 'Turkey',
+  Czechia: 'Czech Republic', // API-Sports 用 Czechia、DB nameEn 為 Czech Republic
 };
 
 export interface ApiTeam {
