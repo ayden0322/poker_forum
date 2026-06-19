@@ -65,8 +65,9 @@ export class BoardsController {
     @Query('sort', new DefaultValuePipe('latest')) sort: 'latest' | 'popular' | 'lastReply',
     @Query('tag') tag?: string,
     @Query('search') search?: string,
+    @Query('light') light?: string,
   ) {
-    const data = await this.boardsService.getBoardPosts(slug, { page, limit, sort, tag, search });
+    const data = await this.boardsService.getBoardPosts(slug, { page, limit, sort, tag, search, light: light === '1' });
     return { data };
   }
 }
