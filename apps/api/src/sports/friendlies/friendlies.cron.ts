@@ -9,6 +9,7 @@ import {
   FRIENDLIES_SEASON,
   ApiFixture,
 } from './friendlies.apisports';
+import { hasActiveMatchWindow } from '../match-window.util';
 
 /**
  * 國際友誼賽即時資料排程
@@ -34,6 +35,8 @@ export class FriendliesCron {
   @Cron('*/3 * * * *')
   async refreshLive() {
     if (!this.apiKey) return;
+    // 比賽窗 gate：沒有排程中的友誼賽就 skip，不空打 API-Sports
+    if (!(await hasActiveMatchWindow(this.prisma.friendlyMatch))) return;
     try {
       const fixtures = await callFootballApi<ApiFixture[]>(this.apiKey, '/fixtures', {
         league: FRIENDLIES_LEAGUE_ID,

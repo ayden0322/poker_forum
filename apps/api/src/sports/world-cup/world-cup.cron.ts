@@ -13,6 +13,7 @@ import {
   WC_SEASON,
   ApiFixture,
 } from './world-cup.apisports';
+import { hasActiveMatchWindow } from '../match-window.util';
 
 /**
  * FIFA 世界盃 2026 即時資料排程
@@ -45,6 +46,8 @@ export class WorldCupCron {
   @Cron('*/30 * * * * *')
   async refreshLive() {
     if (!this.apiKey) return;
+    // 比賽窗 gate：窗外（如深夜無賽）直接 skip，不浪費 API-Sports 額度
+    if (!(await hasActiveMatchWindow(this.prisma.worldCupMatch))) return;
     try {
       const fixtures = await callFootballApi<ApiFixture[]>(this.apiKey, '/fixtures', {
         league: WC_LEAGUE_ID,
