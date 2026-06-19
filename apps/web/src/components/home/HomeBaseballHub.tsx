@@ -726,16 +726,38 @@ const POST_BOARDS: { slug: string; badge: string; badgeCls: string }[] = [
 ];
 
 /**
+ * 熱門分數（HN-style gravity decay）：兼顧「討論量」與「時效」。
+ *  engagement = 回覆×2 + 推×1 + 1（回覆代表真討論，權重較高；+1 避免冷文歸零）
+ *  衰減基準用 lastReplyAt（最後活動）→ 還在被回的長青文不被冤殺，冷掉才自然下沉
+ *  hotScore   = engagement / (距上次活動小時數 + 2) ^ 1.5
+ * 常數集中於此，日後要調權重／衰減力道改這裡即可。
+ */
+const HOT_W_REPLY = 2;
+const HOT_W_PUSH = 1;
+const HOT_GRAVITY = 1.5;
+function hotScore(p: { _count: { replies: number; pushes: number }; lastReplyAt: string | null; createdAt: string }): number {
+  const engagement = p._count.replies * HOT_W_REPLY + p._count.pushes * HOT_W_PUSH + 1;
+  const base = p.lastReplyAt ?? p.createdAt;
+  const ageHours = Math.max(0, Date.now() - new Date(base).getTime()) / 3_600_000;
+  return engagement / Math.pow(ageHours + 2, HOT_GRAVITY);
+}
+/** 濾掉置頂公告 → 依 hotScore 由高到低 → 取前 take 篇 */
+function rankHot<T extends Parameters<typeof hotScore>[0] & { isPinned?: boolean }>(posts: T[], take: number): T[] {
+  return [...posts].filter((p) => !p.isPinned).sort((a, b) => hotScore(b) - hotScore(a)).slice(0, take);
+}
+
+/**
  * 全部聯盟「最新新聞 + 熱門討論」並行抓取
  *  - 新聞：各看板 news 合併、按建立時間倒序
- *  - 熱門：各看板 discussion 合併、濾掉各板置頂、按「回覆數」排序（熱門＝多少人在聊）
+ *  - 熱門：各看板 discussion 合併，依 hotScore（討論量×時效）跨板排序，純比分不配額
  *  - 任一看板失敗靜默缺席，不拖垮其餘
  */
 function useAllLeaguesPosts(enabled: boolean): { news: HubPost[]; hot: HubPost[]; isLoading: boolean } {
   const results = useQueries({
     queries: POST_BOARDS.map((b) => ({
       queryKey: ['hub-all-posts', b.slug],
-      queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${b.slug}/posts?limit=20&sort=popular`),
+      // sort=lastReply 撈「近期有活動」的候選池（hotScore 由活動時效主導），light 砍 content/公告瘦身
+      queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${b.slug}/posts?limit=15&sort=lastReply&light=1`),
       staleTime: 60 * 1000,
       enabled,
     })),
@@ -750,10 +772,7 @@ function useAllLeaguesPosts(enabled: boolean): { news: HubPost[]; hot: HubPost[]
   const allNews = POST_BOARDS.flatMap((b, i) => (results[i].data?.data.news ?? []).map((p) => tag(p, b)));
   const allHot = POST_BOARDS.flatMap((b, i) => (results[i].data?.data.discussion.items ?? []).map((p) => tag(p, b)));
   const news = [...allNews].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
-  const hot = allHot
-    .filter((p) => !p.isPinned) // 洗掉各板置頂公告，避免首頁熱門變成公告集合
-    .sort((a, b) => b._count.replies - a._count.replies) // 熱門＝回覆數
-    .slice(0, 7);
+  const hot = rankHot(allHot, 7); // 跨板濾置頂 → hotScore 排序 → 取前 7
   return { news, hot, isLoading };
 }
 function relTime(iso: string): string {
@@ -948,14 +967,15 @@ export function HomeBaseballHub() {
   const baseballSingle = sport === 'baseball' && leagueSel !== 'all' ? leagueSel : null;
   const { data: posts, isLoading: postsLoading } = useQuery({
     queryKey: ['hub-board-posts', baseballSingle],
-    queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${baseballSingle}/posts?limit=20&sort=popular`),
+    queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${baseballSingle}/posts?limit=15&sort=lastReply&light=1`),
     staleTime: 60 * 1000,
     enabled: !!baseballSingle,
   });
   const { news: crossNews, hot: crossHot, isLoading: crossPostsLoading } = useAllLeaguesPosts(true);
 
   const news: (PostItem | HubPost)[] = baseballSingle ? posts?.data.news ?? [] : crossNews;
-  const hot: (PostItem | HubPost)[] = baseballSingle ? posts?.data.discussion.items ?? [] : crossHot;
+  // 單板熱門同樣套 hotScore（與跨板一致）；跨板的 crossHot 已是排序後 top 7
+  const hot: (PostItem | HubPost)[] = baseballSingle ? rankHot(posts?.data.discussion.items ?? [], 7) : crossHot;
   const postsBusy = baseballSingle ? postsLoading : crossPostsLoading;
 
   // 下半部主詞（永遠棒球）：單聯盟→該聯盟名；否則「棒球」

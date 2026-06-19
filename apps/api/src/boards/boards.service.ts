@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
+import { RedisService } from '../common/redis.service';
 import { PostStatus, PostSection } from '@betting-forum/database';
 
 /** 站方公告（FEATURED）區塊單次回傳上限，超過此數量需在後台維護收斂 */
@@ -7,9 +8,19 @@ const FEATURED_MAX = 20;
 /** 最新新聞（NEWS）區塊單次回傳上限 */
 const NEWS_MAX = 20;
 
+/** getBoardPosts 回傳結構（供 Redis 快取讀回時標型別用，貼文陣列細節不在此約束） */
+export interface BoardPostsResult {
+  news: unknown[];
+  featured: unknown[];
+  discussion: { items: unknown[]; total: number; page: number; limit: number };
+}
+
 @Injectable()
 export class BoardsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redis: RedisService,
+  ) {}
 
   /** 取得啟用中的跑馬燈 */
   async getActiveMarquees() {
@@ -181,12 +192,29 @@ export class BoardsService {
    */
   async getBoardPosts(
     slug: string,
-    params: { page: number; limit: number; sort: 'latest' | 'popular' | 'lastReply'; tag?: string; search?: string },
+    params: {
+      page: number;
+      limit: number;
+      sort: 'latest' | 'popular' | 'lastReply';
+      tag?: string;
+      search?: string;
+      light?: boolean;
+    },
   ) {
+    const { page, limit, sort, tag, search, light } = params;
+
+    // 首頁熱門討論（light）：Redis 快取 60 秒，避免每位訪客都打 DB。
+    // 只快取 light：看板詳情頁需即時（發文/回覆後立刻看到），不快取；搜尋千變萬化也不快取。
+    const cacheKey = `boards:posts:${slug}:${sort}:${page}:${limit}:${tag ?? ''}:${light ? 1 : 0}`;
+    const cacheable = !!light && !search;
+    if (cacheable) {
+      const cached = await this.redis.get<BoardPostsResult>(cacheKey);
+      if (cached) return cached;
+    }
+
     const board = await this.prisma.board.findUnique({ where: { slug } });
     if (!board || !board.isActive) throw new NotFoundException('找不到此看板');
 
-    const { page, limit, sort, tag, search } = params;
     const skip = (page - 1) * limit;
 
     const tagFilter = tag ? { tags: { some: { tag: { slug: tag } } } } : {};
@@ -222,6 +250,20 @@ export class BoardsService {
       _count: { select: { replies: true, pushes: true } },
     };
 
+    // light 模式（首頁熱門討論）：討論區只取算 hotScore 與卡片需要的欄位，
+    // 拿掉 content（文章本文，HotRow 不顯示）以瘦身 payload；tags 仍保留給右欄標籤雲。
+    const lightDiscussionSelect = {
+      id: true,
+      title: true,
+      isPinned: true,
+      createdAt: true,
+      lastReplyAt: true,
+      pushCount: true,
+      author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+      tags: { select: { tag: true } },
+      _count: { select: { replies: true, pushes: true } },
+    };
+
     // === 最上：最新新聞（NEWS）===
     // 搜尋進行中時不回，避免擾亂搜尋結果
     const newsPromise = search
@@ -239,7 +281,8 @@ export class BoardsService {
         });
 
     // === 中：站方公告（FEATURED）===
-    const featuredPromise = search
+    // light 模式不回公告（首頁熱門討論區塊用不到），少打一次 DB
+    const featuredPromise = search || light
       ? Promise.resolve([])
       : this.prisma.post.findMany({
           where: {
@@ -256,20 +299,30 @@ export class BoardsService {
     const [news, featured, items, total] = await Promise.all([
       newsPromise,
       featuredPromise,
-      this.prisma.post.findMany({
-        where: discussionWhere,
-        skip,
-        take: limit,
-        orderBy,
-        include: pinnedInclude,
-      }),
+      light
+        ? this.prisma.post.findMany({
+            where: discussionWhere,
+            skip,
+            take: limit,
+            orderBy,
+            select: lightDiscussionSelect,
+          })
+        : this.prisma.post.findMany({
+            where: discussionWhere,
+            skip,
+            take: limit,
+            orderBy,
+            include: pinnedInclude,
+          }),
       this.prisma.post.count({ where: discussionWhere }),
     ]);
 
-    return {
+    const result = {
       news,
       featured,
       discussion: { items, total, page, limit },
     };
+    if (cacheable) await this.redis.set(cacheKey, result, 60);
+    return result;
   }
 }
