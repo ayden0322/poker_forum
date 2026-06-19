@@ -208,8 +208,12 @@ export class BoardsService {
     const cacheKey = `boards:posts:${slug}:${sort}:${page}:${limit}:${tag ?? ''}:${light ? 1 : 0}`;
     const cacheable = !!light && !search;
     if (cacheable) {
-      const cached = await this.redis.get<BoardPostsResult>(cacheKey);
-      if (cached) return cached;
+      try {
+        const cached = await this.redis.get<BoardPostsResult>(cacheKey);
+        if (cached) return cached;
+      } catch {
+        // Redis 抖動時降級走 DB——快取只是增益，不該讓首頁因快取層出錯而 500
+      }
     }
 
     const board = await this.prisma.board.findUnique({ where: { slug } });
@@ -322,7 +326,13 @@ export class BoardsService {
       featured,
       discussion: { items, total, page, limit },
     };
-    if (cacheable) await this.redis.set(cacheKey, result, 60);
+    if (cacheable) {
+      try {
+        await this.redis.set(cacheKey, result, 60);
+      } catch {
+        // 寫快取失敗忽略，不影響本次回應
+      }
+    }
     return result;
   }
 }

@@ -762,15 +762,13 @@ function useAllLeaguesPosts(enabled: boolean): { news: HubPost[]; hot: HubPost[]
     queries: POST_BOARDS.map((b) => ({
       queryKey: ['hub-all-posts', b.slug],
       // sort=lastReply 撈「近期有活動」的候選池（hotScore 由活動時效主導），light 砍 content/公告瘦身
-      queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${b.slug}/posts?limit=15&sort=lastReply&light=1`),
+      // limit=30：候選池放大些，降低「高 engagement 但活動時間排 16+」被 hotScore 漏掉的機率（payload 已 light）
+      queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${b.slug}/posts?limit=30&sort=lastReply&light=1`),
       staleTime: 60 * 1000,
       retry: 1, // 缺席/失敗的板別用預設重試 3 次（指數退避 ~7s）把整塊卡死
       enabled,
     })),
   });
-  // 只在「全部還沒回」時顯示載入中；任一板先回就先渲染，其餘到了再補。
-  // 避免某個慢板/失敗板把整塊熱門卡在「載入中」。
-  const isLoading = enabled && results.every((r) => r.isLoading);
   const tag = (p: PostItem, b: (typeof POST_BOARDS)[number]): HubPost => ({
     ...p,
     badge: b.badge,
@@ -781,6 +779,11 @@ function useAllLeaguesPosts(enabled: boolean): { news: HubPost[]; hot: HubPost[]
   const allHot = POST_BOARDS.flatMap((b, i) => (results[i].data?.data.discussion.items ?? []).map((p) => tag(p, b)));
   const news = [...allNews].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
   const hot = rankHot(allHot, 7); // 跨板濾置頂 → hotScore 排序 → 取前 7
+  // 熱門區塊只在「還沒任何討論資料、且尚未全部 settle」時顯示載入中：
+  //  - 有資料 → 先顯示（不等最慢的板）
+  //  - 全部 settle 後才允許顯示空狀態，避免某板先回空陣列造成「空狀態→資料」閃爍
+  const allSettled = results.every((r) => !r.isLoading);
+  const isLoading = enabled && allHot.length === 0 && !allSettled;
   return { news, hot, isLoading };
 }
 function relTime(iso: string): string {
@@ -975,7 +978,7 @@ export function HomeBaseballHub() {
   const baseballSingle = sport === 'baseball' && leagueSel !== 'all' ? leagueSel : null;
   const { data: posts, isLoading: postsLoading } = useQuery({
     queryKey: ['hub-board-posts', baseballSingle],
-    queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${baseballSingle}/posts?limit=15&sort=lastReply&light=1`),
+    queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${baseballSingle}/posts?limit=30&sort=lastReply&light=1`),
     staleTime: 60 * 1000,
     retry: 1,
     enabled: !!baseballSingle,
