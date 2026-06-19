@@ -719,11 +719,16 @@ interface BoardPostsResponse {
 /** 跨聯盟貼文：附上所屬聯盟 badge */
 type HubPost = PostItem & { badge: string; badgeCls: string; league: string };
 
-/** 跨聯盟討論/新聞要掃的看板＝5 聯盟 + 通用「棒球」總版 */
-const POST_BOARDS: { slug: string; badge: string; badgeCls: string }[] = [
-  ...LEAGUES.map((l) => ({ slug: l.slug, badge: l.badge, badgeCls: l.badgeCls })),
-  { slug: 'baseball', badge: '棒球', badgeCls: 'bg-emerald-50 text-emerald-700' },
-];
+/**
+ * 跨聯盟討論/新聞要掃的看板＝5 個棒球聯盟板。
+ * 注意：不要加正式站不存在的板（例如通用 baseball 總版）——
+ * 打不到的板會 404→React Query 重試→整塊熱門卡「載入中」數秒。
+ */
+const POST_BOARDS: { slug: string; badge: string; badgeCls: string }[] = LEAGUES.map((l) => ({
+  slug: l.slug,
+  badge: l.badge,
+  badgeCls: l.badgeCls,
+}));
 
 /**
  * 熱門分數（HN-style gravity decay）：兼顧「討論量」與「時效」。
@@ -759,10 +764,13 @@ function useAllLeaguesPosts(enabled: boolean): { news: HubPost[]; hot: HubPost[]
       // sort=lastReply 撈「近期有活動」的候選池（hotScore 由活動時效主導），light 砍 content/公告瘦身
       queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${b.slug}/posts?limit=15&sort=lastReply&light=1`),
       staleTime: 60 * 1000,
+      retry: 1, // 缺席/失敗的板別用預設重試 3 次（指數退避 ~7s）把整塊卡死
       enabled,
     })),
   });
-  const isLoading = enabled && results.some((r) => r.isLoading);
+  // 只在「全部還沒回」時顯示載入中；任一板先回就先渲染，其餘到了再補。
+  // 避免某個慢板/失敗板把整塊熱門卡在「載入中」。
+  const isLoading = enabled && results.every((r) => r.isLoading);
   const tag = (p: PostItem, b: (typeof POST_BOARDS)[number]): HubPost => ({
     ...p,
     badge: b.badge,
@@ -969,6 +977,7 @@ export function HomeBaseballHub() {
     queryKey: ['hub-board-posts', baseballSingle],
     queryFn: () => apiFetch<BoardPostsResponse>(`/boards/${baseballSingle}/posts?limit=15&sort=lastReply&light=1`),
     staleTime: 60 * 1000,
+    retry: 1,
     enabled: !!baseballSingle,
   });
   const { news: crossNews, hot: crossHot, isLoading: crossPostsLoading } = useAllLeaguesPosts(true);
