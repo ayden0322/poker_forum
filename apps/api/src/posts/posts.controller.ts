@@ -58,6 +58,9 @@ export class PostsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   async recordView(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    // 驗證文章真的存在，否則使用者可送任意捏造 id 灌滿「瀏覽 5 篇」騙 G 幣（Codex 複審 #5）
+    const exists = await this.prisma.post.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) return { data: { ok: false } };
     await this.tasks.recordEvent(user.id, 'VIEW_POSTS', id);
     return { data: { ok: true } };
   }

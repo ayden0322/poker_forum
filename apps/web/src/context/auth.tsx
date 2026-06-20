@@ -76,10 +76,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('auth:logout', handleLogout);
 
-    // 監聽 apiFetch 自動刷新成功，同步 context 的 accessToken，避免用到過期快取 token
+    // 監聽 apiFetch 自動刷新成功，同步 context 的 accessToken，避免用到過期快取 token。
+    // 若已登出（refreshToken 已被清掉），忽略遲到的刷新事件，避免把 session 救回來（Codex 複審 #9）
     const handleTokenRefreshed = (e: Event) => {
       const t = (e as CustomEvent<string>).detail;
-      if (t) setAccessToken(t);
+      if (t && localStorage.getItem('refreshToken')) setAccessToken(t);
     };
     window.addEventListener('auth:token-refreshed', handleTokenRefreshed);
 

@@ -53,10 +53,23 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     ...rest,
   });
 
-  // 401 時嘗試刷新 token 並重試（僅限瀏覽器端）。
-  // 即使呼叫端帶了明確 token 也要刷新：該 token 可能來自 AuthContext 的過期快取，
-  // 重試一律用刷新後的新 token（refreshAccessToken 會同步 localStorage + 廣播給 context）。
+  // 401 處理（僅限瀏覽器端）。涵蓋兩種情況，且只使用「本瀏覽器目前 session」的 token，
+  // 不會跨 session 拿別人的 token 重試（Codex 複審 #4a）：
+  //  1) 帶的是過期快取 token，但 localStorage 已被其他請求刷新成更新的 → 直接用較新的重試
+  //  2) 連 localStorage 的 token 也過期 → 用 refresh token 刷新後重試
   if (res.status === 401 && typeof window !== 'undefined') {
+    // (1) localStorage 有比這次更新的 token → 先用它重試，省一次刷新
+    const stored = localStorage.getItem('accessToken');
+    if (stored && stored !== authToken) {
+      const retryRes = await fetch(`${API_URL}${endpoint}`, {
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${stored}`, ...headers },
+        ...rest,
+      });
+      if (retryRes.ok) return retryRes.json() as Promise<T>;
+      // 仍 401 → 落入刷新流程
+    }
+
+    // (2) 刷新 token（單例避免並發重複刷新）
     if (!refreshPromise) {
       refreshPromise = refreshAccessToken().finally(() => {
         refreshPromise = null;
@@ -65,7 +78,6 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
 
     const newToken = await refreshPromise;
     if (newToken) {
-      // 用新 token 重試請求
       const retryRes = await fetch(`${API_URL}${endpoint}`, {
         headers: {
           'Content-Type': 'application/json',
