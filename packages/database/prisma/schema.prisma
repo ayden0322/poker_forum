@@ -866,7 +866,8 @@ model CosmeticItem {
   type          CosmeticType
   name          String
   description   String?
-  assetUrl      String?      @map("asset_url") // FRAME/BADGE 圖檔；TITLE 無圖（顏色由 rarity 決定）
+  // Route A：框=CSS環(只看rarity)、勳章=lucide(存iconKey)、稱號=有色文字。視覺一律由 rarity 驅動。
+  iconKey       String?      @map("icon_key") // 僅勳章填 lucide 名稱(如 message-square)；框/稱號留空
   rarity        Rarity       @default(COMMON)
   priceG        Int?         @map("price_g")        // null = 非販售品（純等級/賽事獲得）
   purchasable   Boolean      @default(true)         // 是否販售中（停售=false，不影響已擁有者）

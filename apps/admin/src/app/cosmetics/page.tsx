@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, InputNumber, Switch, Select,
-  Space, Popconfirm, Tag, Upload, Image, message,
+  Space, Popconfirm, Tag, message,
 } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -19,7 +19,7 @@ interface CosmeticItem {
   type: CosmeticType;
   name: string;
   description: string | null;
-  assetUrl: string | null;
+  iconKey: string | null;
   rarity: Rarity;
   priceG: number | null;
   purchasable: boolean;
@@ -34,6 +34,12 @@ const TYPE_LABEL: Record<CosmeticType, string> = { FRAME: '頭像框', BADGE: '�
 const RARITY_LABEL: Record<Rarity, string> = { COMMON: '普通', RARE: '稀有', LEGENDARY: '傳說' };
 const RARITY_COLOR: Record<Rarity, string> = { COMMON: 'default', RARE: 'cyan', LEGENDARY: 'gold' };
 
+// 勳章可選的 lucide 圖示（前端用同名 lucide-react 渲染）；可再擴充
+const LUCIDE_OPTIONS = [
+  'pencil-line', 'message-square', 'flame', 'target', 'crown', 'gem',
+  'star', 'award', 'shield', 'trophy', 'heart', 'zap', 'medal', 'sparkles',
+].map((v) => ({ value: v, label: v }));
+
 // ISO → <input type="datetime-local"> 需要的本地格式 YYYY-MM-DDTHH:mm
 function toLocalInput(iso: string | null): string {
   if (!iso) return '';
@@ -47,7 +53,6 @@ export default function CosmeticsPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CosmeticItem | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [form] = Form.useForm();
   const watchType = Form.useWatch('type', form);
 
@@ -103,28 +108,9 @@ export default function CosmeticsPage() {
     setModalOpen(true);
   };
 
-  // 圖檔上傳 → /upload/image，成功後寫入表單 assetUrl
-  const uploadImage = async (file: File) => {
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const res = await adminApiFetch<{ data: { url: string } }>('/upload/image', { method: 'POST', body: fd });
-      form.setFieldValue('assetUrl', res.data.url);
-      message.success('圖檔已上傳');
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '上傳失敗');
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const columns: ColumnsType<CosmeticItem> = [
     { title: '類型', dataIndex: 'type', key: 'type', width: 80, render: (t: CosmeticType) => TYPE_LABEL[t] },
-    {
-      title: '圖', dataIndex: 'assetUrl', key: 'assetUrl', width: 56,
-      render: (u: string | null) => (u ? <Image src={u} width={32} height={32} style={{ objectFit: 'contain' }} /> : '—'),
-    },
+    { title: '圖示(lucide)', dataIndex: 'iconKey', key: 'iconKey', width: 120, render: (k: string | null) => k ?? '—' },
     { title: '名稱', dataIndex: 'name', key: 'name', ellipsis: true },
     { title: '稀有度', dataIndex: 'rarity', key: 'rarity', width: 80, render: (r: Rarity) => <Tag color={RARITY_COLOR[r]}>{RARITY_LABEL[r]}</Tag> },
     { title: 'G幣價', dataIndex: 'priceG', key: 'priceG', width: 80, render: (v: number | null) => (v ?? '非販售') },
@@ -150,8 +136,6 @@ export default function CosmeticsPage() {
       ),
     },
   ];
-
-  const needsImage = watchType === 'FRAME' || watchType === 'BADGE';
 
   return (
     <div>
@@ -183,22 +167,13 @@ export default function CosmeticsPage() {
           </Form.Item>
           <Form.Item label="說明（選填）" name="description"><Input.TextArea rows={2} maxLength={200} /></Form.Item>
 
-          {needsImage && (
-            <Form.Item label="圖檔（頭像框 / 勳章必填）" name="assetUrl" rules={[{ required: true, message: '請上傳圖檔' }]}>
-              <Space direction="vertical">
-                <Upload
-                  accept="image/*" maxCount={1} showUploadList={false}
-                  beforeUpload={(file) => { uploadImage(file); return false; }}
-                >
-                  <Button icon={<UploadOutlined />} loading={uploading}>上傳圖檔</Button>
-                </Upload>
-                <Form.Item name="assetUrl" noStyle shouldUpdate>
-                  {() => {
-                    const url = form.getFieldValue('assetUrl');
-                    return url ? <Image src={url} width={64} height={64} style={{ objectFit: 'contain' }} /> : null;
-                  }}
-                </Form.Item>
-              </Space>
+          {watchType === 'BADGE' && (
+            <Form.Item
+              label="勳章圖示（lucide，前端會用同名 icon 渲染）"
+              name="iconKey"
+              rules={[{ required: true, message: '請選擇 lucide 圖示' }]}
+            >
+              <Select showSearch options={LUCIDE_OPTIONS} placeholder="選一個 lucide icon（可搜尋）" />
             </Form.Item>
           )}
 

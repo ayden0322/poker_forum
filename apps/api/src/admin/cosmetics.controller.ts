@@ -17,7 +17,7 @@ class CreateCosmeticDto {
   @IsEnum(CosmeticType) type!: CosmeticType;
   @IsString() @MaxLength(40) name!: string;
   @IsOptional() @IsString() @MaxLength(200) description?: string;
-  @IsOptional() @IsString() assetUrl?: string; // FRAME/BADGE 圖檔 URL（走 /upload/image）
+  @IsOptional() @IsString() @MaxLength(60) iconKey?: string; // 勳章 lucide 名稱（kebab-case）；框/稱號留空
   @IsOptional() @IsEnum(Rarity) rarity?: Rarity;
   @IsOptional() @IsInt() @Min(0) priceG?: number; // 省略=非販售
   @IsOptional() @IsBoolean() purchasable?: boolean;
@@ -32,7 +32,7 @@ class CreateCosmeticDto {
 class UpdateCosmeticDto {
   @IsOptional() @IsString() @MaxLength(40) name?: string;
   @IsOptional() @IsString() @MaxLength(200) description?: string;
-  @IsOptional() @IsString() assetUrl?: string;
+  @IsOptional() @IsString() @MaxLength(60) iconKey?: string;
   @IsOptional() @IsEnum(Rarity) rarity?: Rarity;
   @IsOptional() @IsInt() @Min(0) priceG?: number;
   @IsOptional() @IsBoolean() purchasable?: boolean;
@@ -70,13 +70,13 @@ export class AdminCosmeticsController {
 
   @Post()
   async create(@Body() dto: CreateCosmeticDto) {
-    this.assertAsset(dto.type, dto.assetUrl);
+    this.assertIcon(dto.type, dto.iconKey);
     const item = await this.prisma.cosmeticItem.create({
       data: {
         type: dto.type,
         name: dto.name,
         description: dto.description ?? null,
-        assetUrl: dto.assetUrl ?? null,
+        iconKey: dto.iconKey ?? null,
         rarity: dto.rarity ?? Rarity.COMMON,
         priceG: dto.priceG ?? null,
         purchasable: dto.purchasable ?? true,
@@ -95,18 +95,15 @@ export class AdminCosmeticsController {
     const existing = await this.prisma.cosmeticItem.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('裝飾品項不存在');
 
-    // FRAME/BADGE 不可被 PATCH 清空圖檔（Codex Phase1 #1）
-    if (
-      dto.assetUrl !== undefined && !dto.assetUrl &&
-      (existing.type === CosmeticType.FRAME || existing.type === CosmeticType.BADGE)
-    ) {
-      throw new BadRequestException('頭像框 / 勳章 需要圖檔，不可清空');
+    // 勳章不可被 PATCH 清空 iconKey
+    if (dto.iconKey !== undefined && !dto.iconKey && existing.type === CosmeticType.BADGE) {
+      throw new BadRequestException('勳章需要 lucide 圖示，不可清空');
     }
 
     const data = {
       ...(dto.name !== undefined ? { name: dto.name } : {}),
       ...(dto.description !== undefined ? { description: dto.description } : {}),
-      ...(dto.assetUrl !== undefined ? { assetUrl: dto.assetUrl } : {}),
+      ...(dto.iconKey !== undefined ? { iconKey: dto.iconKey } : {}),
       ...(dto.rarity !== undefined ? { rarity: dto.rarity } : {}),
       ...(dto.priceG !== undefined ? { priceG: dto.priceG } : {}),
       ...(dto.purchasable !== undefined ? { purchasable: dto.purchasable } : {}),
@@ -147,10 +144,10 @@ export class AdminCosmeticsController {
     return { data: { ok: true } };
   }
 
-  /** FRAME/BADGE 需要圖檔；TITLE 不需要（顏色由 rarity 決定） */
-  private assertAsset(type: CosmeticType, assetUrl?: string) {
-    if ((type === CosmeticType.FRAME || type === CosmeticType.BADGE) && !assetUrl) {
-      throw new BadRequestException('頭像框 / 勳章 需要上傳圖檔');
+  /** 勳章需要 lucide iconKey；頭像框/稱號視覺由 rarity 決定，不需 icon（Route A） */
+  private assertIcon(type: CosmeticType, iconKey?: string) {
+    if (type === CosmeticType.BADGE && !iconKey) {
+      throw new BadRequestException('勳章需要指定 lucide 圖示（iconKey）');
     }
   }
 

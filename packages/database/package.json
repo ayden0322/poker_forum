@@ -10,7 +10,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
-    "reset-member-levels": "tsx prisma/reset-member-levels.ts"
+    "reset-member-levels": "tsx prisma/reset-member-levels.ts",
+    "seed-cosmetics": "tsx prisma/seed-cosmetics.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.3.0"
