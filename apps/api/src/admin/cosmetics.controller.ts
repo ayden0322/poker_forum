@@ -19,7 +19,7 @@ class CreateCosmeticDto {
   @IsOptional() @IsString() @MaxLength(200) description?: string;
   @IsOptional() @IsString() @MaxLength(60) iconKey?: string; // 勳章 lucide 名稱（kebab-case）；框/稱號留空
   @IsOptional() @IsEnum(Rarity) rarity?: Rarity;
-  @IsOptional() @IsInt() @Min(0) priceG?: number; // 省略=非販售
+  @IsOptional() @IsInt() @Min(1) priceG?: number; // 省略=非販售
   @IsOptional() @IsBoolean() purchasable?: boolean;
   @IsOptional() @IsInt() @Min(1) levelRequired?: number;
   @IsOptional() @IsBoolean() enabled?: boolean;
@@ -34,7 +34,7 @@ class UpdateCosmeticDto {
   @IsOptional() @IsString() @MaxLength(200) description?: string;
   @IsOptional() @IsString() @MaxLength(60) iconKey?: string;
   @IsOptional() @IsEnum(Rarity) rarity?: Rarity;
-  @IsOptional() @IsInt() @Min(0) priceG?: number;
+  @IsOptional() @IsInt() @Min(1) priceG?: number;
   @IsOptional() @IsBoolean() purchasable?: boolean;
   @IsOptional() @IsInt() @Min(1) levelRequired?: number;
   @IsOptional() @IsBoolean() enabled?: boolean;

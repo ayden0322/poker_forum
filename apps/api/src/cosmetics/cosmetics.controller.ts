@@ -7,6 +7,9 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { CosmeticsService } from './cosmetics.service';
 import { isMemberEconomyEnabled } from '../economy/economy.flags';
 
+class ShopQueryDto {
+  @IsOptional() @IsIn(['FRAME', 'BADGE', 'TITLE']) type?: 'FRAME' | 'BADGE' | 'TITLE';
+}
 class PurchaseDto {
   @IsString() itemId!: string;
 }
@@ -30,9 +33,9 @@ export class CosmeticsController {
   constructor(private readonly cosmetics: CosmeticsService) {}
 
   @Get('shop')
-  async shop(@CurrentUser() user: { id: string }, @Query('type') type?: 'FRAME' | 'BADGE' | 'TITLE') {
+  async shop(@CurrentUser() user: { id: string }, @Query() query: ShopQueryDto) {
     if (!isMemberEconomyEnabled()) return { data: { enabled: false, items: [] } };
-    return { data: { enabled: true, ...(await this.cosmetics.getShop(user.id, type)) } };
+    return { data: { enabled: true, ...(await this.cosmetics.getShop(user.id, query.type)) } };
   }
 
   @Get('inventory')

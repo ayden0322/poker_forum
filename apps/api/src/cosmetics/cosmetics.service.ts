@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { Currency, EquipSlot, LedgerReason, Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 import { EconomyService, InsufficientBalanceError } from '../economy/economy.service';
@@ -52,10 +52,10 @@ export class CosmeticsService {
     };
   }
 
-  /** 我的庫存 + 裝備狀態 */
+  /** 我的庫存 + 裝備狀態（排除已被撤除 enabled=false 的品項） */
   async getInventory(userId: string) {
     const rows = await this.prisma.userCosmetic.findMany({
-      where: { userId },
+      where: { userId, item: { enabled: true } },
       include: { item: true },
       orderBy: [{ item: { type: 'asc' } }, { item: { sortOrder: 'asc' } }],
     });
@@ -73,29 +73,31 @@ export class CosmeticsService {
    * 冪等鍵 + (userId,itemId) 唯一鍵 → 重送不重複扣、不重複擁有。
    */
   async purchase(userId: string, itemId: string): Promise<PurchaseResult> {
-    const item = await this.prisma.cosmeticItem.findUnique({ where: { id: itemId } });
-    if (!item || !item.enabled || !item.purchasable) throw new BadRequestException('此裝飾無法購買');
-    if (item.priceG == null) throw new BadRequestException('此裝飾非販售品');
-    const now = new Date();
-    if (item.availableFrom && now < item.availableFrom) throw new BadRequestException('此裝飾尚未開賣');
-    if (item.availableTo && now > item.availableTo) throw new BadRequestException('此裝飾已下架');
-    if (item.levelRequired) {
-      const u = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { level: true } });
-      if (u.level < item.levelRequired) throw new BadRequestException(`需達 Lv.${item.levelRequired} 才能購買`);
-    }
-    // 已擁有 → 不扣款（冪等）
-    const owned = await this.prisma.userCosmetic.findUnique({ where: { userId_itemId: { userId, itemId } } });
-    if (owned) return { ok: false, reason: 'already_owned' };
-
     try {
-      await this.prisma.$transaction(async (tx) => {
+      // 所有檢查 + 扣款 + 發貨都在同一交易內，避免 pre-check 後 admin 改價/下架的 TOCTOU（Codex #3）
+      const result = await this.prisma.$transaction(async (tx) => {
+        const item = await tx.cosmeticItem.findUnique({ where: { id: itemId } });
+        if (!item || !item.enabled || !item.purchasable) throw new BadRequestException('此裝飾無法購買');
+        if (item.priceG == null || item.priceG <= 0) throw new BadRequestException('此裝飾非販售品');
+        const now = new Date();
+        if (item.availableFrom && now < item.availableFrom) throw new BadRequestException('此裝飾尚未開賣');
+        if (item.availableTo && now > item.availableTo) throw new BadRequestException('此裝飾已下架');
+        if (item.levelRequired) {
+          const u = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { level: true } });
+          if (u.level < item.levelRequired) throw new BadRequestException(`需達 Lv.${item.levelRequired} 才能購買`);
+        }
+        const owned = await tx.userCosmetic.findUnique({ where: { userId_itemId: { userId, itemId } } });
+        if (owned) return { ok: false as const, reason: 'already_owned' as const };
+
         await this.economy.debitInTx(tx, {
-          userId, currency: Currency.G, amount: item.priceG!,
+          userId, currency: Currency.G, amount: item.priceG,
           reason: LedgerReason.SHOP_PURCHASE, refType: 'shop', refId: itemId,
           idempotencyKey: `shop:${userId}:${itemId}`,
         });
         await tx.userCosmetic.create({ data: { userId, itemId, source: 'SHOP' } });
+        return { ok: true as const };
       });
+      if (!result.ok) return result;
     } catch (e) {
       if (e instanceof InsufficientBalanceError) throw new BadRequestException('G幣不足');
       // 並發重複購買：唯一鍵擋下 → 視為已擁有（交易已 rollback，未重複扣）
@@ -115,15 +117,23 @@ export class CosmeticsService {
       return { ok: true };
     }
     const uc = await this.prisma.userCosmetic.findUnique({
-      where: { userId_itemId: { userId, itemId } }, include: { item: { select: { type: true } } },
+      where: { userId_itemId: { userId, itemId } }, include: { item: { select: { type: true, enabled: true } } },
     });
     if (!uc) throw new BadRequestException('未擁有此裝飾');
+    if (!uc.item.enabled) throw new BadRequestException('此裝飾已下架，無法裝備');
     if (uc.item.type !== slot) throw new BadRequestException('裝飾類型與槽位不符');
     // 先清同槽舊裝備，再設新（partial unique 保證每槽至多 1 件）
-    await this.prisma.$transaction([
-      this.prisma.userCosmetic.updateMany({ where: { userId, equippedSlot: slot }, data: { equippedSlot: null } }),
-      this.prisma.userCosmetic.update({ where: { userId_itemId: { userId, itemId } }, data: { equippedSlot: slot } }),
-    ]);
+    try {
+      await this.prisma.$transaction([
+        this.prisma.userCosmetic.updateMany({ where: { userId, equippedSlot: slot }, data: { equippedSlot: null } }),
+        this.prisma.userCosmetic.update({ where: { userId_itemId: { userId, itemId } }, data: { equippedSlot: slot } }),
+      ]);
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('裝備操作衝突，請重試');
+      }
+      throw e;
+    }
     return { ok: true };
   }
 
@@ -135,22 +145,30 @@ export class CosmeticsService {
 
     if (ids.length) {
       const owned = await this.prisma.userCosmetic.findMany({
-        where: { userId, itemId: { in: ids } }, include: { item: { select: { type: true } } },
+        where: { userId, itemId: { in: ids } }, include: { item: { select: { type: true, enabled: true } } },
       });
       if (owned.length !== ids.length) throw new BadRequestException('含未擁有的勳章');
       if (owned.some((o) => o.item.type !== 'BADGE')) throw new BadRequestException('只能釘選勳章');
+      if (owned.some((o) => !o.item.enabled)) throw new BadRequestException('含已下架的勳章，無法釘選');
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      // 先清掉此使用者所有釘選/主勳章（pinnedOrder/isMainBadge 僅勳章會有）
-      await tx.userCosmetic.updateMany({ where: { userId }, data: { pinnedOrder: null, isMainBadge: false } });
-      for (let i = 0; i < ids.length; i++) {
-        await tx.userCosmetic.update({
-          where: { userId_itemId: { userId, itemId: ids[i] } },
-          data: { pinnedOrder: i + 1, isMainBadge: ids[i] === mainBadgeId },
-        });
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // 先清掉此使用者所有釘選/主勳章（pinnedOrder/isMainBadge 僅勳章會有）
+        await tx.userCosmetic.updateMany({ where: { userId }, data: { pinnedOrder: null, isMainBadge: false } });
+        for (let i = 0; i < ids.length; i++) {
+          await tx.userCosmetic.update({
+            where: { userId_itemId: { userId, itemId: ids[i] } },
+            data: { pinnedOrder: i + 1, isMainBadge: ids[i] === mainBadgeId },
+          });
+        }
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('釘選操作衝突，請重試');
       }
-    });
+      throw e;
+    }
     return { ok: true };
   }
 }

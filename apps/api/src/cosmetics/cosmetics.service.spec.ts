@@ -152,7 +152,7 @@ describe('fail-closed', () => {
   it('總開關關閉時會員端 API 回 enabled:false', async () => {
     delete process.env.MEMBER_ECONOMY_ENABLED;
     const ctrl = new CosmeticsController(cosmetics);
-    expect(await ctrl.shop({ id: 'x' })).toEqual({ data: { enabled: false, items: [] } });
+    expect(await ctrl.shop({ id: 'x' }, {})).toEqual({ data: { enabled: false, items: [] } });
     expect(await ctrl.inventory({ id: 'x' })).toEqual({ data: { enabled: false, items: [] } });
     expect(await ctrl.purchase({ id: 'x' }, { itemId: 'y' })).toEqual({ data: { enabled: false } });
     process.env.MEMBER_ECONOMY_ENABLED = 'true'; // 還原
