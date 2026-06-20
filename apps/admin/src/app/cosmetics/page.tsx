@@ -34,6 +34,15 @@ const TYPE_LABEL: Record<CosmeticType, string> = { FRAME: '頭像框', BADGE: '�
 const RARITY_LABEL: Record<Rarity, string> = { COMMON: '普通', RARE: '稀有', LEGENDARY: '傳說' };
 const RARITY_COLOR: Record<Rarity, string> = { COMMON: 'default', RARE: 'cyan', LEGENDARY: 'gold' };
 
+// ISO → <input type="datetime-local"> 需要的本地格式 YYYY-MM-DDTHH:mm
+function toLocalInput(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function CosmeticsPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
@@ -88,8 +97,8 @@ export default function CosmeticsPage() {
     setEditing(c);
     form.setFieldsValue({
       ...c,
-      availableFrom: c.availableFrom ?? '',
-      availableTo: c.availableTo ?? '',
+      availableFrom: toLocalInput(c.availableFrom),
+      availableTo: toLocalInput(c.availableTo),
     });
     setModalOpen(true);
   };

@@ -892,7 +892,8 @@ model UserCosmetic {
   userId       String         @map("user_id")
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   itemId       String         @map("item_id")
-  item         CosmeticItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  // Restrict：有人擁有的品項不可被硬刪（DB 層保證；下架請用 purchasable=false / enabled=false）
+  item         CosmeticItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
   source       CosmeticSource @default(SHOP)
   acquiredAt   DateTime       @default(now()) @map("acquired_at")
   equippedSlot EquipSlot?     @map("equipped_slot") // FRAME/TITLE 裝備中；勳章一律 null

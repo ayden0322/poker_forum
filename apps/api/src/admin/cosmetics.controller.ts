@@ -82,8 +82,8 @@ export class AdminCosmeticsController {
         purchasable: dto.purchasable ?? true,
         levelRequired: dto.levelRequired ?? null,
         enabled: dto.enabled ?? true,
-        availableFrom: dto.availableFrom ? new Date(dto.availableFrom) : null,
-        availableTo: dto.availableTo ? new Date(dto.availableTo) : null,
+        availableFrom: this.parseDate(dto.availableFrom),
+        availableTo: this.parseDate(dto.availableTo),
         sortOrder: dto.sortOrder ?? 0,
       },
     });
@@ -95,6 +95,14 @@ export class AdminCosmeticsController {
     const existing = await this.prisma.cosmeticItem.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('裝飾品項不存在');
 
+    // FRAME/BADGE 不可被 PATCH 清空圖檔（Codex Phase1 #1）
+    if (
+      dto.assetUrl !== undefined && !dto.assetUrl &&
+      (existing.type === CosmeticType.FRAME || existing.type === CosmeticType.BADGE)
+    ) {
+      throw new BadRequestException('頭像框 / 勳章 需要圖檔，不可清空');
+    }
+
     const data = {
       ...(dto.name !== undefined ? { name: dto.name } : {}),
       ...(dto.description !== undefined ? { description: dto.description } : {}),
@@ -104,8 +112,8 @@ export class AdminCosmeticsController {
       ...(dto.purchasable !== undefined ? { purchasable: dto.purchasable } : {}),
       ...(dto.levelRequired !== undefined ? { levelRequired: dto.levelRequired } : {}),
       ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}),
-      ...(dto.availableFrom !== undefined ? { availableFrom: dto.availableFrom ? new Date(dto.availableFrom) : null } : {}),
-      ...(dto.availableTo !== undefined ? { availableTo: dto.availableTo ? new Date(dto.availableTo) : null } : {}),
+      ...(dto.availableFrom !== undefined ? { availableFrom: this.parseDate(dto.availableFrom) } : {}),
+      ...(dto.availableTo !== undefined ? { availableTo: this.parseDate(dto.availableTo) } : {}),
       ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
     };
 
@@ -144,5 +152,13 @@ export class AdminCosmeticsController {
     if ((type === CosmeticType.FRAME || type === CosmeticType.BADGE) && !assetUrl) {
       throw new BadRequestException('頭像框 / 勳章 需要上傳圖檔');
     }
+  }
+
+  /** 解析日期字串；空→null；無效→400（避免 Invalid Date 入庫，Codex Phase1 #2） */
+  private parseDate(value?: string): Date | null {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) throw new BadRequestException('日期格式不正確');
+    return d;
   }
 }
