@@ -25,6 +25,7 @@ const level = new LevelService(prisma as unknown as PrismaService, economy);
 const tasks = new TasksService(prisma as unknown as PrismaService, economy, level);
 
 const createdUserIds: string[] = [];
+const createdPostIds: string[] = [];
 async function makeUser(): Promise<string> {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const u = await prisma.user.create({ data: { nickname: `jest-inv-${suffix}` } });
@@ -38,6 +39,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await prisma.taskEventLog.deleteMany({ where: { userId: { in: createdUserIds } } });
+  await prisma.post.deleteMany({ where: { id: { in: createdPostIds } } });
   await prisma.dailyTaskProgress.deleteMany({ where: { userId: { in: createdUserIds } } });
   const accounts = await prisma.walletAccount.findMany({ where: { userId: { in: createdUserIds } } });
   await prisma.ledgerEntry.deleteMany({ where: { accountId: { in: accounts.map((a) => a.id) } } });
@@ -50,8 +52,10 @@ afterAll(async () => {
 // 不變量 1：法遵紅線（純單元，不需 DB）
 // ──────────────────────────────────────────────────────────────
 describe('不變量｜法遵：純虛擬經濟，不存在真錢路徑', () => {
-  // 任何疑似「真錢進出」的字眼都不該出現在貨幣/帳本理由
-  const MONEY = /topup|top_up|deposit|recharge|withdraw|cashout|cash_out|payout_real|提現|儲值|入金|出金|充值/i;
+  // 任何疑似「真錢進出 / 串接金流」的字眼都不該出現在貨幣或帳本理由。
+  // 含常見金流商名（ECPay 綠界、SmilePay、Stripe、PayPal）當更強的 tripwire。
+  const MONEY =
+    /topup|top_up|deposit|recharge|withdraw|cashout|cash_out|payout_real|fiat|ecpay|smilepay|stripe|paypal|提現|儲值|入金|出金|充值|綠界|金流|信用卡|新台幣/i;
 
   it('Currency 僅限虛擬幣別 {G, P, EXP}', () => {
     expect(new Set<string>(Object.values(Currency))).toEqual(new Set(['G', 'P', 'EXP']));
@@ -92,8 +96,15 @@ describe('不變量｜防刷', () => {
   });
 
   it('瀏覽任務：真實存在的文章才會記事件', async () => {
-    const post = await prisma.post.findFirst({ select: { id: true } });
-    if (!post) return; // dev DB 無文章時略過（CI 種子應有文章）
+    // 自建一篇文章，確保此案例一定有斷言、不會因 DB 無文章而假綠燈
+    const board = await prisma.board.findFirst({ select: { id: true } });
+    if (!board) throw new Error('測試前置失敗：需至少一個看板');
+    const authorId = await makeUser();
+    const post = await prisma.post.create({
+      data: { title: 'inv-view-test', content: 'x', boardId: board.id, authorId, status: 'PUBLISHED' },
+    });
+    createdPostIds.push(post.id);
+
     const userId = await makeUser();
     const ctrl = new PostsController({} as never, prisma as unknown as PrismaService, tasks);
     const res = await ctrl.recordView(post.id, { id: userId });
@@ -136,6 +147,14 @@ describe('不變量｜fail-closed：總開關', () => {
     await tasks.recordEvent(userId, DailyTaskKey.LOGIN, 'login');
     expect(await economy.getBalance(userId, Currency.G)).toBe(0);
     expect(await prisma.taskEventLog.count({ where: { userId } })).toBe(0);
+  });
+
+  it('關閉時 completeTask 也被擋（防直接呼叫繞過總開關）', async () => {
+    delete process.env.MEMBER_ECONOMY_ENABLED;
+    const userId = await makeUser();
+    const res = await tasks.completeTask(userId, DailyTaskKey.LOGIN);
+    expect(res).toEqual({ ok: false, reason: 'economy_disabled' });
+    expect(await economy.getBalance(userId, Currency.G)).toBe(0);
   });
 
   it('關閉時 member 讀取 API 回 enabled:false，不洩餘額/等級/任務', async () => {

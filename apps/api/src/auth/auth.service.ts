@@ -239,10 +239,13 @@ export class AuthService {
   }
 
   async refreshTokens(userId: string, nickname: string, role: string, impersonatedBy?: string) {
-    // 代登入 session（token 帶 impersonatedBy）刷新時，必須維持代登入身分與 1 小時短效，
-    // 否則會把代登入悄悄升級成「以對方身分的 7 天正常登入」，警示橫條消失、稽核身分遺失。
+    // 代登入 session 一律不可刷新（1 小時硬上限）。理由：
+    //  - 防止升級成「以對方身分的 7 天正常登入」（警示橫條消失、稽核身分遺失）
+    //  - 防止用過期 token payload 重簽、繞過代登入當下對目標帳號狀態/角色的檢查
+    //  - 防止透過反覆 refresh 無限延長代登入
+    // 到期需由管理員「重新代登入」——這是一個會被稽核的明確動作。
     if (impersonatedBy) {
-      return this.generateImpersonationTokens(userId, nickname, role, impersonatedBy);
+      throw new UnauthorizedException('代登入 session 已到期，請重新代登入');
     }
     return this.generateTokens(userId, nickname, role);
   }

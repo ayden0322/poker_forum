@@ -23,7 +23,7 @@ export const DAILY_EXP_CAP = 50;
 
 export type CompleteResult =
   | { ok: true; granted: { g: number; exp: number } }
-  | { ok: false; reason: 'already_done' | 'disabled' | 'unknown_task' };
+  | { ok: false; reason: 'already_done' | 'disabled' | 'unknown_task' | 'economy_disabled' };
 
 /** 單一每日任務的今日狀態（唯讀，給前端顯示） */
 export interface DailyTaskStatus {
@@ -139,6 +139,10 @@ export class TasksService {
    *      （瀏覽 5 篇等計數由 #4 接事件時處理）。
    */
   async completeTask(userId: string, taskKey: DailyTaskKey): Promise<CompleteResult> {
+    // 防禦性 fail-closed：completeTask 為 public，雖目前只由已 gate 的 recordEvent 呼叫，
+    // 仍在此再擋一次總開關，避免未來有直接呼叫者繞過開關發幣。
+    if (!isMemberEconomyEnabled()) return { ok: false, reason: 'economy_disabled' };
+
     const today = twToday();
     const defs = await this.getTaskDefs();
     const def = defs.find((d) => d.taskKey === taskKey);
