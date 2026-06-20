@@ -25,6 +25,34 @@ export type CompleteResult =
   | { ok: true; granted: { g: number; exp: number } }
   | { ok: false; reason: 'already_done' | 'disabled' | 'unknown_task' };
 
+/** 單一每日任務的今日狀態（唯讀，給前端顯示） */
+export interface DailyTaskStatus {
+  taskKey: DailyTaskKey;
+  label: string;
+  rewardG: number;
+  rewardExp: number;
+  threshold: number;
+  /** 今日去重達成計數，封頂到 threshold（避免顯示 9/5） */
+  progress: number;
+  /** 是否已發過獎（DailyTaskProgress 有紀錄） */
+  done: boolean;
+}
+
+/** 今日每日任務總覽（唯讀） */
+export interface TodayTasksSummary {
+  tasks: DailyTaskStatus[];
+  grantedG: number;
+  grantedExp: number;
+  capG: number;
+  capExp: number;
+}
+
+/** 任務顯示順序（依預設定義順序，findMany 無序時用此排） */
+const TASK_ORDER: Record<DailyTaskKey, number> = DEFAULT_DAILY_TASKS.reduce(
+  (acc, d, i) => ({ ...acc, [d.taskKey]: i }),
+  {} as Record<DailyTaskKey, number>,
+);
+
 /** 台灣今日 YYYY-MM-DD（en-CA 格式即 YYYY-MM-DD） */
 export function twToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(now);
@@ -155,5 +183,47 @@ export class TasksService {
     }
 
     return { ok: true, granted: { g: giveG, exp: giveExp } };
+  }
+
+  /**
+   * 今日每日任務狀態（唯讀，給前端會員中心 / Header 顯示）。
+   * progress 用去重事件計數、封頂到 threshold；done 看是否已發獎。
+   * 不檢查總開關（讀取無副作用；是否顯示由呼叫端的 enabled 旗標決定）。
+   */
+  async getTodayStatus(userId: string): Promise<TodayTasksSummary> {
+    const today = twToday();
+    const defs = await this.getTaskDefs();
+
+    const [grouped, doneRows, grantedG, grantedExp] = await Promise.all([
+      this.prisma.taskEventLog.groupBy({
+        by: ['taskKey'],
+        where: { userId, taskDate: today },
+        _count: { _all: true },
+      }),
+      this.prisma.dailyTaskProgress.findMany({
+        where: { userId, taskDate: today },
+        select: { taskKey: true },
+      }),
+      this.grantedToday(userId, Currency.G, today),
+      this.grantedToday(userId, Currency.EXP, today),
+    ]);
+
+    const countByKey = new Map(grouped.map((g) => [g.taskKey, g._count._all]));
+    const doneSet = new Set(doneRows.map((d) => d.taskKey));
+
+    const tasks: DailyTaskStatus[] = defs
+      .filter((d) => d.enabled)
+      .map((d) => ({
+        taskKey: d.taskKey,
+        label: d.label,
+        rewardG: d.rewardG,
+        rewardExp: d.rewardExp,
+        threshold: d.threshold,
+        progress: Math.min(countByKey.get(d.taskKey) ?? 0, d.threshold),
+        done: doneSet.has(d.taskKey),
+      }))
+      .sort((a, b) => (TASK_ORDER[a.taskKey] ?? 99) - (TASK_ORDER[b.taskKey] ?? 99));
+
+    return { tasks, grantedG, grantedExp, capG: DAILY_G_CAP, capExp: DAILY_EXP_CAP };
   }
 }

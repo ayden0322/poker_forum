@@ -9,6 +9,7 @@ import { useAuth } from '@/context/auth';
 import { apiFetch } from '@/lib/api';
 import { ReportModal } from '@/components/post/ReportModal';
 import RichTextContent from '@/components/editor/RichTextContent';
+import { levelName } from '@/lib/member';
 
 const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), { ssr: false });
 
@@ -45,7 +46,6 @@ interface RepliesResponse {
   data: { items: ReplyItem[]; total: number; page: number; limit: number };
 }
 
-const LEVEL_LABELS = ['', '新手', '初階', '中階', '資深', '達人', '大師'];
 const ROLE_BADGES: Record<string, { label: string; color: string }> = {
   SUPER_ADMIN: { label: '管理員', color: 'bg-red-100 text-red-600' },
   ADMIN: { label: '管理員', color: 'bg-red-100 text-red-600' },
@@ -252,7 +252,7 @@ export default function PostDetailClient({ post }: { post: PostData }) {
               </span>
             )}
             <div className="text-xs text-gray-400 mt-1">
-              Lv.{post.author.level} {LEVEL_LABELS[post.author.level]}
+              Lv.{post.author.level} {levelName(post.author.level)}
             </div>
           </div>
 

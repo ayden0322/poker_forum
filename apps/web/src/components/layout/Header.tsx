@@ -8,6 +8,8 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { PhoneVerifyModal } from '@/components/auth/PhoneVerifyModal';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import MemberBadges from '@/components/member/MemberBadges';
+import { useMemberSummary } from '@/lib/member';
 
 interface NavChild {
   label: string;
@@ -132,6 +134,9 @@ const navItems: NavItem[] = [
 
 export function Header() {
   const { user, accessToken, logout, showLoginModal, closeLoginModal, showPhoneVerifyModal, closePhoneVerifyModal } = useAuth();
+  // 會員經濟總開關狀態（與 MemberBadges 共用快取）：關閉時連選單入口都不露（fail-closed）
+  const { data: memberData } = useMemberSummary();
+  const memberEnabled = memberData?.data?.enabled === true;
   const [showLogin, setShowLogin] = useState(false);
   const isLoginVisible = showLogin || showLoginModal;
   const handleCloseLogin = () => { setShowLogin(false); closeLoginModal(); };
@@ -314,6 +319,7 @@ export function Header() {
             <div className="flex items-center gap-2 sm:gap-3">
               {user ? (
                 <>
+                  <MemberBadges />
                   <Link
                     href="/notifications"
                     className="relative p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -354,6 +360,15 @@ export function Header() {
                         >
                           個人主頁
                         </Link>
+                        {memberEnabled && (
+                          <Link
+                            href="/member-center"
+                            className="block px-4 py-2 text-sm hover:bg-gray-50"
+                            onClick={() => setShowUserMenu(false)}
+                          >
+                            會員中心
+                          </Link>
+                        )}
                         <Link
                           href="/settings"
                           className="block px-4 py-2 text-sm hover:bg-gray-50"
