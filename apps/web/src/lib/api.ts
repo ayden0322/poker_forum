@@ -31,6 +31,8 @@ async function refreshAccessToken(): Promise<string | null> {
     const data = await res.json() as { data: { accessToken: string; refreshToken: string } };
     localStorage.setItem('accessToken', data.data.accessToken);
     localStorage.setItem('refreshToken', data.data.refreshToken);
+    // 廣播新 token，讓 AuthContext 同步狀態（否則用 context token 的呼叫仍會送過期 token）
+    window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: data.data.accessToken }));
     return data.data.accessToken;
   } catch {
     return null;
@@ -51,8 +53,10 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
     ...rest,
   });
 
-  // 401 時嘗試刷新 token 並重試（僅限瀏覽器端）
-  if (res.status === 401 && typeof window !== 'undefined' && !options.token) {
+  // 401 時嘗試刷新 token 並重試（僅限瀏覽器端）。
+  // 即使呼叫端帶了明確 token 也要刷新：該 token 可能來自 AuthContext 的過期快取，
+  // 重試一律用刷新後的新 token（refreshAccessToken 會同步 localStorage + 廣播給 context）。
+  if (res.status === 401 && typeof window !== 'undefined') {
     if (!refreshPromise) {
       refreshPromise = refreshAccessToken().finally(() => {
         refreshPromise = null;

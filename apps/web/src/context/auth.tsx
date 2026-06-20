@@ -76,12 +76,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('auth:logout', handleLogout);
 
+    // 監聽 apiFetch 自動刷新成功，同步 context 的 accessToken，避免用到過期快取 token
+    const handleTokenRefreshed = (e: Event) => {
+      const t = (e as CustomEvent<string>).detail;
+      if (t) setAccessToken(t);
+    };
+    window.addEventListener('auth:token-refreshed', handleTokenRefreshed);
+
     // 監聽後端 403 PHONE_VERIFICATION_REQUIRED 自動開 Modal
     const handlePhoneVerifyRequired = () => setShowPhoneVerifyModal(true);
     window.addEventListener('auth:phone-verification-required', handlePhoneVerifyRequired);
 
     return () => {
       window.removeEventListener('auth:logout', handleLogout);
+      window.removeEventListener('auth:token-refreshed', handleTokenRefreshed);
       window.removeEventListener('auth:phone-verification-required', handlePhoneVerifyRequired);
     };
   }, [fetchMe]);
