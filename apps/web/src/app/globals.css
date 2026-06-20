@@ -216,3 +216,14 @@ body {
   border-top: 1px solid #e5e7eb;
   margin: 1rem 0;
 }
+
+/* 傳說頭像框：conic 金漸層環的慢旋轉光圈（僅個人頁 context='profile' 掛此 class） */
+@keyframes cosmetic-frame-spin {
+  to { transform: rotate(360deg); }
+}
+.cosmetic-frame-legendary-spin {
+  animation: cosmetic-frame-spin 8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cosmetic-frame-legendary-spin { animation: none; }
+}

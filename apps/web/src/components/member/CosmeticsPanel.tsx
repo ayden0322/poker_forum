@@ -16,7 +16,7 @@ const RARITY_BADGE: Record<Rarity, string> = {
 };
 
 function Preview({ item, avatar, nickname }: { item: ShopItem; avatar: string | null; nickname: string }) {
-  if (item.type === 'FRAME') return <AvatarWithFrame avatar={avatar} nickname={nickname} size={44} frame={{ rarity: item.rarity }} />;
+  if (item.type === 'FRAME') return <AvatarWithFrame avatar={avatar} nickname={nickname} size={44} frame={{ rarity: item.rarity }} context="profile" />;
   if (item.type === 'BADGE' && item.iconKey) return <BadgeIcon iconKey={item.iconKey} rarity={item.rarity} size={44} />;
   return <span style={{ ...TITLE_TOKEN[item.rarity], fontSize: 15 }}>{item.name}</span>;
 }
@@ -98,7 +98,7 @@ export default function CosmeticsPanel() {
         <h2 className="mb-3 text-base font-bold text-gray-900">我的裝備</h2>
         <div className="flex items-center gap-6">
           <div className="text-center">
-            <AvatarWithFrame avatar={user?.avatar ?? null} nickname={user?.nickname ?? '?'} size={56} frame={equippedFrame ? { rarity: equippedFrame.rarity } : null} />
+            <AvatarWithFrame avatar={user?.avatar ?? null} nickname={user?.nickname ?? '?'} size={56} frame={equippedFrame ? { rarity: equippedFrame.rarity } : null} context="profile" />
             <div className="mt-1 text-xs text-gray-400">頭像框</div>
           </div>
           <div className="text-center">
