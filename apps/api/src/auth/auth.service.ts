@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../common/prisma.service';
 import { TasksService, LOGIN_REF } from '../tasks/tasks.service';
+import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -79,12 +80,14 @@ export class AuthService {
         phoneVerified: true,
         phoneVerificationBypass: true,
         nicknameChangedAt: true,
+        ...AUTHOR_COSMETIC_SELECT,
       },
     });
     if (!user) {
       throw new UnauthorizedException('使用者不存在');
     }
-    return user;
+    const { cosmetics, ...rest } = user;
+    return { ...rest, cosmetics: serializeAuthorCosmetics({ cosmetics }) };
   }
 
   async login(dto: LoginDto, ip?: string) {

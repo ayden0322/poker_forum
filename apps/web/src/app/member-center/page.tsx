@@ -6,6 +6,7 @@ import { useAuth } from '@/context/auth';
 import { useMemberSummary, useDailyTasks, levelName } from '@/lib/member';
 import ExperienceBar from '@/components/member/ExperienceBar';
 import DailyTaskList from '@/components/member/DailyTaskList';
+import CosmeticsPanel from '@/components/member/CosmeticsPanel';
 
 /**
  * 會員中心：等級 / 經驗、G幣（P幣即將開放）、今日每日任務。
@@ -89,6 +90,9 @@ export default function MemberCenterPage() {
           <div className="text-sm text-gray-400">目前沒有可顯示的任務</div>
         )}
       </section>
+
+      {/* 裝飾商店 + 我的裝飾 + 勳章牆 */}
+      <CosmeticsPanel />
     </div>
   );
 }

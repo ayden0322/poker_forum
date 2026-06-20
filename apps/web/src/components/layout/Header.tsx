@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import MemberBadges from '@/components/member/MemberBadges';
 import { useMemberSummary } from '@/lib/member';
+import AvatarWithFrame from '@/components/member/AvatarWithFrame';
+import BadgeIcon from '@/components/member/BadgeIcon';
 
 interface NavChild {
   label: string;
@@ -340,14 +342,13 @@ export function Header() {
                       onClick={() => setShowUserMenu((v) => !v)}
                       className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                     >
-                      {user.avatar ? (
-                        <Image src={user.avatar} alt={user.nickname} width={32} height={32} className="rounded-full" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-blue-400 flex items-center justify-center text-sm font-bold">
-                          {user.nickname.charAt(0)}
-                        </div>
-                      )}
+                      <AvatarWithFrame avatar={user.avatar} nickname={user.nickname} size={32} frame={user.cosmetics?.frame} />
                       <span className="text-sm font-medium hidden sm:block">{user.nickname}</span>
+                      {user.cosmetics?.mainBadge && (
+                        <span className="hidden sm:inline-flex">
+                          <BadgeIcon iconKey={user.cosmetics.mainBadge.iconKey} rarity={user.cosmetics.mainBadge.rarity} size={20} />
+                        </span>
+                      )}
                       <span className="text-xs opacity-70 hidden sm:block">▾</span>
                     </button>
 

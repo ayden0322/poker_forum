@@ -35,7 +35,8 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 export default async function PostPage({ params }: { params: { id: string } }) {
   let post: PostData;
   try {
-    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`);
+    // no-store：作者裝飾(框/稱號/勳章)會隨裝備變動，文章詳情不可吃 Next Data Cache 舊值
+    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`, { cache: 'no-store' });
     post = res.data;
   } catch {
     notFound();

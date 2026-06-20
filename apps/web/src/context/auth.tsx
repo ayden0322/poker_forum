@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import type { AuthorCosmetics } from '@/lib/cosmetics';
 
 interface AuthUser {
   id: string;
@@ -9,6 +10,8 @@ interface AuthUser {
   role: string;
   avatar: string | null;
   level: number;
+  /** 已裝備裝飾（框/稱號/主勳章）；總開關關閉時為 null */
+  cosmetics?: AuthorCosmetics | null;
   phone?: string | null;
   phoneVerified?: boolean;
   phoneVerificationBypass?: boolean;
