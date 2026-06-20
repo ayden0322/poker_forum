@@ -22,7 +22,8 @@ interface PostData {
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   try {
-    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`);
+    // 與頁面 fetch 用相同 options，讓 Next 在同一 request 內 memoize 成單次（避免 viewCount 雙增）
+    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`, { cache: 'no-store' });
     return {
       title: `${res.data.title} - ${res.data.board.name} - 博客邦`,
       description: res.data.content.substring(0, 150),

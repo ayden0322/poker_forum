@@ -106,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('accessToken', res.data.accessToken);
     localStorage.setItem('refreshToken', res.data.refreshToken);
     setAccessToken(res.data.accessToken);
-    setUser(res.data.user);
+    // 走 /auth/me 取完整 user（含 cosmetics 等 login 回傳沒有的欄位），形狀一致
+    await fetchMe(res.data.accessToken);
   };
 
   const logout = () => {

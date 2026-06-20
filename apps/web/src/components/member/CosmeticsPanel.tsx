@@ -47,7 +47,10 @@ export default function CosmeticsPanel() {
     setPinned(cur);
     if (effectiveMain && !cur.includes(effectiveMain)) setMainId(cur[0] ?? null);
   };
-  const savePins = () => pin.mutate({ pinnedIds, mainBadgeId: effectiveMain ?? undefined });
+  const savePins = () => pin.mutate(
+    { pinnedIds, mainBadgeId: effectiveMain ?? undefined },
+    { onSuccess: () => { setPinned(null); setMainId(null); } }, // 回到伺服器 canonical state，避免暫存與實際不符
+  );
 
   const isEnabled = shopQ.data?.data.enabled !== false;
   if (!isEnabled) return null;
