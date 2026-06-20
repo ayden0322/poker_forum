@@ -97,6 +97,15 @@ export default function PostDetailClient({ post }: { post: PostData }) {
       .catch(() => {});
   }, [token, post.id]);
 
+  // 記錄瀏覽以推進每日任務（文章頁為 SSR 匿名抓取，故由前端登入後主動回報；後端去重+開關保護）。
+  // 成功後刷新會員快取，讓 Header 徽章 / 會員中心即時反映進度。
+  useEffect(() => {
+    if (!token) return;
+    apiFetch(`/posts/${post.id}/view`, { method: 'POST' })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['member'] }))
+      .catch(() => {});
+  }, [token, post.id, queryClient]);
+
   const { data: repliesData, isLoading: repliesLoading } = useQuery({
     queryKey: ['replies', post.id, replyPage],
     queryFn: () =>

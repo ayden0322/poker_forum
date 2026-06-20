@@ -36,13 +36,30 @@ export class PostsController {
     return { data };
   }
 
-  /** 取得文章詳情（可選登入：登入者瀏覽會記每日任務） */
+  /**
+   * 取得文章詳情（可選登入）。
+   * 註：前端文章頁為 SSR 匿名抓取，這裡的 recordEvent 實務上不會觸發；
+   * 真正的「瀏覽計入任務」由前端登入後呼叫 POST :id/view（見下）。此處保留以涵蓋帶 token 直打 API 的情況。
+   */
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard)
   async findById(@Param('id') id: string, @CurrentUser() user: { id: string } | null) {
     const data = await this.postsService.findById(id);
     if (user?.id) await this.tasks.recordEvent(user.id, 'VIEW_POSTS', id);
     return { data };
+  }
+
+  /**
+   * 記錄「已瀏覽此文」以推進每日任務（VIEW_POSTS）。
+   * 因文章詳情頁是 SSR 匿名抓取，瀏覽事件改由前端登入後主動回報。
+   * recordEvent 內建總開關（關閉時 no-op）、同篇當日去重、永不丟錯。
+   */
+  @Post(':id/view')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async recordView(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    await this.tasks.recordEvent(user.id, 'VIEW_POSTS', id);
+    return { data: { ok: true } };
   }
 
   /** 發表文章 */
