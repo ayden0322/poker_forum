@@ -66,8 +66,7 @@ export class PostsService {
       },
     });
 
-    // 重新計算作者等級
-    await this.recalculateLevel(authorId);
+    // 等級改由會員系統的經驗值決定（LevelService.addExp），不再用發文數重算
 
     return post;
   }
@@ -146,7 +145,6 @@ export class PostsService {
     }
 
     await this.prisma.post.delete({ where: { id } });
-    await this.recalculateLevel(post.authorId);
     return { success: true };
   }
 
@@ -181,20 +179,5 @@ export class PostsService {
     ]);
 
     return { items, total, page, limit };
-  }
-
-  /** 重新計算使用者等級（DRAFT 不計入發文數） */
-  private async recalculateLevel(userId: string) {
-    const count = await this.prisma.post.count({
-      where: { authorId: userId, status: PostStatus.PUBLISHED },
-    });
-    let level = 1;
-    if (count >= 500) level = 6;
-    else if (count >= 200) level = 5;
-    else if (count >= 100) level = 4;
-    else if (count >= 50) level = 3;
-    else if (count >= 20) level = 2;
-
-    await this.prisma.user.update({ where: { id: userId }, data: { level } });
   }
 }

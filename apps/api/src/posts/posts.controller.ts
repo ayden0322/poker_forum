@@ -9,9 +9,11 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { CreateReportDto } from './dto/report.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import { PhoneVerifiedGuard } from '../common/guards/phone-verified.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../common/prisma.service';
+import { TasksService } from '../tasks/tasks.service';
 
 @ApiTags('posts')
 @Controller('posts')
@@ -19,6 +21,7 @@ export class PostsController {
   constructor(
     private postsService: PostsService,
     private prisma: PrismaService,
+    private tasks: TasksService,
   ) {}
 
   /** 搜尋文章 */
@@ -33,10 +36,12 @@ export class PostsController {
     return { data };
   }
 
-  /** 取得文章詳情 */
+  /** 取得文章詳情（可選登入：登入者瀏覽會記每日任務） */
   @Get(':id')
-  async findById(@Param('id') id: string) {
+  @UseGuards(OptionalJwtAuthGuard)
+  async findById(@Param('id') id: string, @CurrentUser() user: { id: string } | null) {
     const data = await this.postsService.findById(id);
+    if (user?.id) await this.tasks.recordEvent(user.id, 'VIEW_POSTS', id);
     return { data };
   }
 
@@ -49,6 +54,7 @@ export class PostsController {
     @Body() dto: CreatePostDto,
   ) {
     const data = await this.postsService.create(user.id, user.role, dto);
+    await this.tasks.recordEvent(user.id, 'CREATE_POST', data.id);
     return { data };
   }
 

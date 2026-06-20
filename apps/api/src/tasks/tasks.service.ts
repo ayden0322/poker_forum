@@ -1,17 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Currency, DailyTaskDef, DailyTaskKey, LedgerReason, Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 import { EconomyService } from '../economy/economy.service';
 import { LevelService } from '../economy/level.service';
+import { isMemberEconomyEnabled } from '../economy/economy.flags';
 
-/** 每日任務預設（任務「類型」綁程式，獎勵數值可後台覆蓋；後台 CRUD 為 #5） */
-export const DEFAULT_DAILY_TASKS: { taskKey: DailyTaskKey; label: string; rewardG: number; rewardExp: number }[] = [
-  { taskKey: 'LOGIN', label: '每日登入', rewardG: 10, rewardExp: 10 },
-  { taskKey: 'VIEW_POSTS', label: '瀏覽 5 篇文章', rewardG: 5, rewardExp: 5 },
-  { taskKey: 'CREATE_POST', label: '發表 1 篇文章', rewardG: 20, rewardExp: 20 },
-  { taskKey: 'REPLY', label: '回覆 3 篇文章', rewardG: 10, rewardExp: 10 },
-  { taskKey: 'LIKE', label: '按讚 5 次', rewardG: 5, rewardExp: 5 },
+/** 每日任務預設（任務「類型」綁程式，獎勵/門檻數值可後台覆蓋；後台 CRUD 為 #5） */
+export const DEFAULT_DAILY_TASKS: { taskKey: DailyTaskKey; label: string; rewardG: number; rewardExp: number; threshold: number }[] = [
+  { taskKey: 'LOGIN', label: '每日登入', rewardG: 10, rewardExp: 10, threshold: 1 },
+  { taskKey: 'VIEW_POSTS', label: '瀏覽 5 篇文章', rewardG: 5, rewardExp: 5, threshold: 5 },
+  { taskKey: 'CREATE_POST', label: '發表 1 篇文章', rewardG: 20, rewardExp: 20, threshold: 1 },
+  { taskKey: 'REPLY', label: '回覆 3 篇文章', rewardG: 10, rewardExp: 10, threshold: 3 },
+  { taskKey: 'LIKE', label: '按讚 5 次', rewardG: 5, rewardExp: 5, threshold: 5 },
 ];
+
+/** LOGIN 這種「無自然對象」任務的固定 refId（一天一次） */
+export const LOGIN_REF = 'login';
 
 /** 每日上限（之後 #6 改為依等級可調） */
 export const DAILY_G_CAP = 50;
@@ -33,11 +37,47 @@ export function twDayStartUtc(twDate: string): Date {
 
 @Injectable()
 export class TasksService {
+  private readonly logger = new Logger(TasksService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly economy: EconomyService,
     private readonly level: LevelService,
   ) {}
+
+  /**
+   * 真實事件入口：登入/瀏覽/發文/回覆/按讚 成功後呼叫。
+   *  - 單一 fail-closed 總開關：未啟用直接 no-op（schema 上 prod 也不發幣）
+   *  - 去重計數：同 refId 當日只計一次（瀏覽同篇 5 次不算 5）
+   *  - 達門檻才 completeTask 發獎
+   *  - 永不丟錯：發獎失敗不可拖垮主流程（發文/登入照樣成功）
+   *  - 只認「當下」事件，不回溯歷史（開關打開後才開始累積）
+   */
+  async recordEvent(userId: string, taskKey: DailyTaskKey, refId: string): Promise<void> {
+    if (!isMemberEconomyEnabled()) return; // 總開關（fail-closed）
+    try {
+      const today = twToday();
+      const defs = await this.getTaskDefs();
+      const def = defs.find((d) => d.taskKey === taskKey);
+      if (!def || !def.enabled) return;
+
+      // 記一次不同 refId 的事件（同 refId 當日重複→唯一鍵擋下、不重複計）
+      try {
+        await this.prisma.taskEventLog.create({ data: { userId, taskKey, refId, taskDate: today } });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return;
+        throw e;
+      }
+
+      // 當日不同 refId 數達門檻 → 發獎（completeTask 本身去重+冪等）
+      const count = await this.prisma.taskEventLog.count({ where: { userId, taskKey, taskDate: today } });
+      if (count >= def.threshold) {
+        await this.completeTask(userId, taskKey);
+      }
+    } catch (e) {
+      this.logger.warn(`recordEvent 失敗（不影響主流程）：${taskKey}/${userId}: ${String(e)}`);
+    }
+  }
 
   /** 取得任務定義（首次自動 seed 程式預設） */
   async getTaskDefs(): Promise<DailyTaskDef[]> {

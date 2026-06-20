@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../common/prisma.service';
+import { TasksService, LOGIN_REF } from '../tasks/tasks.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -19,6 +20,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly tasks: TasksService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -232,6 +234,8 @@ export class AuthService {
         ...(ip ? { lastLoginIp: ip.replace(/^::ffff:/, '') } : {}),
       },
     });
+    // 每日登入任務（會員系統總開關關閉時為 no-op；recordEvent 不丟錯不影響登入）
+    await this.tasks.recordEvent(userId, 'LOGIN', LOGIN_REF);
   }
 
   async refreshTokens(userId: string, nickname: string, role: string) {

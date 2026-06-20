@@ -9,11 +9,15 @@ import { CreateReplyDto } from './dto/create-reply.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { PhoneVerifiedGuard } from '../common/guards/phone-verified.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { TasksService } from '../tasks/tasks.service';
 
 @ApiTags('replies')
 @Controller()
 export class RepliesController {
-  constructor(private repliesService: RepliesService) {}
+  constructor(
+    private repliesService: RepliesService,
+    private tasks: TasksService,
+  ) {}
 
   /** 取得文章回覆 */
   @Get('posts/:postId/replies')
@@ -36,6 +40,8 @@ export class RepliesController {
     @Body() dto: CreateReplyDto,
   ) {
     const data = await this.repliesService.create(postId, user.id, dto);
+    // 回覆任務：以「不同文章」計數（同篇多次回覆當天只算一次）
+    await this.tasks.recordEvent(user.id, 'REPLY', postId);
     return { data };
   }
 
