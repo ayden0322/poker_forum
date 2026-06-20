@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Currency, LedgerEntry, LedgerReason } from '@betting-forum/database';
+import { Currency, LedgerEntry, LedgerReason, Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 
 /** 餘額不足（debit 時餘額 < 扣款額）。呼叫端自行決定如何回應使用者。 */
@@ -92,40 +92,62 @@ export class EconomyService {
     if (existing) return existing;
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        // 確保帳戶存在（餘額 0），才能做條件式扣款
-        await tx.walletAccount.upsert({
-          where: { userId_currency: { userId: params.userId, currency: params.currency } },
-          create: { userId: params.userId, currency: params.currency, balance: 0 },
-          update: {},
-        });
-        // 條件式原子扣款：餘額 >= amount 才扣，避免並發扣成負數
-        const res = await tx.walletAccount.updateMany({
-          where: { userId: params.userId, currency: params.currency, balance: { gte: params.amount } },
-          data: { balance: { decrement: params.amount } },
-        });
-        if (res.count === 0) {
-          const have = await this.getBalance(params.userId, params.currency);
-          throw new InsufficientBalanceError(params.currency, params.amount, have);
-        }
-        const account = await tx.walletAccount.findUniqueOrThrow({
-          where: { userId_currency: { userId: params.userId, currency: params.currency } },
-        });
-        return tx.ledgerEntry.create({
-          data: {
-            accountId: account.id,
-            amount: -params.amount,
-            reason: params.reason,
-            refType: params.refType,
-            refId: params.refId,
-            idempotencyKey: params.idempotencyKey,
-            balanceAfter: account.balance,
-          },
-        });
-      });
+      return await this.prisma.$transaction((tx) => this.debitInTx(tx, params));
     } catch (e) {
       return this.resolveConcurrentDup(params.idempotencyKey, e);
     }
+  }
+
+  /**
+   * 在「呼叫端提供的交易」內扣款。讓「扣 G幣 + 發貨/下注」能在同一交易原子完成
+   *（任一步失敗整批 rollback，不會發生付了款卻沒拿到東西）。
+   *
+   * 注意：呼叫端需自行處理 InsufficientBalanceError 與並發 P2002（同 idempotencyKey
+   * 並發插入）——通常並發時讓該交易 rollback、視為對手已完成即可。
+   */
+  async debitInTx(
+    tx: Prisma.TransactionClient,
+    params: MoveParams,
+  ): Promise<LedgerEntry> {
+    this.assertPositive(params.amount);
+
+    // 交易內冪等檢查：同 key 已存在直接回（避免重複扣）
+    const existing = await tx.ledgerEntry.findUnique({
+      where: { idempotencyKey: params.idempotencyKey },
+    });
+    if (existing) return existing;
+
+    // 確保帳戶存在（餘額 0），才能做條件式扣款
+    await tx.walletAccount.upsert({
+      where: { userId_currency: { userId: params.userId, currency: params.currency } },
+      create: { userId: params.userId, currency: params.currency, balance: 0 },
+      update: {},
+    });
+    // 條件式原子扣款：餘額 >= amount 才扣，避免並發扣成負數
+    const res = await tx.walletAccount.updateMany({
+      where: { userId: params.userId, currency: params.currency, balance: { gte: params.amount } },
+      data: { balance: { decrement: params.amount } },
+    });
+    if (res.count === 0) {
+      const acct = await tx.walletAccount.findUnique({
+        where: { userId_currency: { userId: params.userId, currency: params.currency } },
+      });
+      throw new InsufficientBalanceError(params.currency, params.amount, acct?.balance ?? 0);
+    }
+    const account = await tx.walletAccount.findUniqueOrThrow({
+      where: { userId_currency: { userId: params.userId, currency: params.currency } },
+    });
+    return tx.ledgerEntry.create({
+      data: {
+        accountId: account.id,
+        amount: -params.amount,
+        reason: params.reason,
+        refType: params.refType,
+        refId: params.refId,
+        idempotencyKey: params.idempotencyKey,
+        balanceAfter: account.balance,
+      },
+    });
   }
 
   private assertPositive(amount: number) {
