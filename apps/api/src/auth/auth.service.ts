@@ -238,7 +238,12 @@ export class AuthService {
     await this.tasks.recordEvent(userId, 'LOGIN', LOGIN_REF);
   }
 
-  async refreshTokens(userId: string, nickname: string, role: string) {
+  async refreshTokens(userId: string, nickname: string, role: string, impersonatedBy?: string) {
+    // 代登入 session（token 帶 impersonatedBy）刷新時，必須維持代登入身分與 1 小時短效，
+    // 否則會把代登入悄悄升級成「以對方身分的 7 天正常登入」，警示橫條消失、稽核身分遺失。
+    if (impersonatedBy) {
+      return this.generateImpersonationTokens(userId, nickname, role, impersonatedBy);
+    }
     return this.generateTokens(userId, nickname, role);
   }
 
