@@ -20,7 +20,6 @@ export default function AvatarWithFrame({
 }) {
   const rarity = frame?.rarity;
   const isLegendary = rarity === 'LEGENDARY';
-  const animate = isLegendary && context === 'profile';
 
   const inner = avatar ? (
     // eslint-disable-next-line @next/next/no-img-element
@@ -35,19 +34,20 @@ export default function AvatarWithFrame({
     </span>
   );
 
-  // 傳說：conic 金漸層環（外層漸層 + 2px padding + 內層白描邊把頭像與金環分開）
+  // 傳說：高對比 conic 金環(含 #fff8e1 高光點) + 掃光層；個人頁/商店(context='profile')自動間歇掃光、hover 爆發
   if (isLegendary) {
     return (
       <span
-        className={animate ? 'cosmetic-frame-legendary-spin' : undefined}
+        className={`legend-frame${context === 'profile' ? ' is-profile' : ''}`}
         style={{
           display: 'inline-block', borderRadius: '9999px', padding: 2, lineHeight: 0,
-          background: 'conic-gradient(from 0deg, #d97706, #fbbf24, #b45309, #fbbf24, #d97706)',
+          background: 'conic-gradient(from 0deg, #b45309, #d97706, #fbbf24, #fff8e1, #fbbf24, #d97706, #b45309)',
         }}
       >
         <span style={{ display: 'inline-block', borderRadius: '9999px', padding: 1.5, background: '#fff', lineHeight: 0 }}>
           {inner}
         </span>
+        <span className="legend-sheen" aria-hidden />
       </span>
     );
   }

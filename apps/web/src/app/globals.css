@@ -217,13 +217,38 @@ body {
   margin: 1rem 0;
 }
 
-/* 傳說頭像框：conic 金漸層環的慢旋轉光圈（僅個人頁 context='profile' 掛此 class） */
-@keyframes cosmetic-frame-spin {
-  to { transform: rotate(360deg); }
+/* ===== 傳說頭像框：靜態金環 + 金屬掃光（transform rotate 走 GPU，非每幀 paint） =====
+   威攝力來自：高對比金環(含 #fff8e1 高光點) + 間歇掃光瞬間(70% 靜止/30% 掃) + cubic-bezier 緩動。
+   .legend-frame 容器、.legend-sheen 掃光層；只有個人頁/商店容器加 .is-profile 才自動掃光。
+   列表內聯不加 .is-profile → 純靜態金環（守資訊密度 + 效能）。 */
+.legend-frame { position: relative; }
+.legend-sheen {
+  position: absolute; inset: -1px; border-radius: 9999px;
+  pointer-events: none; opacity: 0;
+  /* 一道窄高光帶（白金），預設透明、不動 */
+  background: conic-gradient(from 0deg,
+    transparent 0deg, transparent 62deg,
+    rgba(255,248,225,0.95) 90deg,
+    transparent 118deg, transparent 360deg);
 }
-.cosmetic-frame-legendary-spin {
-  animation: cosmetic-frame-spin 8s linear infinite;
+/* 個人頁/商店：間歇自動掃光（5.5s 一輪，多數時間靜止） */
+.legend-frame.is-profile .legend-sheen {
+  animation: legend-sheen-rotate 5.5s cubic-bezier(0.45, 0, 0.15, 1) infinite;
+}
+@keyframes legend-sheen-rotate {
+  0%, 68%  { transform: rotate(0deg); opacity: 0; }
+  72%      { opacity: 0.9; }
+  100%     { transform: rotate(360deg); opacity: 0; }
+}
+/* hover 爆發：一道更亮的快掃 + 金光暈，「框認得主人」 */
+.legend-frame:hover { box-shadow: 0 0 14px 2px rgba(217,119,6,0.5); transition: box-shadow .3s ease; }
+.legend-frame:hover .legend-sheen { animation: legend-sheen-burst 1.1s cubic-bezier(0.3, 0, 0.2, 1); }
+@keyframes legend-sheen-burst {
+  0%   { transform: rotate(0deg); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: rotate(360deg); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cosmetic-frame-legendary-spin { animation: none; }
+  .legend-frame.is-profile .legend-sheen,
+  .legend-frame:hover .legend-sheen { animation: none; }
 }
