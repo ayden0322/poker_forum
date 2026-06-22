@@ -53,14 +53,18 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ code: strin
     }
   }
 
-  // 只有有效碼才把 ref 帶進註冊頁 query（壞碼不污染歸因）
-  const url = new URL('/register', req.url);
-  if (codeValid) url.searchParams.set('ref', code);
-
-  const res = NextResponse.redirect(url, 302);
+  // 用「相對路徑」轉址：讓瀏覽器以它網址列上的公開網址（www.goboka.net）去解析，
+  // 避免用 req.url——在 Zeabur 反向代理後面那是容器內部主機名（service-xxxx:8080），
+  // 使用者瀏覽器連不到。只有有效碼才把 ref 帶進註冊頁 query（壞碼不污染歸因）。
+  const location = '/register' + (codeValid ? `?ref=${encodeURIComponent(code)}` : '');
+  const res = new NextResponse(null, { status: 302, headers: { Location: location } });
   res.headers.set('X-Robots-Tag', 'noindex, nofollow');
 
-  const domain = cookieDomain(req.nextUrl.hostname);
+  // 用對外公開主機名推導 cookie domain（x-forwarded-host），不能用 req.nextUrl.hostname
+  // ——後者在 Zeabur 後面是內部 service 名，會推導出錯誤 domain、害 OAuth 跨子網域歸因失效。
+  const publicHost =
+    req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.hostname;
+  const domain = cookieDomain(publicHost);
   const base = {
     httpOnly: false, // 註冊頁需用 JS 讀取帶入 body
     sameSite: 'lax' as const,
