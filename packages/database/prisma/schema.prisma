@@ -51,6 +51,7 @@ model User {
   lotteryPicks       UserLotteryPick[]
   walletAccounts     WalletAccount[]
   dailyTaskProgress  DailyTaskProgress[]
+  promoReferral      PromoReferral?
 
   @@map("users")
 }
@@ -812,4 +813,81 @@ model DailyTaskProgress {
   @@unique([userId, taskKey, taskDate])
   @@index([userId, taskDate])
   @@map("daily_task_progress")
+}
+
+// ===== 推廣碼（廠商推廣歸因 + 漏斗）=====
+// 業主對外找推廣廠商導流註冊：每家廠商可有多組碼（分渠道），
+// 使用者經專屬連結 /r/<code> 落地 → 註冊時自動歸因到該碼，量化點擊→註冊→手機驗證漏斗。
+
+enum PromoStatus {
+  ACTIVE
+  DISABLED
+}
+
+// 推廣廠商：一家廠商底下可掛多組推廣碼（FB/IG/LINE 等渠道各一）。
+model PromoPartner {
+  id          String      @id @default(cuid())
+  name        String // 廠商名稱
+  contact     String? // 聯絡方式
+  note        String?
+  status      PromoStatus @default(ACTIVE)
+  createdById String?     @map("created_by_id") // 建立者（管理員 userId 快照，不設 FK 以免刪管理員連動）
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  codes PromoCode[]
+
+  @@map("promo_partners")
+}
+
+// 推廣碼：URL-safe 短碼，屬於某廠商，可標記渠道與到期。
+model PromoCode {
+  id        String      @id @default(cuid())
+  code      String      @unique // 短碼，如 FB2026（大小寫不敏感由 service 統一轉大寫存取）
+  partnerId String      @map("partner_id")
+  partner   PromoPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  channel   String? // 渠道標記（FB/IG/LINE…）
+  status    PromoStatus @default(ACTIVE)
+  expiresAt DateTime?   @map("expires_at")
+  note      String?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  visits    PromoVisit[]
+  referrals PromoReferral[]
+
+  @@index([partnerId])
+  @@map("promo_codes")
+}
+
+// 點擊/落地日誌（漏斗上層）。同訪客同碼只算一次不重複點擊；bot 標記後不計入頭條數。
+model PromoVisit {
+  id        String    @id @default(cuid())
+  codeId    String    @map("code_id")
+  code      PromoCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  visitorId String    @map("visitor_id") // cookie 內匿名隨機 id，去重 + 串接註冊
+  ip        String?
+  userAgent String?   @map("user_agent")
+  isBot     Boolean   @default(false) @map("is_bot")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@unique([codeId, visitorId])
+  @@index([codeId, createdAt])
+  @@map("promo_visits")
+}
+
+// 註冊歸因（漏斗下層）。一個 user 最多一筆（unique userId）。
+// 手機驗證數不另存欄位，報表時 join User.phoneVerified（權威來源，避免漂移）。
+model PromoReferral {
+  id        String    @id @default(cuid())
+  codeId    String    @map("code_id")
+  code      PromoCode @relation(fields: [codeId], references: [id])
+  userId    String    @unique @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  visitorId String?   @map("visitor_id") // 對應點擊，串起漏斗
+  regIp     String?   @map("reg_ip") // 結算抗詐：同 IP 多註冊偵測
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([codeId, createdAt])
+  @@map("promo_referrals")
 }
