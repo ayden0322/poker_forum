@@ -31,6 +31,7 @@ export const ADMIN_PAGES: PageDef[] = [
   { key: 'tags', label: '標籤管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'announcements', label: '站方推送', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'marquee', label: '跑馬燈管理', defaults: { moderator: F, admin: T, superAdmin: T } },
+  { key: 'promo', label: '推廣管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'world-cup', label: '世界盃管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'translations', label: '翻譯管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   // 超級管理員專屬（敏感）
@@ -57,6 +58,7 @@ export const SEGMENT_TO_PAGE: Record<string, string> = {
   categories: 'categories',
   tags: 'tags',
   marquees: 'marquee',
+  promo: 'promo',
   reports: 'reports',
   feedbacks: 'feedbacks',
   'banned-ips': 'banned-ips',

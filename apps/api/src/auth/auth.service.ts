@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../common/prisma.service';
+import { PromoService } from '../promo/promo.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -19,9 +20,10 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly promo: PromoService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, ip?: string) {
     // 檢查暱稱重複
     const existingNickname = await this.prisma.user.findUnique({
       where: { nickname: dto.nickname },
@@ -59,6 +61,9 @@ export class AuthService {
       },
       select: { id: true, nickname: true, role: true, avatar: true, level: true, createdAt: true },
     });
+
+    // 推廣碼歸因（best-effort，壞碼/重複絕不影響註冊）
+    await this.promo.attributeRegistration(user.id, dto.refCode, dto.visitorId, ip);
 
     const tokens = await this.generateTokens(user.id, user.nickname, user.role);
     return { user, ...tokens };
@@ -132,6 +137,7 @@ export class AuthService {
       avatar?: string;
     },
     ip?: string,
+    attribution?: { refCode?: string; visitorId?: string },
   ) {
     // 找是否已有此 OAuth 綁定
     const existing = await this.prisma.oAuthProvider.findUnique({
@@ -217,6 +223,14 @@ export class AuthService {
         nicknameChangedAt: true,
       },
     });
+
+    // 推廣碼歸因：僅在此「新帳號」分支套用（既有帳號登入不歸因）
+    await this.promo.attributeRegistration(
+      newUser.id,
+      attribution?.refCode,
+      attribution?.visitorId,
+      ip,
+    );
 
     await this.recordLoginMeta(newUser.id, ip);
     const tokens = await this.generateTokens(newUser.id, newUser.nickname, newUser.role);
