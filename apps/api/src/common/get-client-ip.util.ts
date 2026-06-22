@@ -1,33 +1,19 @@
 import { Request } from 'express';
 
 /**
- * 從反向代理 / CDN 後面抓取真正的客戶端 IP。
- * 優先順序：Cloudflare → True-Client-IP → X-Forwarded-For (第一個) → req.ip → socket。
- * 需要 main.ts 有設定 `trust proxy`，否則 Express 不會信任上游 header。
+ * 取真正的客戶端 IP。
+ *
+ * 一律以 Express 的 `req.ip` 為準——它由 main.ts 的 `trust proxy`（只信內網閘道）計算，
+ * 已跳過可偽造的上游標頭，是目前架構下唯一可信的來源。
+ *
+ * 刻意「不」信任 `cf-connecting-ip` / `true-client-ip` / 原始 `x-forwarded-for`：
+ * 本站走 Zeabur 灰雲、前面沒有 Cloudflare 代理，這些標頭訪客皆可自行偽造（已實測證實可繞限流）。
+ * 若日後改走 Cloudflare 橘雲：把 trust proxy 設成信任 CF IP 範圍即可，CF 會正確覆寫 XFF、
+ * req.ip 仍會是真實 client，不需再回頭信任這些標頭。
  */
 export function getClientIp(req: Request): string | undefined {
-  const header = (name: string): string | undefined => {
-    const v = req.headers[name.toLowerCase()];
-    if (Array.isArray(v)) return v[0];
-    return typeof v === 'string' ? v : undefined;
-  };
-
-  const cf = header('cf-connecting-ip');
-  if (cf) return normalize(cf);
-
-  const trueClient = header('true-client-ip');
-  if (trueClient) return normalize(trueClient);
-
-  const xff = header('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return normalize(first);
-  }
-
-  if (req.ip) return normalize(req.ip);
-
-  const socketIp = (req.socket as any)?.remoteAddress;
-  return socketIp ? normalize(socketIp) : undefined;
+  const ip = req.ip || (req.socket as { remoteAddress?: string } | undefined)?.remoteAddress;
+  return ip ? normalize(ip) : undefined;
 }
 
 function normalize(ip: string): string {

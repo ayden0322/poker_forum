@@ -57,9 +57,17 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // 信任反向代理，讓 req.ip 能從 X-Forwarded-For 取得真正的客戶端 IP
-  // （Zeabur / Cloudflare 後面的部署必須）
-  app.getHttpAdapter().getInstance().set('trust proxy', true);
+  // 信任反向代理，讓 req.ip 取得真正的客戶端 IP。
+  //
+  // 安全：這裡「只信任內網/環回/link-local 的閘道」（loopback, linklocal, uniquelocal），
+  // 不可用 `true`（信任全部）。原因：本站走 Zeabur 灰雲（DNS-only，前面沒有 Cloudflare 代理
+  // 正規化標頭），若信任全部，Express 會把 X-Forwarded-For 最左值當 req.ip——而那是「訪客
+  // 自己寫的、可偽造的」。已實測證實：偽造 XFF 可重置限流計數 → 暴力破解保護被繞、封鎖 IP 可規避。
+  // 改為只信內網閘道後，Express 會跳過所有私網跳板、取「閘道實際看到的第一個公網 IP」= 真實 client，
+  // 偽造值被忽略。封鎖 IP middleware 與 ThrottlerGuard 都吃 req.ip，因此一併修好。
+  //
+  // 若日後改走 Cloudflare 橘雲：需改成信任 Cloudflare 的 IP 範圍（屆時 cf-connecting-ip 才可信）。
+  app.getHttpAdapter().getInstance().set('trust proxy', 'loopback, linklocal, uniquelocal');
 
   // 全域前綴
   app.setGlobalPrefix('api');
