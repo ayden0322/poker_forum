@@ -38,8 +38,8 @@ export class AuthController {
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: '帳密註冊' })
   @ApiResponse({ status: 201, description: '註冊成功' })
-  async register(@Body() dto: RegisterDto) {
-    const result = await this.authService.register(dto);
+  async register(@Body() dto: RegisterDto, @Req() req: Request) {
+    const result = await this.authService.register(dto, getClientIp(req));
     return { success: true, data: result };
   }
 

@@ -6,6 +6,7 @@ import { randomBytes } from 'crypto';
 import { Request } from 'express';
 import { AuthService } from '../auth.service';
 import { getClientIp } from '../../common/get-client-ip.util';
+import { readPromoAttribution } from '../../common/promo-attribution.util';
 
 interface LineProfile {
   userId: string;
@@ -59,6 +60,7 @@ export class LineStrategy extends PassportStrategy(Strategy, 'line') {
         email: profile.email,
       },
       getClientIp(req),
+      readPromoAttribution(req),
     );
     return result;
   }

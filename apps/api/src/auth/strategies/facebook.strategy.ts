@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { AuthService } from '../auth.service';
 import { getClientIp } from '../../common/get-client-ip.util';
+import { readPromoAttribution } from '../../common/promo-attribution.util';
 
 @Injectable()
 export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
@@ -37,6 +38,7 @@ export class FacebookStrategy extends PassportStrategy(Strategy, 'facebook') {
       profile.id,
       { nickname, email, avatar },
       getClientIp(req),
+      readPromoAttribution(req),
     );
     done(null, result);
   }

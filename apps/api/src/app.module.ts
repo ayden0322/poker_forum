@@ -27,6 +27,7 @@ import { EconomyModule } from './economy/economy.module';
 import { TasksModule } from './tasks/tasks.module';
 import { MemberModule } from './member/member.module';
 import { CosmeticsModule } from './cosmetics/cosmetics.module';
+import { PromoModule } from './promo/promo.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
 
@@ -65,6 +66,7 @@ import { IpBanMiddleware } from './common/middleware/ip-ban.middleware';
     TasksModule,
     MemberModule,
     CosmeticsModule,
+    PromoModule,
     ScheduleModule.forRoot(),
   ],
   providers: [

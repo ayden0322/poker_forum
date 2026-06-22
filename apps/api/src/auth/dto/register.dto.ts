@@ -28,4 +28,18 @@ export class RegisterDto {
   @IsEmail({}, { message: 'Email 格式不正確' })
   @IsOptional()
   email?: string;
+
+  @ApiPropertyOptional({ description: '推廣碼（來自專屬連結，自動帶入）' })
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsString()
+  @MaxLength(32)
+  @IsOptional()
+  refCode?: string;
+
+  @ApiPropertyOptional({ description: '匿名訪客 id（推廣漏斗串接用）' })
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsString()
+  @MaxLength(64)
+  @IsOptional()
+  visitorId?: string;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
@@ -8,12 +8,28 @@ import { useAuth } from '@/context/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api';
 
+function readCookie(name: string): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : undefined;
+}
+
 export default function RegisterPage() {
   const router = useRouter();
   const { setTokens, requireLogin } = useAuth();
   const [form, setForm] = useState({ nickname: '', account: '', password: '', email: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // 推廣歸因：query ?ref 優先，否則沿用 /r/<code> 落地時寫入的 cookie
+  const attribution = useRef<{ refCode?: string; visitorId?: string }>({});
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    attribution.current = {
+      refCode: params.get('ref') || readCookie('pb_ref') || undefined,
+      visitorId: readCookie('pb_vid') || undefined,
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const target = e.target as HTMLInputElement;
@@ -27,7 +43,7 @@ export default function RegisterPage() {
     try {
       const res = await apiFetch<{ data: { accessToken: string; refreshToken: string } }>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, ...attribution.current }),
       });
       setTokens(res.data.accessToken, res.data.refreshToken);
       router.push('/');
