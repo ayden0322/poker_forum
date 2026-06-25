@@ -2,6 +2,8 @@ import { Controller, Post, Get, UseGuards, Logger, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PageGuard } from '../../common/guards/page.guard';
+import { RequirePage } from '../../common/decorators/require-page.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Role } from '@betting-forum/database';
 import { PrismaService } from '../../common/prisma.service';
@@ -28,8 +30,9 @@ interface SeedStatus {
  */
 @ApiTags('admin:mlb-seed')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
 @Roles(Role.ADMIN)
+@RequirePage('sports-settings')
 @Controller('admin/mlb-seed')
 export class MLBSeedController {
   private readonly logger = new Logger(MLBSeedController.name);

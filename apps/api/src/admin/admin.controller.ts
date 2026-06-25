@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Delete,
   Param,
@@ -19,20 +20,25 @@ import { AuthService } from '../auth/auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { PageGuard } from '../common/guards/page.guard';
+import { CapabilityGuard } from '../common/guards/capability.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { RequirePage } from '../common/decorators/require-page.decorator';
+import { RequireCap } from '../common/decorators/require-cap.decorator';
 import { Role, UserStatus, FeedbackType, FeedbackStatus, TagScope, CategoryType } from '@betting-forum/database';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { getClientIp } from '../common/get-client-ip.util';
+import { PagePermissionService } from './page-permission.service';
 
 @ApiTags('admin')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, PageGuard)
-@Roles(Role.MODERATOR) // floor：編輯人員以上可進；實際每頁可見性由 PageGuard 讀權限矩陣決定
+@UseGuards(JwtAuthGuard, RolesGuard, PageGuard, CapabilityGuard)
+@Roles(Role.MODERATOR) // floor：編輯人員以上可進；實際每頁/能力由 PageGuard、CapabilityGuard 依帳號權限判定
 @Controller('admin')
 export class AdminController {
   constructor(
     private adminService: AdminService,
     private authService: AuthService,
+    private permService: PagePermissionService,
   ) {}
 
   @Roles(Role.MODERATOR) // 編輯人員可看儀表板
@@ -44,6 +50,7 @@ export class AdminController {
 
   @Get('members')
   async getMembers(
+    @CurrentUser() actor: { id: string; role: Role },
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('q') q?: string,
@@ -51,6 +58,8 @@ export class AdminController {
     @Query('role') role?: Role,
     @Query('tier') tier?: 'admin' | 'user',
   ) {
+    // 是否可見完整個資（手機/Email/帳號/IP）：無 cap:member:pii 則後端遮罩 + 搜尋只比對暱稱
+    const canSeePii = await this.permService.hasCapability(actor, 'member:pii');
     const data = await this.adminService.getMembers({
       page,
       limit,
@@ -58,6 +67,7 @@ export class AdminController {
       status,
       role,
       tier: tier === 'admin' || tier === 'user' ? tier : undefined,
+      canSeePii,
     });
     return { data };
   }
@@ -77,16 +87,19 @@ export class AdminController {
   ) {
     // 角色變更走階層級聯規則（在 service 內依操作者層級判斷）：
     // 只能調整比自己低階的帳號，且不能指派到自己或更高的層級。
-    const data = await this.adminService.updateMember(id, body, actor.role);
+    // 傳入 actor 物件（含 id）以便升為管理員時 seed 預設權限不超過 actor 可授出範圍。
+    const data = await this.adminService.updateMember(id, body, actor);
     return { data };
   }
 
   @Patch('members/:id/password')
+  @RequireCap('member:reset_password')
   async resetMemberPassword(
     @Param('id') id: string,
+    @CurrentUser() actor: { id: string; role: Role },
     @Body() body: { password: string },
   ) {
-    const data = await this.adminService.resetMemberPassword(id, body?.password);
+    const data = await this.adminService.resetMemberPassword(id, body?.password, actor.role);
     return { data };
   }
 
@@ -98,6 +111,7 @@ export class AdminController {
    * - 回傳的 token 由 admin 端開新分頁帶到前台使用
    */
   @Post('members/:id/impersonate')
+  @RequireCap('member:impersonate')
   @ApiOperation({ summary: '管理員代登入會員' })
   async impersonateMember(
     @Param('id') targetUserId: string,
@@ -136,6 +150,42 @@ export class AdminController {
         },
       },
     };
+  }
+
+  // ===== 管理員帳號權限（帳號級 RBAC） =====
+  // 全部顯式 @RequirePage('admins')：路徑 segment 'admins' 雖已映射，仍顯式標記以防漏判。
+  // 進一步的「只能管比自己低階」「只能授出自己有的」護欄在 PagePermissionService 內。
+
+  @Get('admins/:id/permissions')
+  @RequirePage('admins')
+  async getAdminPermissions(
+    @Param('id') id: string,
+    @CurrentUser() actor: { id: string; nickname: string; role: Role },
+  ) {
+    const data = await this.permService.getTargetPermissionsForEdit(actor, id);
+    return { data };
+  }
+
+  @Put('admins/:id/permissions')
+  @RequirePage('admins')
+  async setAdminPermissions(
+    @Param('id') id: string,
+    @CurrentUser() actor: { id: string; nickname: string; role: Role },
+    @Body() body: { permKeys?: string[] },
+  ) {
+    const data = await this.permService.setUserPermissions(actor, id, body?.permKeys ?? []);
+    return { data };
+  }
+
+  @Post('admins/:id/permissions/copy-from/:sourceId')
+  @RequirePage('admins')
+  async copyAdminPermissions(
+    @Param('id') id: string,
+    @Param('sourceId') sourceId: string,
+    @CurrentUser() actor: { id: string; nickname: string; role: Role },
+  ) {
+    const data = await this.permService.copyPermissions(actor, sourceId, id);
+    return { data };
   }
 
   // ===== 分類管理 =====
@@ -294,7 +344,7 @@ export class AdminController {
    * 所以前端可以直接把當前列表的篩選參數丟過來。
    */
   @Delete('posts')
-  @Roles(Role.SUPER_ADMIN) // 一鍵刪除只開放給最高管理員，共管 ADMIN 不可
+  @RequireCap('post:batch_delete') // 一鍵刪除改由帳號能力控管（SUPER_ADMIN 一律 bypass）
   async bulkDeletePosts(
     @Query('status') status: 'DRAFT' | 'PUBLISHED',
     @Query('boardId') boardId?: string,

@@ -20,7 +20,6 @@ import {
   TrophyOutlined,
   TranslationOutlined,
   SafetyCertificateOutlined,
-  SettingOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
@@ -62,7 +61,6 @@ const menuItems: MenuEntry[] = [
   { key: '/lottery', icon: <ThunderboltOutlined />, label: '彩券管理', pageKey: 'lottery', minRole: 'SUPER_ADMIN' },
   { key: '/sms-provider', icon: <MobileOutlined />, label: '簡訊服務商', pageKey: 'sms-provider', minRole: 'SUPER_ADMIN' },
   { key: '/sports-settings', icon: <TrophyOutlined />, label: '運彩 API 設定', pageKey: 'sports-settings', minRole: 'SUPER_ADMIN' },
-  { key: '/permissions', icon: <SettingOutlined />, label: '權限設定', pageKey: 'permissions', minRole: 'SUPER_ADMIN' },
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -102,7 +100,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     m.key === '/' ? pathname === '/' : pathname.startsWith(m.key),
   );
   const lacksAccess = !!currentEntry && !isEntryAllowed(currentEntry);
-  const fallbackPath = visibleMenu[0]?.key ?? '/permissions';
+  const fallbackPath = visibleMenu[0]?.key ?? '/';
 
   useEffect(() => {
     if (!isLoading && isAuthenticated && lacksAccess) {

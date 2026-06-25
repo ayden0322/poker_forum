@@ -1,15 +1,20 @@
 /**
- * 後台頁面註冊表：權限矩陣的單一事實來源。
- * - key：頁面識別碼（與前端選單 / 路由對齊）
- * - label：顯示名稱（權限設定頁用）
- * - defaults：首次 seed 進 DB 的預設可見層級（之後由超級管理員在 UI 調整）
+ * 後台權限目錄：帳號級權限（AdminPermission）的「單一事實來源」。
+ * 所有 Guard / 服務 / backfill / 前端 UI 都只認這份 registry 的 key，避免拼字漂移。
  *
- * superAdmin 預設一律 true（超級管理員預設看得到全部）；
- * 之後超級管理員可在「權限設定」把某頁對自己關掉（仍可逆，因為權限設定頁有防鎖死底線）。
+ * permKey 兩類：
+ *   page:<key>  頁面存取（對應 ADMIN_PAGES）
+ *   cap:<key>   敏感能力（對應 ADMIN_CAPS）
+ *
+ * 規則：
+ * - 有列 = 有權限；無列 = 無權限。
+ * - SUPER_ADMIN 一律 bypass（永遠全開、不寫列），故天生防鎖死。
+ * - 「新聞審核」沿用文章權限（page:posts），不獨立成 key（前端仍是兩個選單，但同一把鑰匙）。
  */
 export interface PageDef {
   key: string;
   label: string;
+  /** 首次建立管理員時的預設可見層級（沿用舊矩陣語意，作為新帳號 seed 模板） */
   defaults: { moderator: boolean; admin: boolean; superAdmin: boolean };
 }
 
@@ -39,20 +44,81 @@ export const ADMIN_PAGES: PageDef[] = [
   { key: 'lottery', label: '彩券管理', defaults: { moderator: F, admin: F, superAdmin: T } },
   { key: 'sms-provider', label: '簡訊服務商', defaults: { moderator: F, admin: F, superAdmin: T } },
   { key: 'sports-settings', label: '運彩 API 設定', defaults: { moderator: F, admin: F, superAdmin: T } },
-  { key: 'permissions', label: '權限設定', defaults: { moderator: F, admin: F, superAdmin: T } },
 ];
 
-/** 永遠對超級管理員開放的頁面（防鎖死底線，不受矩陣關閉影響） */
-export const ALWAYS_SUPER_ADMIN_PAGES = new Set(['permissions']);
+/** 敏感能力定義（cap:<key>）。group 用於前端權限編輯器分組顯示。 */
+export interface CapDef {
+  key: string;
+  label: string;
+  group: string;
+  /** 預設給哪些角色（新帳號 seed 用，沿用現行行為） */
+  defaults: { moderator: boolean; admin: boolean };
+}
+
+export const ADMIN_CAPS: CapDef[] = [
+  { key: 'member:pii', label: '查看會員完整個資（手機 / Email / 帳號 / 登入 IP）', group: '會員與帳號', defaults: { moderator: F, admin: T } },
+  { key: 'member:impersonate', label: '代登入會員', group: '會員與帳號', defaults: { moderator: F, admin: T } },
+  { key: 'member:reset_password', label: '重設會員密碼', group: '會員與帳號', defaults: { moderator: F, admin: T } },
+  { key: 'post:batch_delete', label: '一鍵批次刪文', group: '內容營運', defaults: { moderator: F, admin: F } },
+];
+
+// ===== permKey 工具 =====
+export const PAGE_PREFIX = 'page:';
+export const CAP_PREFIX = 'cap:';
+export const pagePerm = (key: string) => `${PAGE_PREFIX}${key}`;
+export const capPerm = (key: string) => `${CAP_PREFIX}${key}`;
 
 /**
- * 後端路由 path 的第一段（/admin/<segment>）對應到 pageKey。
- * 用於 PageGuard 自動判定頁面，省去逐一 endpoint 標記。
- * 找不到對應 → PageGuard 會 fail-closed 到 ADMIN 門檻。
+ * 某「選單頁面」實際需要的 permKey。
+ * 新聞審核（news）共用文章權限（page:posts），其餘頁面對應自身 page:<key>。
+ */
+export const pageRequiredPerm = (pageKey: string): string =>
+  pageKey === 'news' ? pagePerm('posts') : pagePerm(pageKey);
+
+/** 可被「授予 / 編輯」的頁面 key（排除 news，因其併入 posts，不是獨立 permKey） */
+export const GRANTABLE_PAGE_KEYS = ADMIN_PAGES.map((p) => p.key).filter((k) => k !== 'news');
+
+/** registry 內所有合法 permKey（驗證 PUT/copy 輸入用） */
+export const ALL_PERM_KEYS = new Set<string>([
+  ...GRANTABLE_PAGE_KEYS.map(pagePerm),
+  ...ADMIN_CAPS.map((c) => capPerm(c.key)),
+]);
+
+/** 某能力 key（cap:member:pii）→ 是否為合法能力 */
+export const isValidPermKey = (permKey: string): boolean => ALL_PERM_KEYS.has(permKey);
+
+/** 新建管理員時，依角色給的預設 permKey 模板（與 migration backfill 等價）。 */
+export const defaultPermKeysForRole = (role: 'MODERATOR' | 'ADMIN'): string[] => {
+  const lower = role === 'MODERATOR' ? 'moderator' : 'admin';
+  const pages = GRANTABLE_PAGE_KEYS.filter((k) => {
+    const def = ADMIN_PAGES.find((p) => p.key === k)!;
+    return def.defaults[lower as 'moderator' | 'admin'];
+  }).map(pagePerm);
+  const caps = ADMIN_CAPS.filter((c) => c.defaults[lower as 'moderator' | 'admin']).map((c) =>
+    capPerm(c.key),
+  );
+  return [...pages, ...caps];
+};
+
+/**
+ * 前端權限編輯器用的完整目錄（含分組與 label）。
+ */
+export const PERMISSION_CATALOG = {
+  pages: ADMIN_PAGES.filter((p) => p.key !== 'news').map((p) => ({
+    permKey: pagePerm(p.key),
+    label: p.label,
+  })),
+  caps: ADMIN_CAPS.map((c) => ({ permKey: capPerm(c.key), label: c.label, group: c.group })),
+};
+
+/**
+ * 後端路由 /admin/<segment> 的第一段 → pageKey，PageGuard 自動判定用。
+ * 找不到對應 → PageGuard fail-closed 到 ADMIN 門檻。
  */
 export const SEGMENT_TO_PAGE: Record<string, string> = {
   stats: 'dashboard',
   members: 'members',
+  admins: 'admins',
   posts: 'posts',
   boards: 'boards',
   categories: 'categories',
@@ -62,7 +128,6 @@ export const SEGMENT_TO_PAGE: Record<string, string> = {
   reports: 'reports',
   feedbacks: 'feedbacks',
   'banned-ips': 'banned-ips',
-  permissions: 'permissions',
   'sms-provider': 'sms-provider',
   'sports-config': 'sports-settings',
   'world-cup': 'world-cup',

@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -8,10 +8,12 @@ import { Role } from '@betting-forum/database';
 import { PagePermissionService } from './page-permission.service';
 
 /**
- * 權限矩陣 / 選單可見性 API。
- * 刻意不掛 PageGuard（這些是「決定權限的元端點」），改用 @Roles 直接把關：
- * - my-pages：編輯人員以上都能拿自己的可見頁（前端選單 / 路由守衛用）
- * - permissions：僅超級管理員可讀寫矩陣
+ * 「決定選單可見性」的元端點。刻意不掛 PageGuard（避免雞生蛋），改用 @Roles floor 把關。
+ * - my-pages：回傳該帳號可見的頁面 key（前端選單 / 路由守衛用）
+ * - my-permissions：回傳該帳號完整權限（前端隱藏無權按鈕用；真正把關仍在後端 Guard）
+ *
+ * 管理員「設定他人權限」的端點不在這裡，而在 AdminController（/admin/admins/:id/permissions，
+ * 受 PageGuard page:admins + 服務層級聯/防擴張護欄保護）。
  */
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -22,24 +24,13 @@ export class PermissionController {
 
   @Roles(Role.MODERATOR)
   @Get('my-pages')
-  myPages(@CurrentUser() user: { role: string }) {
-    return { data: { pages: this.perms.allowedPagesFor(user.role) } };
+  async myPages(@CurrentUser() user: { id: string; role: string }) {
+    return { data: { pages: await this.perms.allowedPageKeysFor(user) } };
   }
 
-  @Roles(Role.SUPER_ADMIN)
-  @Get('permissions')
-  getPermissions() {
-    return { data: this.perms.getMatrix() };
-  }
-
-  @Roles(Role.SUPER_ADMIN)
-  @Patch('permissions/:pageKey')
-  async updatePermission(
-    @Param('pageKey') pageKey: string,
-    @Body()
-    body: { allowModerator?: boolean; allowAdmin?: boolean; allowSuperAdmin?: boolean },
-  ) {
-    const data = await this.perms.update(pageKey, body);
-    return { data };
+  @Roles(Role.MODERATOR)
+  @Get('my-permissions')
+  async myPermissions(@CurrentUser() user: { id: string; role: string }) {
+    return { data: await this.perms.getMyPermissions(user) };
   }
 }

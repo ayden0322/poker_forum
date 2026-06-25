@@ -14,13 +14,14 @@ import {
   Typography,
   Empty,
 } from 'antd';
-import { SafetyCertificateOutlined, KeyOutlined, UserAddOutlined } from '@ant-design/icons';
+import { SafetyCertificateOutlined, KeyOutlined, UserAddOutlined, SettingOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType } from 'antd/es/table';
 
 import { adminApiFetch } from '@/lib/api';
 import { useAdminAuth } from '@/context/auth';
 import { ROLE_LABEL, ROLE_RANK, rankOf, type AdminRole } from '@/lib/roles';
+import { AdminPermissionDrawer } from '@/components/AdminPermissionDrawer';
 
 interface MemberItem {
   id: string;
@@ -73,6 +74,9 @@ export default function AdminsPage() {
     },
     onError: (err: Error) => message.error(err.message),
   });
+
+  // ===== 權限編輯 =====
+  const [permTarget, setPermTarget] = useState<MemberItem | null>(null);
 
   // ===== 重設密碼 =====
   const [pwTarget, setPwTarget] = useState<MemberItem | null>(null);
@@ -164,14 +168,19 @@ export default function AdminsPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 120,
+      width: 220,
       render: (_, r) => {
         const canManage = actorRank > rankOf(r.role);
         if (!canManage) return <span style={{ color: '#ccc' }}>—</span>;
         return (
-          <Button size="small" icon={<KeyOutlined />} onClick={() => setPwTarget(r)}>
-            重設密碼
-          </Button>
+          <Space>
+            <Button size="small" icon={<SettingOutlined />} onClick={() => setPermTarget(r)}>
+              權限
+            </Button>
+            <Button size="small" icon={<KeyOutlined />} onClick={() => setPwTarget(r)}>
+              重設密碼
+            </Button>
+          </Space>
         );
       },
     },
@@ -222,6 +231,17 @@ export default function AdminsPage() {
           showSizeChanger: false,
         }}
         size="middle"
+      />
+
+      {/* 權限編輯抽屜 */}
+      <AdminPermissionDrawer
+        targetId={permTarget?.id ?? null}
+        targetNickname={permTarget?.nickname}
+        copySources={(data?.data.items ?? [])
+          // 排除目標本人與 SUPER_ADMIN（超管無權限列，複製會把目標清空）
+          .filter((m) => m.id !== permTarget?.id && m.role !== 'SUPER_ADMIN')
+          .map((m) => ({ id: m.id, nickname: m.nickname, role: m.role }))}
+        onClose={() => setPermTarget(null)}
       />
 
       {/* 重設密碼 */}
