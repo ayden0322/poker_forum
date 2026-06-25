@@ -52,6 +52,7 @@ model User {
   walletAccounts     WalletAccount[]
   dailyTaskProgress  DailyTaskProgress[]
   promoReferral      PromoReferral?
+  adminPermissions   AdminPermission[]
 
   @@map("users")
 }
@@ -79,6 +80,24 @@ model OAuthProvider {
 
   @@unique([provider, providerId])
   @@map("oauth_providers")
+}
+
+// ===== 後台管理員「帳號級」權限（取代純角色層級） =====
+// 每一列代表「某管理員帳號擁有某項權限」。permKey 兩類：
+//   page:<key>  頁面存取（與 page-registry 對齊）
+//   cap:<...>   敏感能力（member:pii / member:impersonate / member:reset_password / post:batch_delete）
+// 有列 = 有權限；無列 = 無權限。SUPER_ADMIN 一律 bypass，不寫列。
+// 「0 列」永遠只代表「被刻意清空」：建立管理員時即寫預設列、降級為一般會員時清空列。
+model AdminPermission {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permKey   String   @map("perm_key")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, permKey])
+  @@index([userId])
+  @@map("admin_permissions")
 }
 
 // ===== 看板 =====

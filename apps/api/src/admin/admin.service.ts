@@ -7,7 +7,29 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
 import { Role, UserStatus, FeedbackType, FeedbackStatus, PostStatus, TagScope, CategoryType } from '@betting-forum/database';
-import { rankOf } from '../common/role-hierarchy';
+import { rankOf, ROLE_RANK } from '../common/role-hierarchy';
+import { PagePermissionService } from './page-permission.service';
+
+/** PII 遮罩工具：保留少量頭尾、中間打碼，供無 cap:member:pii 的管理員顯示用。 */
+function maskTail(v: string | null): string | null {
+  if (!v) return v;
+  if (v.length <= 2) return '*'.repeat(v.length);
+  return v.slice(0, 2) + '***';
+}
+function maskEmail(v: string | null): string | null {
+  if (!v) return v;
+  const at = v.indexOf('@');
+  if (at <= 0) return maskTail(v);
+  const name = v.slice(0, at);
+  const domain = v.slice(at);
+  const head = name.slice(0, 1);
+  return `${head}***${domain}`;
+}
+function maskPhone(v: string | null): string | null {
+  if (!v) return v;
+  if (v.length <= 4) return '*'.repeat(v.length);
+  return v.slice(0, 3) + '***' + v.slice(-2);
+}
 
 /** 驗證傳入值屬於某 enum；undefined 視為「不更動」放行，非法值回 400。 */
 function assertEnum<T extends Record<string, string>>(
@@ -22,7 +44,10 @@ function assertEnum<T extends Record<string, string>>(
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private permService: PagePermissionService,
+  ) {}
 
   async getMembers(params: {
     page: number;
@@ -33,8 +58,10 @@ export class AdminService {
     // tier='admin' 只看管理團隊（編輯人員以上）、'user' 只看一般會員。
     // 用於後台「會員管理」與「管理員管理」兩頁分流。role 明確指定時優先於 tier。
     tier?: 'admin' | 'user';
+    // 無 cap:member:pii 時：遮罩 PII 顯示，且搜尋只比對暱稱（避免用完整 email/phone 反推命中）。
+    canSeePii?: boolean;
   }) {
-    const { page, limit, q, status, role, tier } = params;
+    const { page, limit, q, status, role, tier, canSeePii = false } = params;
     const skip = (page - 1) * limit;
 
     const roleFilter = role
@@ -47,11 +74,14 @@ export class AdminService {
 
     const where = {
       ...(q && {
-        OR: [
-          { nickname: { contains: q, mode: 'insensitive' as const } },
-          { account: { contains: q, mode: 'insensitive' as const } },
-          { email: { contains: q, mode: 'insensitive' as const } },
-        ],
+        OR: canSeePii
+          ? [
+              { nickname: { contains: q, mode: 'insensitive' as const } },
+              { account: { contains: q, mode: 'insensitive' as const } },
+              { email: { contains: q, mode: 'insensitive' as const } },
+            ]
+          : // 側信道防護：無 PII 權限只能搜暱稱
+            [{ nickname: { contains: q, mode: 'insensitive' as const } }],
       }),
       ...(status && { status }),
       ...roleFilter,
@@ -94,8 +124,19 @@ export class AdminService {
         for (const p of oauthProviders) {
           loginMethods.push(p.provider.toUpperCase());
         }
+        // PII 遮罩做在後端唯一出口（單一資料源），無權者拿不到明碼，前端再怎麼挖也挖不出。
+        const pii = canSeePii
+          ? { account: u.account, email: u.email, phone: u.phone, lastLoginIp: u.lastLoginIp }
+          : {
+              account: maskTail(u.account),
+              email: maskEmail(u.email),
+              phone: maskPhone(u.phone),
+              lastLoginIp: u.lastLoginIp ? '***' : null,
+            };
         return {
           ...u,
+          ...pii,
+          piiMasked: !canSeePii,
           loginMethods,
           postCount: _count.posts,
           replyCount: _count.replies,
@@ -118,8 +159,9 @@ export class AdminService {
       phoneVerificationBypass?: boolean;
       phoneVerificationBypassReason?: string | null;
     },
-    actorRole?: Role,
+    actor?: { id: string; role: Role },
   ) {
+    const actorRole = actor?.role;
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('找不到此會員');
 
@@ -154,22 +196,52 @@ export class AdminService {
       data.phoneVerifiedAt = null;
     }
 
-    return this.prisma.user.update({
-      where: { id },
-      data,
-      select: {
-        id: true,
-        nickname: true,
-        role: true,
-        status: true,
-        phoneVerified: true,
-        phoneVerificationBypass: true,
-        phoneVerificationBypassReason: true,
-      },
+    // 角色異動時同步維護帳號權限列（與更新放同一交易，確保一致）：
+    // - 一般會員 → 管理員：seed 該角色預設權限（並與 actor 可授出範圍取交集，防擴張）
+    // - 管理員 → 一般會員：清空所有權限列（避免日後再升級時舊權限復活）
+    // - 管理員層級互換(MOD↔ADMIN)：不動權限，由管理者用權限編輯器調整
+    const roleChanged = body.role !== undefined && body.role !== user.role;
+    const wasAdmin = rankOf(user.role) >= ROLE_RANK.MODERATOR;
+    const willBeAdmin = body.role !== undefined && rankOf(body.role) >= ROLE_RANK.MODERATOR;
+
+    let grantable: Set<string> | undefined;
+    if (roleChanged && !wasAdmin && willBeAdmin && actor) {
+      grantable = await this.permService.grantableSetFor(actor);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          nickname: true,
+          role: true,
+          status: true,
+          phoneVerified: true,
+          phoneVerificationBypass: true,
+          phoneVerificationBypassReason: true,
+        },
+      });
+
+      if (roleChanged) {
+        if (!willBeAdmin) {
+          await this.permService.clearPermissions(tx, id);
+        } else if (!wasAdmin) {
+          await this.permService.seedDefaultsForRole(
+            tx,
+            id,
+            body.role as 'MODERATOR' | 'ADMIN',
+            grantable,
+          );
+        }
+      }
+
+      return updated;
     });
   }
 
-  async resetMemberPassword(id: string, newPassword: string) {
+  async resetMemberPassword(id: string, newPassword: string, actorRole?: Role) {
     const password = (newPassword ?? '').trim();
     if (password.length < 8) {
       throw new BadRequestException('密碼長度至少 8 個字元');
@@ -180,9 +252,14 @@ export class AdminService {
 
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, nickname: true, account: true },
+      select: { id: true, nickname: true, role: true },
     });
     if (!user) throw new NotFoundException('找不到此會員');
+
+    // 階層級聯：只能重設「嚴格比自己低階」帳號的密碼，避免編輯人員重設管理員 / 超管密碼。
+    if (!(rankOf(actorRole) > rankOf(user.role))) {
+      throw new ForbiddenException('只能重設比你低階帳號的密碼');
+    }
 
     const passwordHash = await bcrypt.hash(password, 12);
     await this.prisma.user.update({
@@ -190,7 +267,8 @@ export class AdminService {
       data: { passwordHash },
     });
 
-    return { id: user.id, nickname: user.nickname, account: user.account };
+    // 不回傳 account（屬 PII）：重設密碼能力不等於可見個資
+    return { id: user.id, nickname: user.nickname };
   }
 
   // ===== 管理員代登入（Impersonation） =====
@@ -210,8 +288,9 @@ export class AdminService {
     });
     if (!user) throw new NotFoundException('找不到此會員');
 
-    if (user.role === Role.ADMIN || user.role === Role.SUPER_ADMIN) {
-      throw new ForbiddenException('不能代登入其他管理員帳號');
+    // 只能代登入一般會員：管理團隊（含 MODERATOR）一律禁止，避免管理員互踩 / 權限提升
+    if (user.role !== Role.USER) {
+      throw new ForbiddenException('只能代登入一般會員，不能代登入管理團隊帳號');
     }
     if (user.status === UserStatus.BANNED) {
       throw new ForbiddenException('會員已被封禁，無法代登入');
