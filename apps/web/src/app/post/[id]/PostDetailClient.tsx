@@ -43,6 +43,7 @@ interface ReplyItem {
   author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null };
   quotedReply: { id: string; floorNumber: number; content: string; author: { nickname: string } } | null;
   _count: { pushes: number };
+  pushed: boolean; // 當前登入者是否已推（匿名恆 false）
 }
 
 interface RepliesResponse {
@@ -67,8 +68,9 @@ export default function PostDetailClient({ post }: { post: PostData }) {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [bookmarkLoading, setBookmarkLoading] = useState(false);
 
-  // 推文狀態
+  // 推文狀態（post 為 SSR 靜態 prop，數量改用 local state 才能即時反映）
   const [hasPushed, setHasPushed] = useState(false);
+  const [postPushCount, setPostPushCount] = useState(post.pushCount);
 
   // 檢舉 Modal
   const [showReport, setShowReport] = useState(false);
@@ -110,9 +112,9 @@ export default function PostDetailClient({ post }: { post: PostData }) {
   }, [token, post.id, queryClient]);
 
   const { data: repliesData, isLoading: repliesLoading } = useQuery({
-    queryKey: ['replies', post.id, replyPage],
+    queryKey: ['replies', post.id, replyPage, user?.id],
     queryFn: () =>
-      apiFetch<RepliesResponse>(`/posts/${post.id}/replies?page=${replyPage}&limit=20`),
+      apiFetch<RepliesResponse>(`/posts/${post.id}/replies?page=${replyPage}&limit=20`, { token: token ?? undefined }),
   });
 
   const replies = repliesData?.data.items ?? [];
@@ -127,9 +129,32 @@ export default function PostDetailClient({ post }: { post: PostData }) {
       return apiFetch(`/posts/${post.id}/push`, { method: 'POST' });
     },
     onSuccess: () => {
+      setPostPushCount((c) => c + (hasPushed ? -1 : 1));
       setHasPushed(!hasPushed);
-      queryClient.invalidateQueries({ queryKey: ['post', post.id] });
     },
+  });
+
+  // 回覆推文：樂觀更新該回覆的 pushed/數量（cache key 含 user?.id）
+  const replyPushMutation = useMutation({
+    mutationFn: (v: { replyId: string; pushed: boolean }) =>
+      apiFetch(`/replies/${v.replyId}/push`, { method: v.pushed ? 'DELETE' : 'POST' }),
+    onMutate: (v) => {
+      queryClient.setQueryData<RepliesResponse>(['replies', post.id, replyPage, user?.id], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: {
+            ...old.data,
+            items: old.data.items.map((r) =>
+              r.id === v.replyId
+                ? { ...r, pushed: !v.pushed, pushCount: r.pushCount + (v.pushed ? -1 : 1) }
+                : r,
+            ),
+          },
+        };
+      });
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: ['replies', post.id] }),
   });
 
   const replyMutation = useMutation({
@@ -317,7 +342,7 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                   <svg className="w-4 h-4" fill={hasPushed ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
                   </svg>
-                  <span className="font-medium">{post.pushCount}</span>
+                  <span className="font-medium">{postPushCount}</span>
                 </button>
 
                 {/* 書籤按鈕 — 未登入也看得到，點擊時引導登入 */}
@@ -464,7 +489,24 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                             檢舉
                           </button>
                         )}
-                        <span className="text-xs text-gray-400">推 {reply._count.pushes}</span>
+                        <button
+                          onClick={() => {
+                            if (!requireLogin()) return;
+                            replyPushMutation.mutate({ replyId: reply.id, pushed: reply.pushed });
+                          }}
+                          disabled={replyPushMutation.isPending}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
+                            reply.pushed
+                              ? 'bg-blue-100 text-blue-600'
+                              : 'text-gray-400 hover:bg-blue-50 hover:text-blue-600 cursor-pointer'
+                          }`}
+                          title={reply.pushed ? '取消推' : '推'}
+                        >
+                          <svg className="w-3.5 h-3.5" fill={reply.pushed ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                          </svg>
+                          <span>{reply.pushCount}</span>
+                        </button>
                       </div>
                     </div>
 

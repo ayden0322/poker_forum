@@ -9,7 +9,7 @@ export class RepliesService {
   constructor(private prisma: PrismaService) {}
 
   /** 取得文章的回覆列表（DRAFT 草稿不對外）*/
-  async findByPostId(postId: string, page: number, limit: number) {
+  async findByPostId(postId: string, page: number, limit: number, userId?: string) {
     const post = await this.prisma.post.findFirst({
       where: { id: postId, status: PostStatus.PUBLISHED },
     });
@@ -34,14 +34,20 @@ export class RepliesService {
             },
           },
           _count: { select: { pushes: true } },
+          // 當前登入者是否已推過該回覆（匿名則不查、pushed 恆 false）
+          ...(userId ? { pushes: { where: { userId }, select: { id: true } } } : {}),
         },
       }),
       this.prisma.reply.count({ where: { postId } }),
     ]);
 
-    const serialized = items.map(({ author, ...r }) => {
+    const serialized = items.map((item) => {
+      const { author, ...r } = item;
       const { cosmetics, ...a } = author;
-      return { ...r, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } };
+      const pushed = (((item as { pushes?: unknown[] }).pushes?.length) ?? 0) > 0;
+      const out = { ...r, pushed, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } } as Record<string, unknown>;
+      delete out.pushes; // 不外洩當前用戶的 push 列
+      return out;
     });
     return { items: serialized, total, page, limit };
   }
