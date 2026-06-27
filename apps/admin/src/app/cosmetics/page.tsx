@@ -71,7 +71,8 @@ export default function CosmeticsPage() {
       };
       if (editing) {
         // type 不可更新（後端 UpdateDto 白名單無 type，送了會「property type should not exist」）
-        const { type: _omitType, ...patch } = payload;
+        const patch: Record<string, unknown> = { ...payload };
+        delete patch.type;
         return adminApiFetch(`/admin/cosmetics/${editing.id}`, { method: 'PATCH', body: JSON.stringify(patch) });
       }
       return adminApiFetch('/admin/cosmetics', { method: 'POST', body: JSON.stringify(payload) });
