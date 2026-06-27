@@ -7,6 +7,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RepliesService } from './replies.service';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import { PhoneVerifiedGuard } from '../common/guards/phone-verified.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { TasksService } from '../tasks/tasks.service';
@@ -19,14 +20,16 @@ export class RepliesController {
     private tasks: TasksService,
   ) {}
 
-  /** 取得文章回覆 */
+  /** 取得文章回覆（選擇性登入：帶 token 則回傳每則的 pushed 狀態） */
   @Get('posts/:postId/replies')
+  @UseGuards(OptionalJwtAuthGuard)
   async findByPost(
     @Param('postId') postId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user?: { id: string },
   ) {
-    const data = await this.repliesService.findByPostId(postId, page, limit);
+    const data = await this.repliesService.findByPostId(postId, page, limit, user?.id);
     return { data };
   }
 
