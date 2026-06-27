@@ -15,9 +15,13 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     });
   }
 
-  async validate(req: Request, payload: { sub: string; nickname: string; role: string }) {
+  async validate(
+    req: Request,
+    payload: { sub: string; nickname: string; role: string; impersonatedBy?: string },
+  ) {
     const refreshToken = req.body?.refreshToken as string | undefined;
     if (!refreshToken) throw new UnauthorizedException('無效的 Refresh Token');
+    // 保留 impersonatedBy（代登入 refresh token 會帶），供 refresh 時維持代登入身分
     return { ...payload, refreshToken };
   }
 }

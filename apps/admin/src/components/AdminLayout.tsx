@@ -20,6 +20,7 @@ import {
   TrophyOutlined,
   TranslationOutlined,
   SafetyCertificateOutlined,
+  SkinOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import { useRouter, usePathname } from 'next/navigation';
@@ -53,6 +54,7 @@ const menuItems: MenuEntry[] = [
   { key: '/tags', icon: <TagOutlined />, label: '標籤管理', pageKey: 'tags', minRole: 'ADMIN' },
   { key: '/announcements', icon: <NotificationOutlined />, label: '站方推送', pageKey: 'announcements', minRole: 'ADMIN' },
   { key: '/marquee', icon: <ColumnWidthOutlined />, label: '跑馬燈管理', pageKey: 'marquee', minRole: 'ADMIN' },
+  { key: '/cosmetics', icon: <SkinOutlined />, label: '裝飾商店管理', pageKey: 'cosmetics', minRole: 'ADMIN' },
   { key: '/promo', icon: <ShareAltOutlined />, label: '推廣管理', pageKey: 'promo', minRole: 'ADMIN' },
   { key: '/world-cup', icon: <TrophyOutlined />, label: '世界盃管理', pageKey: 'world-cup', minRole: 'ADMIN' },
   { key: '/translations', icon: <TranslationOutlined />, label: '翻譯管理', pageKey: 'translations', minRole: 'ADMIN' },

@@ -18,6 +18,22 @@ export const DEFAULT_LEVEL_TIERS: { level: number; name: string; minExp: number 
 /** 邀請制等級（不被經驗重算改動） */
 const INVITE_ONLY_LEVEL = 5;
 
+/** 等級 + 經驗進度總覽（唯讀，給前端顯示） */
+export interface LevelSummary {
+  exp: number;
+  level: number;
+  /** 等級名稱；對應 tier，未知等級 fallback '會員' */
+  levelName: string;
+  /** 下一個「經驗門檻」等級；已達經驗階梯頂(Lv4)、邀請制(Lv5)、或未知等級 → null */
+  nextLevel: { level: number; name: string; minExp: number } | null;
+  /** 目前等級門檻起算已累積經驗（無經驗門檻的等級為 0） */
+  expIntoCurrent: number;
+  /** 升到下一級需要的經驗跨距；無下一級 → null */
+  expForNext: number | null;
+  /** 升級進度 0~100；Lv4 滿階梯=100；邀請制/未知等級=null */
+  progressPct: number | null;
+}
+
 /** 依經驗值算等級：只看有 minExp 的門檻，取符合的最高級（Lv5 不在此列）。 */
 export function levelForExp(
   exp: number,
@@ -95,5 +111,52 @@ export class LevelService {
     }
     await this.prisma.user.update({ where: { id: params.userId }, data: { level: computed } });
     return { exp, level: computed, leveledUp: computed > user.level };
+  }
+
+  /**
+   * 等級 + 經驗進度總覽（唯讀）。
+   * level 取自 User.level（權威，邀請制 Lv5 不被經驗動）；其餘由 tiers 推算。
+   * 處理邊界：邀請制 Lv5(minExp=null)、Lv4 已達經驗階梯頂、舊資料未知等級(如 level=6)。
+   */
+  async getSummary(userId: string): Promise<LevelSummary> {
+    const [exp, tiers, user] = await Promise.all([
+      this.getExp(userId),
+      this.getTiers(),
+      this.prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { level: true } }),
+    ]);
+
+    const level = user.level;
+    const currentTier = tiers.find((t) => t.level === level);
+    const levelName = currentTier?.name ?? '會員'; // 未知等級 fallback（#4）
+    const currentMinExp = currentTier?.minExp ?? null; // 邀請制/未知 → null
+
+    // 有經驗門檻、且級數更高的下一個 tier（邀請制 Lv5 minExp=null 不會入列）
+    const nextTier =
+      tiers
+        .filter((t): t is typeof t & { minExp: number } => t.minExp != null && t.level > level)
+        .sort((a, b) => a.minExp - b.minExp)[0] ?? null;
+
+    const nextLevel = nextTier
+      ? { level: nextTier.level, name: nextTier.name, minExp: nextTier.minExp }
+      : null;
+
+    if (nextLevel && currentMinExp != null) {
+      // 一般情況：算目前級門檻 → 下一級門檻 的進度
+      const span = nextLevel.minExp - currentMinExp;
+      const into = Math.max(0, exp - currentMinExp);
+      const progressPct = span > 0 ? Math.min(100, Math.round((into / span) * 100)) : 0;
+      return { exp, level, levelName, nextLevel, expIntoCurrent: into, expForNext: span, progressPct };
+    }
+
+    if (currentMinExp != null) {
+      // 有經驗門檻但沒有更高門檻（已達經驗階梯頂，如 Lv4）→ 進度滿（#5）
+      return {
+        exp, level, levelName, nextLevel: null,
+        expIntoCurrent: Math.max(0, exp - currentMinExp), expForNext: null, progressPct: 100,
+      };
+    }
+
+    // 邀請制 Lv5 或未知等級：無法算經驗進度（#6）
+    return { exp, level, levelName, nextLevel: null, expIntoCurrent: 0, expForNext: null, progressPct: null };
   }
 }

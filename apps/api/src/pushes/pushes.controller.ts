@@ -3,11 +3,15 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PushesService } from './pushes.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { TasksService } from '../tasks/tasks.service';
 
 @ApiTags('pushes')
 @Controller()
 export class PushesController {
-  constructor(private pushesService: PushesService) {}
+  constructor(
+    private pushesService: PushesService,
+    private tasks: TasksService,
+  ) {}
 
   /** 檢查是否推過文章 */
   @Get('posts/:postId/push')
@@ -30,6 +34,8 @@ export class PushesController {
     @CurrentUser() user: { id: string },
   ) {
     const data = await this.pushesService.pushPost(postId, user.id);
+    // 按讚任務：以「不同文章」計數
+    await this.tasks.recordEvent(user.id, 'LIKE', postId);
     return { data };
   }
 

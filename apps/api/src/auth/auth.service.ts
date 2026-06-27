@@ -10,7 +10,9 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../common/prisma.service';
+import { TasksService, LOGIN_REF } from '../tasks/tasks.service';
 import { PromoService } from '../promo/promo.service';
+import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -20,6 +22,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly tasks: TasksService,
     private readonly promo: PromoService,
   ) {}
 
@@ -82,12 +85,14 @@ export class AuthService {
         phoneVerified: true,
         phoneVerificationBypass: true,
         nicknameChangedAt: true,
+        ...AUTHOR_COSMETIC_SELECT,
       },
     });
     if (!user) {
       throw new UnauthorizedException('使用者不存在');
     }
-    return user;
+    const { cosmetics, ...rest } = user;
+    return { ...rest, cosmetics: serializeAuthorCosmetics({ cosmetics }) };
   }
 
   async login(dto: LoginDto, ip?: string) {
@@ -246,9 +251,19 @@ export class AuthService {
         ...(ip ? { lastLoginIp: ip.replace(/^::ffff:/, '') } : {}),
       },
     });
+    // 每日登入任務（會員系統總開關關閉時為 no-op；recordEvent 不丟錯不影響登入）
+    await this.tasks.recordEvent(userId, 'LOGIN', LOGIN_REF);
   }
 
-  async refreshTokens(userId: string, nickname: string, role: string) {
+  async refreshTokens(userId: string, nickname: string, role: string, impersonatedBy?: string) {
+    // 代登入 session 一律不可刷新（1 小時硬上限）。理由：
+    //  - 防止升級成「以對方身分的 7 天正常登入」（警示橫條消失、稽核身分遺失）
+    //  - 防止用過期 token payload 重簽、繞過代登入當下對目標帳號狀態/角色的檢查
+    //  - 防止透過反覆 refresh 無限延長代登入
+    // 到期需由管理員「重新代登入」——這是一個會被稽核的明確動作。
+    if (impersonatedBy) {
+      throw new UnauthorizedException('代登入 session 已到期，請重新代登入');
+    }
     return this.generateTokens(userId, nickname, role);
   }
 

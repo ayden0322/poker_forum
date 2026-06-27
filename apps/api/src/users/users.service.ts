@@ -311,19 +311,4 @@ export class UsersService {
 
     return { items, total, page, pageSize };
   }
-
-  // 自動更新等級（可由其他 service 呼叫；DRAFT 不計入發文數）
-  async recalculateLevel(userId: string) {
-    const postCount = await this.prisma.post.count({
-      where: { authorId: userId, status: PostStatus.PUBLISHED },
-    });
-    let level = 1;
-    if (postCount >= 500) level = 6;
-    else if (postCount >= 200) level = 5;
-    else if (postCount >= 100) level = 4;
-    else if (postCount >= 50) level = 3;
-    else if (postCount >= 20) level = 2;
-
-    await this.prisma.user.update({ where: { id: userId }, data: { level } });
-  }
 }

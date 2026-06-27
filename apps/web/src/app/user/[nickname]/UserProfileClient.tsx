@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth';
+import { levelName } from '@/lib/member';
 
 interface UserProfile {
   id: string;
@@ -44,7 +45,6 @@ interface FollowUser {
   level: number;
 }
 
-const LEVEL_NAMES = ['', '新手', '初學者', '進階', '老手', '高手', '大師'];
 
 export function UserProfileClient({ nickname }: { nickname: string }) {
   const { user: currentUser, accessToken } = useAuth();
@@ -115,7 +115,7 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">{profile.nickname}</h1>
               <span className="px-2.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
-                Lv.{profile.level} {LEVEL_NAMES[profile.level]}
+                Lv.{profile.level} {levelName(profile.level)}
               </span>
               {(profile.role === 'ADMIN' || profile.role === 'SUPER_ADMIN') && (
                 <span className="px-2.5 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">管理員</span>
@@ -237,7 +237,7 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
                   </div>
                   <div>
                     <div className="text-sm font-medium text-gray-900">{u.nickname}</div>
-                    <div className="text-xs text-gray-400">Lv.{u.level} {LEVEL_NAMES[u.level]}</div>
+                    <div className="text-xs text-gray-400">Lv.{u.level} {levelName(u.level)}</div>
                   </div>
                 </Link>
               ))}

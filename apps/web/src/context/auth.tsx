@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '@/lib/api';
+import type { AuthorCosmetics } from '@/lib/cosmetics';
 
 interface AuthUser {
   id: string;
@@ -9,6 +10,8 @@ interface AuthUser {
   role: string;
   avatar: string | null;
   level: number;
+  /** 已裝備裝飾（框/稱號/主勳章）；總開關關閉時為 null */
+  cosmetics?: AuthorCosmetics | null;
   phone?: string | null;
   phoneVerified?: boolean;
   phoneVerificationBypass?: boolean;
@@ -76,12 +79,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('auth:logout', handleLogout);
 
+    // 監聽 apiFetch 自動刷新成功，同步 context 的 accessToken，避免用到過期快取 token。
+    // 若已登出（refreshToken 已被清掉），忽略遲到的刷新事件，避免把 session 救回來（Codex 複審 #9）
+    const handleTokenRefreshed = (e: Event) => {
+      const t = (e as CustomEvent<string>).detail;
+      if (t && localStorage.getItem('refreshToken')) setAccessToken(t);
+    };
+    window.addEventListener('auth:token-refreshed', handleTokenRefreshed);
+
     // 監聽後端 403 PHONE_VERIFICATION_REQUIRED 自動開 Modal
     const handlePhoneVerifyRequired = () => setShowPhoneVerifyModal(true);
     window.addEventListener('auth:phone-verification-required', handlePhoneVerifyRequired);
 
     return () => {
       window.removeEventListener('auth:logout', handleLogout);
+      window.removeEventListener('auth:token-refreshed', handleTokenRefreshed);
       window.removeEventListener('auth:phone-verification-required', handlePhoneVerifyRequired);
     };
   }, [fetchMe]);
@@ -94,7 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('accessToken', res.data.accessToken);
     localStorage.setItem('refreshToken', res.data.refreshToken);
     setAccessToken(res.data.accessToken);
-    setUser(res.data.user);
+    // 走 /auth/me 取完整 user（含 cosmetics 等 login 回傳沒有的欄位），形狀一致
+    await fetchMe(res.data.accessToken);
   };
 
   const logout = () => {

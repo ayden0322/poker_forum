@@ -57,11 +57,14 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(AuthGuard('jwt-refresh'))
   @ApiOperation({ summary: '刷新 Access Token' })
-  async refresh(@Req() req: Request & { user: { sub: string; nickname: string; role: string } }) {
+  async refresh(
+    @Req() req: Request & { user: { sub: string; nickname: string; role: string; impersonatedBy?: string } },
+  ) {
     const tokens = await this.authService.refreshTokens(
       req.user.sub,
       req.user.nickname,
       req.user.role,
+      req.user.impersonatedBy, // 代登入 session 要保留代登入身分、不可升級成正常長效 token
     );
     return { success: true, data: tokens };
   }
