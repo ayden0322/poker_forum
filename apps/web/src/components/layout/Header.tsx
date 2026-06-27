@@ -8,6 +8,10 @@ import { LoginModal } from '@/components/auth/LoginModal';
 import { PhoneVerifyModal } from '@/components/auth/PhoneVerifyModal';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
+import MemberBadges from '@/components/member/MemberBadges';
+import { useMemberSummary } from '@/lib/member';
+import AvatarWithFrame from '@/components/member/AvatarWithFrame';
+import MainBadge from '@/components/member/MainBadge';
 
 interface NavChild {
   label: string;
@@ -132,6 +136,9 @@ const navItems: NavItem[] = [
 
 export function Header() {
   const { user, accessToken, logout, showLoginModal, closeLoginModal, showPhoneVerifyModal, closePhoneVerifyModal } = useAuth();
+  // 會員經濟總開關狀態（與 MemberBadges 共用快取）：關閉時連選單入口都不露（fail-closed）
+  const { data: memberData } = useMemberSummary();
+  const memberEnabled = memberData?.data?.enabled === true;
   const [showLogin, setShowLogin] = useState(false);
   const isLoginVisible = showLogin || showLoginModal;
   const handleCloseLogin = () => { setShowLogin(false); closeLoginModal(); };
@@ -314,6 +321,7 @@ export function Header() {
             <div className="flex items-center gap-2 sm:gap-3">
               {user ? (
                 <>
+                  <MemberBadges />
                   <Link
                     href="/notifications"
                     className="relative p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -334,14 +342,13 @@ export function Header() {
                       onClick={() => setShowUserMenu((v) => !v)}
                       className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                     >
-                      {user.avatar ? (
-                        <Image src={user.avatar} alt={user.nickname} width={32} height={32} className="rounded-full" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-blue-400 flex items-center justify-center text-sm font-bold">
-                          {user.nickname.charAt(0)}
-                        </div>
-                      )}
+                      <AvatarWithFrame avatar={user.avatar} nickname={user.nickname} size={32} frame={user.cosmetics?.frame} />
                       <span className="text-sm font-medium hidden sm:block">{user.nickname}</span>
+                      {user.cosmetics?.mainBadge && (
+                        <span className="hidden sm:inline-flex">
+                          <MainBadge badge={user.cosmetics.mainBadge} size={20} />
+                        </span>
+                      )}
                       <span className="text-xs opacity-70 hidden sm:block">▾</span>
                     </button>
 
@@ -354,6 +361,15 @@ export function Header() {
                         >
                           個人主頁
                         </Link>
+                        {memberEnabled && (
+                          <Link
+                            href="/member-center"
+                            className="block px-4 py-2 text-sm hover:bg-gray-50"
+                            onClick={() => setShowUserMenu(false)}
+                          >
+                            會員中心
+                          </Link>
+                        )}
                         <Link
                           href="/settings"
                           className="block px-4 py-2 text-sm hover:bg-gray-50"

@@ -30,22 +30,28 @@ async function makeUser(): Promise<string> {
 
 async function restoreTaskDefs() {
   for (const d of DEFAULT_DAILY_TASKS) {
-    await prisma.dailyTaskDef.update({ where: { taskKey: d.taskKey }, data: { rewardG: d.rewardG, rewardExp: d.rewardExp, enabled: true } });
+    await prisma.dailyTaskDef.update({
+      where: { taskKey: d.taskKey },
+      data: { rewardG: d.rewardG, rewardExp: d.rewardExp, threshold: d.threshold, enabled: true },
+    });
   }
 }
 
 beforeAll(async () => {
+  process.env.MEMBER_ECONOMY_ENABLED = 'true'; // recordEvent 需總開關開啟
   await prisma.$connect();
   await tasks.getTaskDefs(); // 確保 defs 已 seed
 });
 
 afterAll(async () => {
+  await prisma.taskEventLog.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.dailyTaskProgress.deleteMany({ where: { userId: { in: createdUserIds } } });
   const accounts = await prisma.walletAccount.findMany({ where: { userId: { in: createdUserIds } } });
   await prisma.ledgerEntry.deleteMany({ where: { accountId: { in: accounts.map((a) => a.id) } } });
   await prisma.walletAccount.deleteMany({ where: { userId: { in: createdUserIds } } });
   await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-  await restoreTaskDefs(); // 還原被測試改過的獎勵數值
+  await restoreTaskDefs(); // 還原被測試改過的數值
+  delete process.env.MEMBER_ECONOMY_ENABLED;
   await prisma.$disconnect();
 });
 
@@ -103,5 +109,40 @@ describe('TasksService.completeTask', () => {
     const r = await tasks.completeTask(userId, DailyTaskKey.LOGIN);
     expect(r.ok).toBe(true);
     expect(await economy.getBalance(userId, Currency.G)).toBe(10);
+  });
+});
+
+describe('TasksService.recordEvent', () => {
+  it('門檻>1（LIKE=5）：5 篇不同 → 發獎；不足門檻不發', async () => {
+    const userId = await makeUser();
+    // 先 4 篇 → 未達門檻、不發
+    for (let i = 0; i < 4; i++) await tasks.recordEvent(userId, DailyTaskKey.LIKE, `post-${i}`);
+    expect(await economy.getBalance(userId, Currency.G)).toBe(0);
+    // 第 5 篇 → 達門檻、發 5/5
+    await tasks.recordEvent(userId, DailyTaskKey.LIKE, 'post-4');
+    expect(await economy.getBalance(userId, Currency.G)).toBe(5);
+    expect(await economy.getBalance(userId, Currency.EXP)).toBe(5);
+  });
+
+  it('去重計數：同一 refId 重複不算數', async () => {
+    const userId = await makeUser();
+    for (let i = 0; i < 5; i++) await tasks.recordEvent(userId, DailyTaskKey.LIKE, 'same-post'); // 同篇 5 次
+    expect(await economy.getBalance(userId, Currency.G)).toBe(0); // 只算 1 次、未達 5
+  });
+
+  it('門檻=1（LOGIN）：記一次即發獎', async () => {
+    const userId = await makeUser();
+    await tasks.recordEvent(userId, DailyTaskKey.LOGIN, 'login');
+    expect(await economy.getBalance(userId, Currency.G)).toBe(10);
+  });
+
+  it('總開關關閉：recordEvent 完全不動作', async () => {
+    const userId = await makeUser();
+    process.env.MEMBER_ECONOMY_ENABLED = 'false';
+    await tasks.recordEvent(userId, DailyTaskKey.LOGIN, 'login');
+    expect(await economy.getBalance(userId, Currency.G)).toBe(0);
+    // 連事件都不該記
+    expect(await prisma.taskEventLog.count({ where: { userId } })).toBe(0);
+    process.env.MEMBER_ECONOMY_ENABLED = 'true'; // 還原給後續測試
   });
 });

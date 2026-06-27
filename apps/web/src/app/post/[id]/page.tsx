@@ -22,7 +22,8 @@ interface PostData {
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   try {
-    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`);
+    // 與頁面 fetch 用相同 options，讓 Next 在同一 request 內 memoize 成單次（避免 viewCount 雙增）
+    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`, { cache: 'no-store' });
     return {
       title: `${res.data.title} - ${res.data.board.name} - 博客邦`,
       description: res.data.content.substring(0, 150),
@@ -35,7 +36,8 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
 export default async function PostPage({ params }: { params: { id: string } }) {
   let post: PostData;
   try {
-    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`);
+    // no-store：作者裝飾(框/稱號/勳章)會隨裝備變動，文章詳情不可吃 Next Data Cache 舊值
+    const res = await apiFetch<{ data: PostData }>(`/posts/${params.id}`, { cache: 'no-store' });
     post = res.data;
   } catch {
     notFound();

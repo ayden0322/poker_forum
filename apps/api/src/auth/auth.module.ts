@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { TasksModule } from '../tasks/tasks.module';
 import { PromoModule } from '../promo/promo.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtRefreshStrategy } from './strategies/jwt-refresh.strategy';
@@ -27,6 +28,7 @@ if (process.env.LINE_CHANNEL_ID) oauthProviders.push(LineStrategy);
   imports: [
     ConfigModule,
     PassportModule,
+    TasksModule,
     PromoModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

@@ -9,6 +9,10 @@ import { useAuth } from '@/context/auth';
 import { apiFetch } from '@/lib/api';
 import { ReportModal } from '@/components/post/ReportModal';
 import RichTextContent from '@/components/editor/RichTextContent';
+import { levelName } from '@/lib/member';
+import { TITLE_TOKEN, type AuthorCosmetics } from '@/lib/cosmetics';
+import AvatarWithFrame from '@/components/member/AvatarWithFrame';
+import MainBadge from '@/components/member/MainBadge';
 
 const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), { ssr: false });
 
@@ -24,7 +28,7 @@ interface PostData {
   pushCount: number;
   createdAt: string;
   updatedAt: string;
-  author: { id: string; nickname: string; avatar: string | null; level: number; role: string };
+  author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null };
   board: { id: string; name: string; slug: string; category: { id: string; name: string } };
   tags: { tag: { id: string; name: string; slug: string } }[];
   _count: { replies: number; pushes: number; bookmarks: number };
@@ -36,7 +40,7 @@ interface ReplyItem {
   content: string;
   pushCount: number;
   createdAt: string;
-  author: { id: string; nickname: string; avatar: string | null; level: number; role: string };
+  author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null };
   quotedReply: { id: string; floorNumber: number; content: string; author: { nickname: string } } | null;
   _count: { pushes: number };
 }
@@ -45,7 +49,6 @@ interface RepliesResponse {
   data: { items: ReplyItem[]; total: number; page: number; limit: number };
 }
 
-const LEVEL_LABELS = ['', '新手', '初階', '中階', '資深', '達人', '大師'];
 const ROLE_BADGES: Record<string, { label: string; color: string }> = {
   SUPER_ADMIN: { label: '管理員', color: 'bg-red-100 text-red-600' },
   ADMIN: { label: '管理員', color: 'bg-red-100 text-red-600' },
@@ -96,6 +99,15 @@ export default function PostDetailClient({ post }: { post: PostData }) {
       .then((res) => setHasPushed(res.data.pushed))
       .catch(() => {});
   }, [token, post.id]);
+
+  // 記錄瀏覽以推進每日任務（文章頁為 SSR 匿名抓取，故由前端登入後主動回報；後端去重+開關保護）。
+  // 成功後刷新會員快取，讓 Header 徽章 / 會員中心即時反映進度。
+  useEffect(() => {
+    if (!token) return;
+    apiFetch(`/posts/${post.id}/view`, { method: 'POST' })
+      .then(() => queryClient.invalidateQueries({ queryKey: ['member'] }))
+      .catch(() => {});
+  }, [token, post.id, queryClient]);
 
   const { data: repliesData, isLoading: repliesLoading } = useQuery({
     queryKey: ['replies', post.id, replyPage],
@@ -236,23 +248,29 @@ export default function PostDetailClient({ post }: { post: PostData }) {
         <div className="flex">
           {/* 作者側欄 */}
           <div className="w-[140px] shrink-0 bg-gray-50 p-4 text-center border-r border-gray-100 hidden md:block">
-            <div className="w-14 h-14 rounded-full bg-gray-200 mx-auto mb-2 flex items-center justify-center text-gray-500 overflow-hidden">
-              {post.author.avatar ? (
-                <img src={post.author.avatar} alt="" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-lg">{post.author.nickname.charAt(0)}</span>
+            <div className="mb-2 flex justify-center">
+              <AvatarWithFrame avatar={post.author.avatar} nickname={post.author.nickname} size={56} frame={post.author.cosmetics?.frame} />
+            </div>
+            <div className="flex items-center justify-center gap-1">
+              <Link href={`/user/${post.author.nickname}`} className="font-medium text-sm hover:text-blue-600">
+                {post.author.nickname}
+              </Link>
+              {post.author.cosmetics?.mainBadge && (
+                <MainBadge badge={post.author.cosmetics.mainBadge} size={18} />
               )}
             </div>
-            <Link href={`/user/${post.author.nickname}`} className="font-medium text-sm hover:text-blue-600 block">
-              {post.author.nickname}
-            </Link>
             {ROLE_BADGES[post.author.role] && (
               <span className={`text-xs px-1.5 py-0.5 rounded mt-1 inline-block ${ROLE_BADGES[post.author.role].color}`}>
                 {ROLE_BADGES[post.author.role].label}
               </span>
             )}
+            {post.author.cosmetics?.title && (
+              <div className="text-xs mt-1" style={TITLE_TOKEN[post.author.cosmetics.title.rarity]}>
+                {post.author.cosmetics.title.name}
+              </div>
+            )}
             <div className="text-xs text-gray-400 mt-1">
-              Lv.{post.author.level} {LEVEL_LABELS[post.author.level]}
+              Lv.{post.author.level} {levelName(post.author.level)}
             </div>
           </div>
 
@@ -391,14 +409,20 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                 <div className="flex">
                   {/* 作者側欄 */}
                   <div className="w-[100px] shrink-0 bg-gray-50 p-3 text-center border-r border-gray-100 hidden md:block">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 mx-auto mb-1 flex items-center justify-center text-sm overflow-hidden">
-                      {reply.author.avatar ? (
-                        <img src={reply.author.avatar} alt="" className="w-full h-full object-cover" />
-                      ) : reply.author.nickname.charAt(0)}
+                    <div className="mb-1 flex justify-center">
+                      <AvatarWithFrame avatar={reply.author.avatar} nickname={reply.author.nickname} size={40} frame={reply.author.cosmetics?.frame} />
                     </div>
-                    <Link href={`/user/${reply.author.nickname}`} className="text-xs font-medium hover:text-blue-600 block truncate">
-                      {reply.author.nickname}
-                    </Link>
+                    <div className="flex items-center justify-center gap-1">
+                      <Link href={`/user/${reply.author.nickname}`} className="text-xs font-medium hover:text-blue-600 truncate">
+                        {reply.author.nickname}
+                      </Link>
+                      {reply.author.cosmetics?.mainBadge && (
+                        <MainBadge badge={reply.author.cosmetics.mainBadge} size={16} />
+                      )}
+                    </div>
+                    {reply.author.cosmetics?.title && (
+                      <div className="text-xs" style={TITLE_TOKEN[reply.author.cosmetics.title.rarity]}>{reply.author.cosmetics.title.name}</div>
+                    )}
                     <div className="text-xs text-gray-400">Lv.{reply.author.level}</div>
                   </div>
 

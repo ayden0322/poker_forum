@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../common/prisma.service';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import { Role, PostStatus } from '@betting-forum/database';
+import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
 
 @Injectable()
 export class RepliesService {
@@ -23,7 +24,7 @@ export class RepliesService {
         take: limit,
         orderBy: { floorNumber: 'asc' },
         include: {
-          author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+          author: { select: { id: true, nickname: true, avatar: true, level: true, role: true, ...AUTHOR_COSMETIC_SELECT } },
           quotedReply: {
             select: {
               id: true,
@@ -38,7 +39,11 @@ export class RepliesService {
       this.prisma.reply.count({ where: { postId } }),
     ]);
 
-    return { items, total, page, limit };
+    const serialized = items.map(({ author, ...r }) => {
+      const { cosmetics, ...a } = author;
+      return { ...r, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } };
+    });
+    return { items: serialized, total, page, limit };
   }
 
   /** 新增回覆（僅 PUBLISHED 文章可留言） */

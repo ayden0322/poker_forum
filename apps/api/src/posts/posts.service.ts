@@ -4,6 +4,7 @@ import { TagsService } from '../tags/tags.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { Role, PostStatus } from '@betting-forum/database';
+import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
 
 // 新聞 Agent 自動發文預設置頂時長
 export const AUTO_POST_PIN_HOURS = 24;
@@ -66,8 +67,7 @@ export class PostsService {
       },
     });
 
-    // 重新計算作者等級
-    await this.recalculateLevel(authorId);
+    // 等級改由會員系統的經驗值決定（LevelService.addExp），不再用發文數重算
 
     return post;
   }
@@ -77,7 +77,7 @@ export class PostsService {
     const post = await this.prisma.post.findFirst({
       where: { id, status: PostStatus.PUBLISHED },
       include: {
-        author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+        author: { select: { id: true, nickname: true, avatar: true, level: true, role: true, ...AUTHOR_COSMETIC_SELECT } },
         board: { select: { id: true, name: true, slug: true, category: { select: { id: true, name: true } } } },
         tags: { include: { tag: true } },
         _count: { select: { replies: true, pushes: true, bookmarks: true } },
@@ -91,7 +91,12 @@ export class PostsService {
       data: { viewCount: { increment: 1 } },
     });
 
-    return { ...post, viewCount: post.viewCount + 1 };
+    const { cosmetics, ...author } = post.author;
+    return {
+      ...post,
+      viewCount: post.viewCount + 1,
+      author: { ...author, cosmetics: serializeAuthorCosmetics({ cosmetics }) },
+    };
   }
 
   /** 編輯文章（僅 PUBLISHED；DRAFT 編輯走 admin endpoint） */
@@ -146,7 +151,6 @@ export class PostsService {
     }
 
     await this.prisma.post.delete({ where: { id } });
-    await this.recalculateLevel(post.authorId);
     return { success: true };
   }
 
@@ -181,20 +185,5 @@ export class PostsService {
     ]);
 
     return { items, total, page, limit };
-  }
-
-  /** 重新計算使用者等級（DRAFT 不計入發文數） */
-  private async recalculateLevel(userId: string) {
-    const count = await this.prisma.post.count({
-      where: { authorId: userId, status: PostStatus.PUBLISHED },
-    });
-    let level = 1;
-    if (count >= 500) level = 6;
-    else if (count >= 200) level = 5;
-    else if (count >= 100) level = 4;
-    else if (count >= 50) level = 3;
-    else if (count >= 20) level = 2;
-
-    await this.prisma.user.update({ where: { id: userId }, data: { level } });
   }
 }
