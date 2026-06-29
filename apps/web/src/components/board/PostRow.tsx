@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 
 export interface PostItem {
   id: string;
@@ -86,8 +87,14 @@ export function boardBadgeFor(board?: { slug: string; name: string }) {
  * showBoardBadge=true 時，若該文帶 board 資訊會在標籤列前標出所屬聯盟（分類聚合頁用）。
  */
 export function PostRow({ post, showBoardBadge = false }: { post: PostItem; showBoardBadge?: boolean }) {
+  // SSR 種子讓本元件參與 server render：時間/「剛回」依賴 Date.now()，server 與 client 算出會不同 → hydration mismatch。
+  // 解法：未 mount 時對時間用確定性 fallback（ISO 前 10 碼 UTC 日期，兩端一致）、不顯示「剛回」；mount 後才切相對時間。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const showTime = (iso: string | null) => (mounted ? formatRelativeTime(iso) : iso ? iso.slice(0, 10) : '');
+
   const isHot = post.pushCount >= 10 || post._count.replies >= 20;
-  const fresh = isFreshReply(post);
+  const fresh = mounted && isFreshReply(post);
   const boardBadge = showBoardBadge ? boardBadgeFor(post.board) : null;
   const roleBadge =
     post.author.role === 'ADMIN' || post.author.role === 'SUPER_ADMIN'
@@ -174,12 +181,12 @@ export function PostRow({ post, showBoardBadge = false }: { post: PostItem; show
               </span>
             )}
             <span className="text-gray-300">·</span>
-            <span>發表於 {formatRelativeTime(post.createdAt)}</span>
+            <span>發表於 {showTime(post.createdAt)}</span>
             {post.lastReplyAt && post.lastReplyAt !== post.createdAt && (
               <>
                 <span className="text-gray-300">·</span>
                 <span className="text-blue-600">
-                  最後回覆 {formatRelativeTime(post.lastReplyAt)}
+                  最後回覆 {showTime(post.lastReplyAt)}
                 </span>
               </>
             )}

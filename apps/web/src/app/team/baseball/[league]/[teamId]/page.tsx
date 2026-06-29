@@ -25,5 +25,6 @@ export async function generateMetadata({
   return {
     title: `${leagueName} 球隊資訊 - ${teamId}`,
     description: `${leagueName}球隊資料、近期賽事、排名`,
+    alternates: { canonical: `/team/baseball/${league}/${teamId}` },
   };
 }

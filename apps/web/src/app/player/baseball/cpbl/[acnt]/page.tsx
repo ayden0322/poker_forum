@@ -18,5 +18,6 @@ export async function generateMetadata({
   return {
     title: `中華職棒球員 - ${acnt}`,
     description: `中華職棒 CPBL 球員個人資料、賽季統計、生涯統計`,
+    alternates: { canonical: `/player/baseball/cpbl/${acnt}` },
   };
 }

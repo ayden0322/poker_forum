@@ -13,9 +13,10 @@ export async function generateMetadata({ params }: { params: Promise<{ playerId:
     return {
       title: `${name ?? 'NBA 球員'} - 球員資料`,
       description: `${name} 的 NBA 球員生涯數據與基本資料`,
+      alternates: { canonical: `/player/nba/${playerId}` },
     };
   } catch {
-    return { title: 'NBA 球員' };
+    return { title: 'NBA 球員', alternates: { canonical: `/player/nba/${playerId}` } };
   }
 }
 

@@ -36,6 +36,13 @@ export class PostsController {
     return { data };
   }
 
+  /** sitemap 用：列出已發布文章（id + 板塊 slug + 更新時間）。必須宣告在 :id 之前，否則會被動態路由吃掉。 */
+  @Get('sitemap')
+  async sitemap() {
+    const data = await this.postsService.listForSitemap();
+    return { data };
+  }
+
   /**
    * 取得文章詳情（可選登入）。
    * 註：前端文章頁為 SSR 匿名抓取，這裡的 recordEvent 實務上不會觸發；

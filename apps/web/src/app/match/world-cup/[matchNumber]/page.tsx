@@ -5,6 +5,7 @@ export async function generateMetadata({ params }: { params: Promise<{ matchNumb
   return {
     title: `FIFA 世界盃 2026 — 第 ${matchNumber} 場`,
     description: `FIFA 2026 世界盃比賽詳情：對戰隊伍、開賽時間、比分、場館`,
+    alternates: { canonical: `/match/world-cup/${matchNumber}` },
   };
 }
 

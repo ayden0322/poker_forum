@@ -32,13 +32,14 @@ export async function generateMetadata({ params }: { params: Promise<{ playerId:
   const { playerId } = await params;
   try {
     const res = await apiFetch<Response>(`/mlb/players/${playerId}`);
-    if (!res.data) return { title: '找不到球員' };
+    if (!res.data) return { title: '找不到球員', alternates: { canonical: `/player/mlb/${playerId}` } };
     return {
       title: `${res.data.nameZhTw} - MLB 球員資料`,
       description: `${res.data.nameZhTw}（${res.data.fullName}）的 MLB 個人資料、本季成績、生涯數據`,
+      alternates: { canonical: `/player/mlb/${playerId}` },
     };
   } catch {
-    return { title: 'MLB 球員' };
+    return { title: 'MLB 球員', alternates: { canonical: `/player/mlb/${playerId}` } };
   }
 }
 

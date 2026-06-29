@@ -33,7 +33,7 @@ const NON_MLB_BASEBALL = new Set(['cpbl', 'npb', 'kbo', 'other-baseball']);
 /** 最新新聞區桌機預設顯示篇數（手機用 FEATURED_MOBILE_PREVIEW=2）；超過用「查看全部新聞」就地展開 */
 const NEWS_DESKTOP_PREVIEW = 4;
 
-interface BoardPostsResponse {
+export interface BoardPostsResponse {
   data: {
     news: PostItem[];
     featured: PostItem[];
@@ -62,7 +62,13 @@ const SORT_OPTIONS = [
   { value: 'popular', label: '最多推文' },
 ] as const;
 
-export default function BoardPageClient({ board }: { board: BoardData }) {
+export default function BoardPageClient({
+  board,
+  initialPosts,
+}: {
+  board: BoardData;
+  initialPosts?: BoardPostsResponse;
+}) {
   const { user, requireLogin, requirePhoneVerified } = useAuth();
   const router = useRouter();
   const [page, setPage] = useState(1);
@@ -80,12 +86,16 @@ export default function BoardPageClient({ board }: { board: BoardData }) {
     ...(searchQuery && { search: searchQuery }),
   });
 
+  // 首屏預設狀態（page1 / limit20 / sort=lastReply / 無 tag / 無搜尋）才吃 SSR 種子，
+  // 讓 server HTML 直接含 /post 內鏈（爬蟲 discovery）；切換分頁/排序/搜尋後改由 client 自行取得。
+  const isInitialState = page === 1 && sort === 'lastReply' && !activeTag && !searchQuery;
   const { data, isLoading } = useQuery({
     queryKey: ['board-posts', board.slug, page, sort, activeTag, searchQuery],
     queryFn: () =>
       apiFetch<BoardPostsResponse>(
         `/boards/${board.slug}/posts?${queryParams.toString()}`,
       ),
+    initialData: isInitialState ? initialPosts : undefined,
   });
 
   const news = data?.data.news ?? [];

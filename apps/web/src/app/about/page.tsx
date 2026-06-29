@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: '關於我們',
   description: '博客邦 — 亞洲最大賽事論壇。',
+  alternates: { canonical: '/about' },
   robots: { index: true, follow: true },
 };
 

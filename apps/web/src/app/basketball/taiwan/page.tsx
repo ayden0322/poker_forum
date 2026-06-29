@@ -32,6 +32,7 @@ export const metadata = {
   title: '台灣職籃總覽 — TPBL、P.League+、SBL 有幾隊？聯盟差異一次看懂',
   description:
     '台灣目前有哪些職業籃球聯盟？TPBL、P.League+、SBL 差在哪、各有幾支球隊、最新戰績排名一次整理，附即時數據與討論區。',
+  alternates: { canonical: '/basketball/taiwan' },
 };
 
 export default async function TaiwanBasketballHubPage() {

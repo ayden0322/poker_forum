@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: '聯絡我們',
   description: '博客邦聯絡方式 — 如有任何問題或建議，歡迎與我們聯繫。',
+  alternates: { canonical: '/contact' },
   robots: { index: true, follow: true },
 };
 

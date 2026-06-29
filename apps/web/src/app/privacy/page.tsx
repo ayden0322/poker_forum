@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: '隱私權政策',
   description: '博客邦隱私權政策 — 說明本網站如何收集、使用、保護您的個人資料，包含 Google、Facebook、LINE 第三方登入服務的資料使用方式。',
+  alternates: { canonical: '/privacy' },
   robots: { index: true, follow: true },
 };
 
