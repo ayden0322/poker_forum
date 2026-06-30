@@ -212,7 +212,7 @@ export function TodayUpcomingStrip() {
   const dayOf = (ts: number): '今日' | '明日' =>
     new Date(ts).toLocaleDateString('en-CA', { timeZone: 'Asia/Taipei' }) === today ? '今日' : '明日';
 
-  // 正規化 + 依聯盟順序排（MLB→中職→日職→韓職→其他棒球），同聯盟內按開賽時間（今日早於明日）
+  // 正規化後跨聯盟全域排序：純按開賽時間（台灣時間）由近到遠，不再依聯盟分組
   const games: UpcomingGame[] = LEAGUES.flatMap((l, i) => {
     const raw = results[i].data;
     if (!raw) return [];
@@ -220,10 +220,8 @@ export function TodayUpcomingStrip() {
       l.slug === 'mlb'
         ? normalizeMlbPreview(raw as MlbGame[], mlbTr ?? new Map())
         : normalizeGenericPreview(raw as ApiGame[], l.slug, l.badge, l.badgeCls);
-    return list
-      .sort((a, b) => a.startTs - b.startTs)
-      .map((g) => ({ ...g, day: dayOf(g.startTs) }));
-  });
+    return list.map((g) => ({ ...g, day: dayOf(g.startTs) }));
+  }).sort((a, b) => a.startTs - b.startTs);
 
   /* 滾動箭頭可見性 */
   const updateScroll = useCallback(() => {
