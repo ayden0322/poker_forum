@@ -4,7 +4,8 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { FeaturedPostCard } from '@/components/board/FeaturedPostCard';
+// 新聞區塊暫時隱藏，FeaturedPostCard 先移除 import；恢復新聞區塊時記得補回：
+// import { FeaturedPostCard } from '@/components/board/FeaturedPostCard';
 
 /**
  * 首頁棒球主場 — 多聯盟即時賽事中心（雷速風格，以棒球為主）
@@ -1012,26 +1013,19 @@ export function HomeBaseballHub() {
       {/* ── 上半部：左 新聞+熱門討論（棒球專區） / 右 sticky rail（棒球即時比分 + 競猜 + 熱門標籤）── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         <div className="lg:col-span-2 space-y-6">
-          {news.length > 0 && (
+          {/*
+            新聞區塊暫時隱藏（先把熱門討論往上移）；要恢復就把這段註解拿掉。
+            news 變數仍保留抓取，繼續供右欄「熱門標籤」聚合使用。
             <div>
               <div className="flex items-center justify-between mb-2 px-1">
                 <span className="text-sm font-bold text-blue-600">📰 {sectionLabel}最新新聞</span>
                 <Link href={boardHref} className="text-xs text-gray-400 hover:text-blue-600">更多 →</Link>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {news.slice(0, 4).map((post) => (
-                  <div key={post.id} className="relative">
-                    {!baseballSingle && (post as HubPost).badge && (
-                      <span className={`absolute top-1.5 right-1.5 z-10 px-1 rounded text-[10px] font-bold leading-none pointer-events-none ${(post as HubPost).badgeCls}`}>
-                        {(post as HubPost).badge}
-                      </span>
-                    )}
-                    <FeaturedPostCard post={post} league={baseballSingle ?? (post as HubPost).league} />
-                  </div>
-                ))}
+                {news.slice(0, 4).map(...)}
               </div>
             </div>
-          )}
+          */}
           <div>
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-sm font-bold text-blue-600">🔥 {sectionLabel}熱門討論</span>
