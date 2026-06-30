@@ -169,8 +169,13 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
   const game = data.data;
   const awayScore = game.scores?.away?.total ?? 0;
   const homeScore = game.scores?.home?.total ?? 0;
-  const isFinished = ['FT', 'AOT'].includes(game.status.short);
-  const isLive = !isFinished && !['NS', 'TBD', 'PST', 'CANC', 'SUSP'].includes(game.status.short);
+  // 異常終止狀態（取消/延期/中止…）：API-Sports 棒球 status.short 對照中文，不可當「進行中」
+  const ABNORMAL_LABEL: Record<string, string> = {
+    ABD: '比賽中止', CANC: '比賽取消', POST: '比賽延期', PST: '比賽延期', SUSP: '比賽暫停', INTR: '比賽中斷',
+  };
+  const isFinished = ['FT', 'AOT', 'AET'].includes(game.status.short);
+  const abnormalLabel = ABNORMAL_LABEL[game.status.short];
+  const isLive = !isFinished && !abnormalLabel && !['NS', 'TBD'].includes(game.status.short);
   const hasInnings = game.scores?.away?.innings && Object.keys(game.scores.away.innings).length > 0;
 
   return (
@@ -218,7 +223,7 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
           {/* 中間狀態 */}
           <div className="text-center px-4">
             <div className="text-xs opacity-70 mb-1">
-              {isFinished ? '已結束' : isLive ? game.status.long : ''}
+              {isFinished ? '已結束' : isLive ? game.status.long : abnormalLabel ?? ''}
             </div>
             <div className="text-2xl opacity-50 my-2">VS</div>
             <div className="text-xs opacity-70">
@@ -256,6 +261,17 @@ export default function MatchPageClient({ league, gameId }: { league: string; ga
           <h3 className="font-bold text-gray-800 mb-1">比賽尚未開始</h3>
           <p className="text-sm text-gray-500">
             預定開賽時間：{game.timestamp ? twTime(game.timestamp) : game.time}（台灣時間）
+          </p>
+        </div>
+      )}
+
+      {/* 異常終止提示（取消/延期/中止） */}
+      {abnormalLabel && (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center mb-4">
+          <div className="text-4xl mb-3">🛑</div>
+          <h3 className="font-bold text-gray-800 mb-1">{abnormalLabel}</h3>
+          <p className="text-sm text-gray-500">
+            本場賽事狀態：{game.status.long}（資料來源：API-Sports）
           </p>
         </div>
       )}
