@@ -3,6 +3,10 @@ import { apiFetch } from '@/lib/api';
 import { SITE_URL } from '@/lib/site';
 import { isBoardIndexable } from '@/lib/board-seo';
 
+// 不設 revalidate 時 Next 會把 sitemap 在 build 當下靜態定格——若 build 完成時 API 還在重啟
+// （/posts/sitemap 暫不可用），post 會永久從 sitemap 缺席。改 ISR 每小時重生，確保新貼文會被納入。
+export const revalidate = 3600;
+
 interface Category {
   slug: string;
   boards: { slug: string }[];
