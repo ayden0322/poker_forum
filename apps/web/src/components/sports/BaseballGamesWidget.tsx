@@ -95,7 +95,7 @@ const LIVE_CODES = new Set([
   'IN1', 'IN2', 'IN3', 'IN4', 'IN5', 'IN6', 'IN7', 'IN8', 'IN9',
   'LIVE', 'BT', 'P1', 'P2',
 ]);
-const FINAL_CODES = new Set(['FT', 'AOT', 'AET', 'CANC', 'POST']);
+const FINAL_CODES = new Set(['FT', 'AOT', 'AET', 'CANC', 'POST', 'ABD', 'SUSP', 'INTR']);
 const PREVIEW_CODES = new Set(['NS', 'TBD', 'PST']);
 
 type AbstractState = 'Live' | 'Final' | 'Preview';
