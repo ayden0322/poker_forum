@@ -10,11 +10,12 @@ const SPORT_META: Record<string, { name: string; icon: string; boardSlug: string
 
 export async function generateMetadata({ params }: { params: { type: string } }): Promise<Metadata> {
   const meta = SPORT_META[params.type];
-  if (!meta) return { title: '頁面不存在 - 博客邦' };
+  if (!meta) return { title: '頁面不存在' };
 
   return {
-    title: `${meta.name}數據中心 - 博客邦`,
+    title: `${meta.name}數據中心`,
     description: `${meta.name}賽事排名、球員數據與賠率資訊`,
+    alternates: { canonical: `/sports/${params.type}/stats` },
   };
 }
 

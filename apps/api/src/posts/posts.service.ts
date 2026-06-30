@@ -186,4 +186,22 @@ export class PostsService {
 
     return { items, total, page, limit };
   }
+
+  /**
+   * sitemap 用：列出已發布文章的最小欄位（id + 板塊 slug + 更新時間）。
+   * 薄板塊過濾交由前端 sitemap.ts 的 isBoardIndexable() 處理，維持索引控制的單一真相來源。
+   * 上限 5000 篇（依 updatedAt 由新到舊），遠低於 Google 單一 sitemap 50000 上限，避免巨站時 payload 過大。
+   */
+  async listForSitemap(limit = 5000) {
+    return this.prisma.post.findMany({
+      where: { status: PostStatus.PUBLISHED },
+      take: limit,
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        updatedAt: true,
+        board: { select: { slug: true } },
+      },
+    });
+  }
 }

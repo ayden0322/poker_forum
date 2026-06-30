@@ -22,6 +22,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     return {
       title,
       description,
+      alternates: { canonical: `/match/friendly/${id}` },
     };
   } catch {
     return { title: '國際足球友誼賽 2026', robots: { index: false, follow: true } };

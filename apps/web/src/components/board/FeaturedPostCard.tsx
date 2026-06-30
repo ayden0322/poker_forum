@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 
 /** 行動裝置上「站方推送」預設顯示的篇數，多的需要點「展開全部」 */
 export const FEATURED_MOBILE_PREVIEW = 2;
@@ -122,6 +123,10 @@ export function FeaturedPostCard({
   /** 所屬聯盟看板 slug（mlb/cpbl/npb/kbo…），決定無圖 fallback 的聯盟色塊；不傳則用關鍵字判斷 */
   league?: string;
 }) {
+  // 相對時間依賴 Date.now()，SSR 種子下 server/client 會算出不同字串 → 未 mount 前用確定性 UTC 日期 fallback，避免 hydration mismatch
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const cover = extractFirstImage(post.content);
   const summary = extractSummary(post.content);
   const style = VARIANT_STYLE[variant];
@@ -173,7 +178,7 @@ export function FeaturedPostCard({
         <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-500">
           <span>{post.author.nickname}</span>
           <span className="text-slate-300">·</span>
-          <span>{formatRelativeTime(post.createdAt)}</span>
+          <span>{mounted ? formatRelativeTime(post.createdAt) : post.createdAt.slice(0, 10)}</span>
           {post._count.replies > 0 && (
             <>
               <span className="text-slate-300">·</span>

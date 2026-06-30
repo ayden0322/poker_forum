@@ -2,6 +2,7 @@ import { apiFetch } from '@/lib/api';
 import { HomeBaseballHub } from '@/components/home/HomeBaseballHub';
 import { TodayUpcomingStrip } from '@/components/home/TodayUpcomingStrip';
 import { SITE_URL } from '@/lib/site';
+import { serializeJsonLd } from '@/lib/json-ld';
 
 interface MarqueeItem {
   id: string;
@@ -10,6 +11,10 @@ interface MarqueeItem {
 }
 
 export const revalidate = 60;
+
+export const metadata = {
+  alternates: { canonical: '/' },
+};
 
 export default async function HomePage() {
   let marquees: MarqueeItem[] = [];
@@ -32,7 +37,7 @@ export default async function HomePage() {
     <div className="max-w-6xl mx-auto">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 
       {/* 今日即將開打：header 下方全棒球聯盟橫向快覽帶 */}

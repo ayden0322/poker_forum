@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: '資料刪除說明',
   description: '博客邦資料刪除說明 — 如何刪除您在本網站的個人資料，包含 Facebook、Google、LINE 第三方登入資料的處理方式。',
+  alternates: { canonical: '/data-deletion' },
   robots: { index: true, follow: true },
 };
 

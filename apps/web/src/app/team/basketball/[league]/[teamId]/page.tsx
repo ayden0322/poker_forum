@@ -34,11 +34,12 @@ export async function generateMetadata({
 }) {
   const { league, teamId } = await params;
   const [ov, leagueName] = await Promise.all([fetchOverview(league, Number(teamId)), fetchLeagueName(league)]);
-  if (!ov) return { title: `${leagueName} 球隊資訊` };
+  if (!ov) return { title: `${leagueName} 球隊資訊`, alternates: { canonical: `/team/basketball/${league}/${teamId}` } };
   const name = teamLabel(ov, Number(teamId));
   return {
     title: `${name} - ${leagueName}球隊資訊、戰績與近期賽程`,
     description: `${leagueName} ${name} 的最新戰績、聯盟排名、近期比賽結果與賽程。`,
+    alternates: { canonical: `/team/basketball/${league}/${teamId}` },
   };
 }
 

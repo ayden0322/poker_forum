@@ -10,5 +10,6 @@ export async function generateMetadata({ params }: { params: Promise<{ gamePk: s
   return {
     title: `MLB 比賽詳情 - ${gamePk}`,
     description: 'MLB 單場比賽詳細戰報、逐局比分、球員成績',
+    alternates: { canonical: `/match/mlb/${gamePk}` },
   };
 }

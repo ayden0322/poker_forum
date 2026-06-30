@@ -19,9 +19,10 @@ export async function generateMetadata({ params }: { params: Promise<{ teamId: s
     return {
       title: `${name ?? 'MLB 球隊'} - 球隊資料`,
       description: `${name} 的 MLB 球隊資料、本季戰績、陣容、近期比賽`,
+      alternates: { canonical: `/team/mlb/${teamId}` },
     };
   } catch {
-    return { title: 'MLB 球隊' };
+    return { title: 'MLB 球隊', alternates: { canonical: `/team/mlb/${teamId}` } };
   }
 }
 

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 export const metadata: Metadata = {
   title: '服務條款',
   description: '博客邦服務條款 — 使用本網站服務前，請詳閱本條款。',
+  alternates: { canonical: '/terms' },
   robots: { index: true, follow: true },
 };
 

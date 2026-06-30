@@ -38,7 +38,7 @@ export async function generateMetadata({
   const [game, cfg] = await Promise.all([fetchGame(league, Number(gameId)), fetchConfig(league)]);
   const leagueName = cfg?.displayName ?? league.toUpperCase();
   if (!game) {
-    return { title: `${leagueName} 比賽詳情`, description: `${leagueName}單場比賽詳情、比分與數據` };
+    return { title: `${leagueName} 比賽詳情`, description: `${leagueName}單場比賽詳情、比分與數據`, alternates: { canonical: `/match/basketball/${league}/${gameId}` } };
   }
   const h = teamLabel(game.teams.home);
   const a = teamLabel(game.teams.away);
@@ -49,6 +49,7 @@ export async function generateMetadata({
   return {
     title: `${h} vs ${a}${scoreLine} - ${leagueName}比賽詳情`,
     description: `${leagueName} ${h} 對 ${a} 單場比賽${scoreLine ? '比分' : '預告'}、逐節得分、Box Score 與球隊數據。`,
+    alternates: { canonical: `/match/basketball/${league}/${gameId}` },
   };
 }
 

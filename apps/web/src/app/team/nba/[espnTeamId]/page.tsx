@@ -13,9 +13,10 @@ export async function generateMetadata({ params }: { params: Promise<{ espnTeamI
     return {
       title: `${name ?? 'NBA 球隊'} - 球隊資料`,
       description: `${name} 的 NBA 球隊資料、本季戰績、陣容、賽程`,
+      alternates: { canonical: `/team/nba/${espnTeamId}` },
     };
   } catch {
-    return { title: 'NBA 球隊' };
+    return { title: 'NBA 球隊', alternates: { canonical: `/team/nba/${espnTeamId}` } };
   }
 }
 
