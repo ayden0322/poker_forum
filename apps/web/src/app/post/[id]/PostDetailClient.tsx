@@ -13,6 +13,7 @@ import { levelName } from '@/lib/member';
 import { TITLE_TOKEN, type AuthorCosmetics } from '@/lib/cosmetics';
 import AvatarWithFrame from '@/components/member/AvatarWithFrame';
 import MainBadge from '@/components/member/MainBadge';
+import { fbTrack } from '@/lib/fbpixel';
 
 const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), { ssr: false });
 
@@ -85,6 +86,16 @@ export default function PostDetailClient({ post }: { post: PostData }) {
   const isAuthor = user?.id === post.author.id;
   const isAdminOrMod =
     user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || user?.role === 'MODERATOR';
+
+  // Meta Pixel：瀏覽貼文內容（再行銷 / 內容偏好）
+  useEffect(() => {
+    fbTrack('ViewContent', {
+      content_type: 'post',
+      content_ids: [post.id],
+      content_name: post.title,
+      content_category: `${post.board.category.name}/${post.board.name}`,
+    });
+  }, [post.id, post.title, post.board.category.name, post.board.name]);
 
   // 查詢書籤狀態
   useEffect(() => {

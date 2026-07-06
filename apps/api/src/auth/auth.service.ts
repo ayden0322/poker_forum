@@ -171,7 +171,7 @@ export class AuthService {
       }
       await this.recordLoginMeta(existing.user.id, ip);
       const tokens = await this.generateTokens(existing.user.id, existing.user.nickname, existing.user.role);
-      return { user: existing.user, ...tokens };
+      return { user: existing.user, isNew: false, ...tokens };
     }
 
     // 若 Email 已存在，綁定到既有帳號
@@ -196,6 +196,7 @@ export class AuthService {
             phoneVerificationBypass: userByEmail.phoneVerificationBypass,
             nicknameChangedAt: userByEmail.nicknameChangedAt,
           },
+          isNew: false,
           ...tokens,
         };
       }
@@ -239,7 +240,7 @@ export class AuthService {
 
     await this.recordLoginMeta(newUser.id, ip);
     const tokens = await this.generateTokens(newUser.id, newUser.nickname, newUser.role);
-    return { user: newUser, ...tokens };
+    return { user: newUser, isNew: true, ...tokens };
   }
 
   /** 記錄最後登入 IP 與時間（反向代理後需經由 getClientIp 取值） */

@@ -167,9 +167,13 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: Request & { user: any }, @Res() res: Response) {
     const redirectUrl = this.getOAuthRedirectUrl(req);
-    const { accessToken, refreshToken } = req.user as { accessToken: string; refreshToken: string };
+    const { accessToken, refreshToken, isNew } = req.user as {
+      accessToken: string;
+      refreshToken: string;
+      isNew?: boolean;
+    };
     res.clearCookie('oauth_from');
-    res.redirect(`${redirectUrl}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`);
+    res.redirect(this.buildOAuthCallbackUrl(redirectUrl, accessToken, refreshToken, isNew, 'google'));
   }
 
   // ===== Facebook OAuth =====
@@ -182,9 +186,13 @@ export class AuthController {
   @UseGuards(AuthGuard('facebook'))
   async facebookCallback(@Req() req: Request & { user: any }, @Res() res: Response) {
     const redirectUrl = this.getOAuthRedirectUrl(req);
-    const { accessToken, refreshToken } = req.user as { accessToken: string; refreshToken: string };
+    const { accessToken, refreshToken, isNew } = req.user as {
+      accessToken: string;
+      refreshToken: string;
+      isNew?: boolean;
+    };
     res.clearCookie('oauth_from');
-    res.redirect(`${redirectUrl}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`);
+    res.redirect(this.buildOAuthCallbackUrl(redirectUrl, accessToken, refreshToken, isNew, 'facebook'));
   }
 
   // ===== LINE OAuth =====
@@ -199,8 +207,28 @@ export class AuthController {
   @UseGuards(AuthGuard('line'))
   async lineCallback(@Req() req: Request & { user: any }, @Res() res: Response) {
     const redirectUrl = this.getOAuthRedirectUrl(req);
-    const { accessToken, refreshToken } = req.user as { accessToken: string; refreshToken: string };
+    const { accessToken, refreshToken, isNew } = req.user as {
+      accessToken: string;
+      refreshToken: string;
+      isNew?: boolean;
+    };
     res.clearCookie('oauth_from');
-    res.redirect(`${redirectUrl}/auth/callback?accessToken=${accessToken}&refreshToken=${refreshToken}`);
+    res.redirect(this.buildOAuthCallbackUrl(redirectUrl, accessToken, refreshToken, isNew, 'line'));
+  }
+
+  /** 組 OAuth callback 導向網址；isNew=true 時附帶 isNew/method，供前端打 CompleteRegistration */
+  private buildOAuthCallbackUrl(
+    redirectUrl: string,
+    accessToken: string,
+    refreshToken: string,
+    isNew?: boolean,
+    method?: string,
+  ): string {
+    const params = new URLSearchParams({ accessToken, refreshToken });
+    if (isNew) {
+      params.set('isNew', '1');
+      if (method) params.set('method', method);
+    }
+    return `${redirectUrl}/auth/callback?${params.toString()}`;
   }
 }

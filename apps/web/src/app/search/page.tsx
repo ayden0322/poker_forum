@@ -1,10 +1,11 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { fbTrack } from '@/lib/fbpixel';
 
 interface PostItem {
   id: string;
@@ -56,6 +57,12 @@ function SearchContent() {
   const [query, setQuery] = useState(initialQ);
   const [searchTerm, setSearchTerm] = useState(initialQ);
   const [page, setPage] = useState(1);
+
+  // Meta Pixel：站內搜尋
+  useEffect(() => {
+    const q = searchTerm.trim();
+    if (q) fbTrack('Search', { search_string: q });
+  }, [searchTerm]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['search', searchTerm, page],
