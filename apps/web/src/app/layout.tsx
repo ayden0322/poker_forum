@@ -4,6 +4,7 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { ImpersonationBanner } from '@/components/layout/ImpersonationBanner';
 import { Providers } from './providers';
+import { MetaPixel } from '@/components/analytics/MetaPixel';
 import { SITE_URL } from '@/lib/site';
 import { serializeJsonLd } from '@/lib/json-ld';
 
@@ -58,6 +59,7 @@ export default function RootLayout({
   return (
     <html lang="zh-TW">
       <body className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+        <MetaPixel />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(orgJsonLd) }}

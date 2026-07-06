@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/auth';
+import { fbTrack } from '@/lib/fbpixel';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4010/api';
 
@@ -46,6 +47,8 @@ export default function RegisterPage() {
         body: JSON.stringify({ ...form, ...attribution.current }),
       });
       setTokens(res.data.accessToken, res.data.refreshToken);
+      // Meta Pixel 轉換事件：email 註冊完成
+      fbTrack('CompleteRegistration', { method: 'email', status: true });
       router.push('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : '註冊失敗，請再試一次');

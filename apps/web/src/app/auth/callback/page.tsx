@@ -3,6 +3,7 @@
 import { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth';
+import { fbTrack } from '@/lib/fbpixel';
 
 function CallbackContent() {
   const router = useRouter();
@@ -14,6 +15,13 @@ function CallbackContent() {
     const refreshToken = searchParams.get('refreshToken');
     if (accessToken && refreshToken) {
       setTokens(accessToken, refreshToken);
+      // 僅首次以第三方帳號註冊時打轉換事件（老用戶回訪不帶 isNew，避免灌水）
+      if (searchParams.get('isNew') === '1') {
+        fbTrack('CompleteRegistration', {
+          method: searchParams.get('method') ?? 'oauth',
+          status: true,
+        });
+      }
       router.replace('/');
     } else {
       router.replace('/?error=oauth_failed');

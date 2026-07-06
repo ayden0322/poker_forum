@@ -2,12 +2,12 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '隱私權政策',
-  description: '博客邦隱私權政策 — 說明本網站如何收集、使用、保護您的個人資料，包含 Google、Facebook、LINE 第三方登入服務的資料使用方式。',
+  description: '博客邦隱私權政策 — 說明本網站如何收集、使用、保護您的個人資料，包含 Google、Facebook、LINE 第三方登入服務，以及 Meta Pixel 分析工具的資料使用方式。',
   alternates: { canonical: '/privacy' },
   robots: { index: true, follow: true },
 };
 
-const updatedAt = '2026-04-09';
+const updatedAt = '2026-07-06';
 
 export default function PrivacyPage() {
   return (
@@ -118,11 +118,53 @@ export default function PrivacyPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">六、Cookie 政策</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mt-8 mb-3">六、Cookie 與第三方分析工具</h2>
           <p>
             本網站使用 Cookie 與類似技術以維持登入狀態、記錄使用偏好。
             您可透過瀏覽器設定拒絕 Cookie，但可能導致部分功能無法正常運作。
           </p>
+
+          <div className="mt-4 border-l-4 border-blue-600 pl-4 py-1">
+            <h3 className="font-semibold text-gray-900">Meta Pixel（Facebook 像素）</h3>
+            <p className="text-sm mt-1">
+              為分析網站流量、衡量內容成效並提供更精準的廣告服務，本網站使用 Meta Platforms, Inc.
+              提供的 <strong>Meta Pixel</strong> 技術。當您瀏覽本網站時，Meta Pixel
+              會透過 Cookie 蒐集下列非直接識別身分之資訊：您瀏覽的頁面與貼文、站內搜尋關鍵字、
+              完成註冊等互動行為，以及裝置類型、瀏覽器與 IP 位址等技術資料。
+              這些資料會傳送至 Meta 並可能用於受眾分析與再行銷。
+              本網站<strong>不會</strong>透過 Meta Pixel 傳送您的姓名、密碼或其他可直接識別您的個人資料。
+            </p>
+            <p className="text-sm mt-2">
+              您可透過下列方式停用或限制此類追蹤：
+            </p>
+            <ul className="list-disc pl-6 space-y-1 mt-1 text-sm">
+              <li>於瀏覽器設定中封鎖第三方 Cookie，或使用「請勿追蹤（Do Not Track）」功能；</li>
+              <li>
+                於 Facebook 帳號的「
+                <a
+                  href="https://www.facebook.com/settings?tab=ads"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  廣告偏好設定
+                </a>
+                」調整廣告投放；
+              </li>
+              <li>
+                參考 Meta 的
+                <a
+                  href="https://www.facebook.com/privacy/policy/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  隱私權政策
+                </a>
+                瞭解其資料處理方式。
+              </li>
+            </ul>
+          </div>
         </section>
 
         <section>
