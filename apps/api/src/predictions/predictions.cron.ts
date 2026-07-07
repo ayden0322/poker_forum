@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma.service';
 import { OddsPipelineService } from './odds-pipeline.service';
 import { enabledBoards, FAR_INTERVAL_MS, NEAR_WINDOW_MS } from './prediction.config';
+import { isPredictionEnabled } from './prediction.flags';
 
 @Injectable()
 export class PredictionsCron {
@@ -29,6 +30,7 @@ export class PredictionsCron {
 
   @Cron('*/5 * * * *')
   async tick() {
+    if (!isPredictionEnabled()) return; // fail-closed：功能未開就不燒 API 額度
     if (!this.apiKey) return;
     for (const board of enabledBoards()) {
       try {

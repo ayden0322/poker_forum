@@ -17,6 +17,8 @@ import {
   ODDS_DAILY_SOFT_CAP,
   ODDS_DISPLAY_TTL_SEC,
   QUOTA_KEY_PREFIX,
+  REVALIDATE_DAILY_BUDGET,
+  REVALIDATE_KEY_PREFIX,
   oddsDisplayKey,
 } from './prediction.config';
 import {
@@ -62,6 +64,54 @@ export class OddsPipelineService {
       this.logger.error(`賠率管線失敗（${board.boardSlug}）：${err}`);
     }
     return calls;
+  }
+
+  /** demand-driven 重驗的 in-flight map（single-flight：同場併發下注共用一次重抓） */
+  private readonly revalidateInFlight = new Map<string, Promise<boolean>>();
+
+  /**
+   * 單場 demand-driven 重驗（規格 §2.3）：下注時 quote 超齡 → 即時重抓該場盤口寫入 OddsQuote。
+   * single-flight：同 matchId 併發呼叫共用同一次 API 重抓。
+   * 回傳 true=重抓成功且已寫入；false=API 失敗/預算爆/無盤（呼叫端一律 fail-closed 拒單）。
+   */
+  async revalidateMatch(
+    board: PredictionBoardConfig,
+    match: { id: string; apiFixtureId: number },
+  ): Promise<boolean> {
+    const existing = this.revalidateInFlight.get(match.id);
+    if (existing) return existing;
+
+    const task = (async (): Promise<boolean> => {
+      // 重驗預算（每 host 每日；與顯示 cron 的額度分開計，爆了 fail-closed）
+      const budgetKey = `${REVALIDATE_KEY_PREFIX}:${board.apiHost}:${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
+      const used = (await this.redis.get<number>(budgetKey)) ?? 0;
+      if (used >= REVALIDATE_DAILY_BUDGET) {
+        this.logger.warn(`重驗預算爆量：${board.apiHost} 今日 ${used}/${REVALIDATE_DAILY_BUDGET}，拒單`);
+        return false;
+      }
+      await this.redis.set(budgetKey, used + 1, 26 * 60 * 60);
+      await this.bumpQuota(board.apiHost, 1);
+
+      const idParam = board.sportType === 'football' ? 'fixture' : 'game';
+      const data = await this.callApiRaw<any[]>(board.apiHost, '/odds', {
+        [idParam]: match.apiFixtureId,
+        bookmaker: board.bookmakerId,
+      });
+      const item = data?.response?.[0];
+      if (!item) return false; // API 掛 / 無盤（含已轉 live 後 pre-match 盤收掉）→ fail-closed
+
+      const parsed =
+        board.sportType === 'football'
+          ? parseFootballOddsItem(item, board.bookmakerId, board.markets)
+          : parseBaseballOddsItem(item, board.bookmakerId, board.markets);
+      if (parsed.quotes.length === 0) return false;
+
+      const written = await this.storeMatchOdds(board, parsed, item);
+      return written > 0;
+    })().finally(() => this.revalidateInFlight.delete(match.id));
+
+    this.revalidateInFlight.set(match.id, task);
+    return task;
   }
 
   // ===== 額度守門 =====
