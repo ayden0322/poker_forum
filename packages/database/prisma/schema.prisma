@@ -11,28 +11,28 @@ datasource db {
 
 // ===== 會員 =====
 model User {
-  id              String     @id @default(cuid())
-  nickname        String     @unique
-  account         String?    @unique
-  passwordHash    String?    @map("password_hash")
-  email           String?    @unique
-  avatar          String?
-  level           Int        @default(1)
-  role            Role       @default(USER)
-  status          UserStatus @default(ACTIVE)
-  lastLoginIp     String?    @map("last_login_ip")
-  lastLoginAt     DateTime?  @map("last_login_at")
-  phone           String?    @unique
-  phoneVerified   Boolean    @default(false) @map("phone_verified")
-  phoneVerifiedAt DateTime?  @map("phone_verified_at")
-  phoneChangedAt  DateTime?  @map("phone_changed_at")
-  nicknameChangedAt DateTime? @map("nickname_changed_at")
+  id                            String     @id @default(cuid())
+  nickname                      String     @unique
+  account                       String?    @unique
+  passwordHash                  String?    @map("password_hash")
+  email                         String?    @unique
+  avatar                        String?
+  level                         Int        @default(1)
+  role                          Role       @default(USER)
+  status                        UserStatus @default(ACTIVE)
+  lastLoginIp                   String?    @map("last_login_ip")
+  lastLoginAt                   DateTime?  @map("last_login_at")
+  phone                         String?    @unique
+  phoneVerified                 Boolean    @default(false) @map("phone_verified")
+  phoneVerifiedAt               DateTime?  @map("phone_verified_at")
+  phoneChangedAt                DateTime?  @map("phone_changed_at")
+  nicknameChangedAt             DateTime?  @map("nickname_changed_at")
   // 後台放行：勾選後等同已驗證手機，但 phoneVerified 仍為 false
   // 用於管理員 / 內部測試帳號免簡訊驗證；保留 phoneVerified 真假狀態以供稽核
-  phoneVerificationBypass       Boolean   @default(false) @map("phone_verification_bypass")
-  phoneVerificationBypassReason String?   @map("phone_verification_bypass_reason")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  phoneVerificationBypass       Boolean    @default(false) @map("phone_verification_bypass")
+  phoneVerificationBypassReason String?    @map("phone_verification_bypass_reason")
+  createdAt                     DateTime   @default(now()) @map("created_at")
+  updatedAt                     DateTime   @updatedAt @map("updated_at")
 
   oauthProviders     OAuthProvider[]
   posts              Post[]
@@ -53,6 +53,7 @@ model User {
   dailyTaskProgress  DailyTaskProgress[]
   taskEventLog       TaskEventLog[]
   cosmetics          UserCosmetic[]
+  bets               Bet[]
   promoReferral      PromoReferral?
   adminPermissions   AdminPermission[]
 
@@ -155,34 +156,34 @@ enum PostSection {
 }
 
 model Post {
-  id          String      @id @default(cuid())
-  boardId     String      @map("board_id")
-  board       Board       @relation(fields: [boardId], references: [id])
-  authorId    String      @map("author_id")
-  author      User        @relation(fields: [authorId], references: [id])
-  title       String
-  content     String      @db.Text
-  status      PostStatus  @default(PUBLISHED)
-  section     PostSection @default(DISCUSSION)
-  isPinned    Boolean     @default(false) @map("is_pinned")
-  isLocked    Boolean     @default(false) @map("is_locked")
-  viewCount   Int         @default(0) @map("view_count")
-  replyCount  Int         @default(0) @map("reply_count")
-  pushCount   Int         @default(0) @map("push_count")
+  id           String      @id @default(cuid())
+  boardId      String      @map("board_id")
+  board        Board       @relation(fields: [boardId], references: [id])
+  authorId     String      @map("author_id")
+  author       User        @relation(fields: [authorId], references: [id])
+  title        String
+  content      String      @db.Text
+  status       PostStatus  @default(PUBLISHED)
+  section      PostSection @default(DISCUSSION)
+  isPinned     Boolean     @default(false) @map("is_pinned")
+  isLocked     Boolean     @default(false) @map("is_locked")
+  viewCount    Int         @default(0) @map("view_count")
+  replyCount   Int         @default(0) @map("reply_count")
+  pushCount    Int         @default(0) @map("push_count")
   // 最後活動時間：發文時等於 createdAt，之後 reply 來才更新。
   // 改為 non-null 以避免 ORDER BY lastReplyAt 時的 NULLS LAST/FIRST 行為不一致。
-  lastReplyAt DateTime    @default(now()) @map("last_reply_at")
-  lastReplyBy String?     @map("last_reply_by")
+  lastReplyAt  DateTime    @default(now()) @map("last_reply_at")
+  lastReplyBy  String?     @map("last_reply_by")
   // 新聞 Agent 自動發文標記：true 表示走「24h 自動退置頂 + 無互動回 DRAFT」生命週期
   // 彩券自動發文維持 false，不受相關 cron 影響
-  isAutoPosted Boolean    @default(false) @map("is_auto_posted")
+  isAutoPosted Boolean     @default(false) @map("is_auto_posted")
   // 置頂到期時間；到了 cron 會自動 unpin。null 表示永久置頂或未置頂
-  pinnedUntil DateTime?   @map("pinned_until")
+  pinnedUntil  DateTime?   @map("pinned_until")
   // 首次發布時間（DRAFT→PUBLISHED 當下寫入）。新聞 24h 無互動退草稿 cron 以此為起算，
   // 避免「草稿放超過 24h 才審核通過、一上架就被秒退」。null 代表尚未發布或舊資料（cron 會 fallback createdAt）
-  publishedAt DateTime?   @map("published_at")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  publishedAt  DateTime?   @map("published_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   replies   Reply[]
   pushes    Push[]
@@ -378,8 +379,8 @@ model UserLotteryPick {
   userId     String   @map("user_id")
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   gameType   String   @map("game_type") // LOTTO649 / SUPER_LOTTO / DAILY539 / LOTTO1224 / LOTTO3D / LOTTO4D
-  label      String   // 使用者自訂的組名，如「我的固定組合」
-  numbers    Json     // 主號碼陣列 [7, 12, 22, ...]
+  label      String // 使用者自訂的組名，如「我的固定組合」
+  numbers    Json // 主號碼陣列 [7, 12, 22, ...]
   specialNum Json?    @map("special_num") // 特別號（大樂透/威力彩才有）
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -403,16 +404,16 @@ model Marquee {
 
 // ===== 意見回報 =====
 model Feedback {
-  id        String         @id @default(cuid())
-  authorId  String         @map("author_id")
-  author    User           @relation("FeedbackAuthor", fields: [authorId], references: [id])
+  id        String          @id @default(cuid())
+  authorId  String          @map("author_id")
+  author    User            @relation("FeedbackAuthor", fields: [authorId], references: [id])
   type      FeedbackType
   title     String
-  content   String         @db.Text
-  status    FeedbackStatus @default(PENDING)
+  content   String          @db.Text
+  status    FeedbackStatus  @default(PENDING)
   replies   FeedbackReply[]
-  createdAt DateTime       @default(now()) @map("created_at")
-  updatedAt DateTime       @updatedAt @map("updated_at")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
 
   @@index([authorId])
   @@index([status])
@@ -448,13 +449,13 @@ enum FeedbackStatus {
 
 // ===== 密碼重設 =====
 model PasswordReset {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String   @unique
-  expiresAt DateTime @map("expires_at")
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@map("password_resets")
@@ -486,14 +487,14 @@ enum VerifyPurpose {
 
 // ===== Email 驗證（用於換綁手機等情境） =====
 model EmailVerification {
-  id        String           @id @default(cuid())
-  userId    String           @map("user_id")
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String           @unique
+  id        String             @id @default(cuid())
+  userId    String             @map("user_id")
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String             @unique
   purpose   EmailVerifyPurpose
-  expiresAt DateTime         @map("expires_at")
-  usedAt    DateTime?        @map("used_at")
-  createdAt DateTime         @default(now()) @map("created_at")
+  expiresAt DateTime           @map("expires_at")
+  usedAt    DateTime?          @map("used_at")
+  createdAt DateTime           @default(now()) @map("created_at")
 
   @@index([userId, purpose])
   @@map("email_verifications")
@@ -525,22 +526,22 @@ model SmsProviderConfig {
 // ===== 實體名稱翻譯（通用，支援多種類型） =====
 // entityType: team, player, league, coach, venue, country
 model Translation {
-  id          String   @id @default(cuid())
-  entityType  String   @map("entity_type")       // team | player | league | coach | venue | country
-  apiId       Int      @map("api_id")            // API-Sports 的實體 ID
-  sport       String                              // football | basketball | baseball
-  nameEn      String   @map("name_en")
-  nameZhTw    String   @map("name_zh_tw")
-  shortName   String?  @map("short_name")        // 簡稱（如：湖人、曼聯）
-  nickname    String?                             // 暱稱（如：詹皇、一哥）
-  logo        String?                             // 快取 logo/photo URL
-  source      String   @default("ai")            // ai | manual | official
-  verified    Boolean  @default(false)           // 是否經人工校正
-  bio         String?  @db.Text                   // 長文簡介（球員/球隊介紹，選填）
-  bioZhTw     String?  @db.Text @map("bio_zh_tw") // 中文簡介
-  extra       Json?                               // 額外欄位（位置、球衣號等）
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(cuid())
+  entityType String   @map("entity_type") // team | player | league | coach | venue | country
+  apiId      Int      @map("api_id") // API-Sports 的實體 ID
+  sport      String // football | basketball | baseball
+  nameEn     String   @map("name_en")
+  nameZhTw   String   @map("name_zh_tw")
+  shortName  String?  @map("short_name") // 簡稱（如：湖人、曼聯）
+  nickname   String? // 暱稱（如：詹皇、一哥）
+  logo       String? // 快取 logo/photo URL
+  source     String   @default("ai") // ai | manual | official
+  verified   Boolean  @default(false) // 是否經人工校正
+  bio        String?  @db.Text // 長文簡介（球員/球隊介紹，選填）
+  bioZhTw    String?  @map("bio_zh_tw") @db.Text // 中文簡介
+  extra      Json? // 額外欄位（位置、球衣號等）
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@unique([entityType, apiId, sport])
   @@index([entityType, sport])
@@ -550,16 +551,16 @@ model Translation {
 
 // ===== 翻譯使用量紀錄（成本監控） =====
 model TranslationUsage {
-  id             String   @id @default(cuid())
-  date           DateTime @default(now())
-  model          String                           // claude-haiku-4-5
-  inputTokens    Int      @map("input_tokens")
-  outputTokens   Int      @map("output_tokens")
-  costUsd        Float    @map("cost_usd")
-  entityType     String?  @map("entity_type")    // 翻譯哪類實體
-  itemCount      Int      @map("item_count")     // 這次翻了幾個
-  triggeredBy    String   @default("cron") @map("triggered_by") // cron | manual
-  createdAt      DateTime @default(now()) @map("created_at")
+  id           String   @id @default(cuid())
+  date         DateTime @default(now())
+  model        String // claude-haiku-4-5
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  costUsd      Float    @map("cost_usd")
+  entityType   String?  @map("entity_type") // 翻譯哪類實體
+  itemCount    Int      @map("item_count") // 這次翻了幾個
+  triggeredBy  String   @default("cron") @map("triggered_by") // cron | manual
+  createdAt    DateTime @default(now()) @map("created_at")
 
   @@index([date])
   @@map("translation_usage")
@@ -569,14 +570,14 @@ model TranslationUsage {
 // 與一般 sports 模組分離：世界盃為 4 年一次的特殊賽事，
 // 資料量小且有明確開始/結束，獨立表更易維護
 model WorldCupTeam {
-  id        Int     @id @default(autoincrement())
-  fifaCode  String  @unique @map("fifa_code")     // "MEX"
-  nameEn    String  @map("name_en")               // "Mexico"
-  nameZh    String? @map("name_zh")               // "墨西哥"（翻譯後填入）
-  flagEmoji String? @map("flag_emoji")            // "🇲🇽"
-  groupName String? @map("group_name")            // "A" ~ "L"
-  continent String?                                // "North America"
-  confed    String?                                // "CONCACAF"
+  id        Int      @id @default(autoincrement())
+  fifaCode  String   @unique @map("fifa_code") // "MEX"
+  nameEn    String   @map("name_en") // "Mexico"
+  nameZh    String?  @map("name_zh") // "墨西哥"（翻譯後填入）
+  flagEmoji String?  @map("flag_emoji") // "🇲🇽"
+  groupName String?  @map("group_name") // "A" ~ "L"
+  continent String? // "North America"
+  confed    String? // "CONCACAF"
   // ⚠️ 2026-05-18 暫時註解（schema 加了但 DB 沒同步，造成 migration drift）
   //    待 World Cup api-sports 整合 feature 動工時，再連同 seed-world-cup-from-apisports.ts 一起恢復
   // apiTeamId Int?    @unique @map("api_team_id")   // api-sports team ID
@@ -592,32 +593,32 @@ model WorldCupTeam {
 }
 
 model WorldCupMatch {
-  id              Int      @id @default(autoincrement())
-  matchNumber     Int      @unique @map("match_number")    // 1~104
-  round           String                                    // "Matchday 1" / "Round of 32" / "Final"
-  stage           String                                    // "group" | "knockout"
-  groupName       String?  @map("group_name")              // 小組賽才有 "Group A"
-  kickoffAt       DateTime @map("kickoff_at")              // UTC
-  venue           String
+  id          Int      @id @default(autoincrement())
+  matchNumber Int      @unique @map("match_number") // 1~104
+  round       String // "Matchday 1" / "Round of 32" / "Final"
+  stage       String // "group" | "knockout"
+  groupName   String?  @map("group_name") // 小組賽才有 "Group A"
+  kickoffAt   DateTime @map("kickoff_at") // UTC
+  venue       String
   // ⚠️ 2026-05-18 暫時註解（schema 加了但 DB 沒同步，造成 migration drift）
   //    待 World Cup api-sports 整合 feature 動工時，再連同 seed-world-cup-from-apisports.ts 一起恢復
   // venueCity       String?  @map("venue_city")              // api-sports 提供的城市
   // apiFixtureId    Int?     @unique @map("api_fixture_id")  // api-sports fixture ID
 
-  homeTeamId      Int?     @map("home_team_id")
-  awayTeamId      Int?     @map("away_team_id")
+  homeTeamId      Int?          @map("home_team_id")
+  awayTeamId      Int?          @map("away_team_id")
   homeTeam        WorldCupTeam? @relation("HomeTeam", fields: [homeTeamId], references: [id])
   awayTeam        WorldCupTeam? @relation("AwayTeam", fields: [awayTeamId], references: [id])
-  homePlaceholder String?  @map("home_placeholder")        // 淘汰賽 "W101" 之類
-  awayPlaceholder String?  @map("away_placeholder")
+  homePlaceholder String?       @map("home_placeholder") // 淘汰賽 "W101" 之類
+  awayPlaceholder String?       @map("away_placeholder")
 
-  homeScore       Int?     @map("home_score")
-  awayScore       Int?     @map("away_score")
-  status          String   @default("scheduled")           // scheduled | live | finished
-  liveMinute      Int?     @map("live_minute")             // 進行中的分鐘（0~90+）
+  homeScore  Int?   @map("home_score")
+  awayScore  Int?   @map("away_score")
+  status     String @default("scheduled") // scheduled | live | finished
+  liveMinute Int?   @map("live_minute") // 進行中的分鐘（0~90+）
 
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([kickoffAt])
   @@index([groupName])
@@ -630,13 +631,13 @@ model WorldCupMatch {
 // 刻意與 World Cup 完全隔離：友誼賽沒有小組/淘汰賽結構，且需要 api_fixture_id / logo_url
 // 等欄位（World Cup 的同名欄位因 2026-05-18 migration drift 被註解掉，新 model 直接繞開那顆雷）。
 model FriendlyTeam {
-  id        Int     @id @default(autoincrement())
-  apiTeamId Int     @unique @map("api_team_id")     // api-sports team ID
-  nameEn    String  @map("name_en")                 // "Germany"
-  nameZh    String? @map("name_zh")                 // "德國"（翻譯後填入）
-  logoUrl   String? @map("logo_url")                // api-sports 隊徽 URL（真 logo）
-  country   String?                                  // 國家名（國家隊）
-  isMarquee Boolean @default(false) @map("is_marquee")  // 是否為強隊（焦點戰判斷用）
+  id        Int      @id @default(autoincrement())
+  apiTeamId Int      @unique @map("api_team_id") // api-sports team ID
+  nameEn    String   @map("name_en") // "Germany"
+  nameZh    String?  @map("name_zh") // "德國"（翻譯後填入）
+  logoUrl   String?  @map("logo_url") // api-sports 隊徽 URL（真 logo）
+  country   String? // 國家名（國家隊）
+  isMarquee Boolean  @default(false) @map("is_marquee") // 是否為強隊（焦點戰判斷用）
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -648,10 +649,10 @@ model FriendlyTeam {
 
 model FriendlyMatch {
   id           Int      @id @default(autoincrement())
-  apiFixtureId Int      @unique @map("api_fixture_id")   // api-sports fixture ID（去重主鍵）
-  season       Int                                        // 2026
-  round        String?                                    // api-sports round 文字
-  kickoffAt    DateTime @map("kickoff_at")               // UTC
+  apiFixtureId Int      @unique @map("api_fixture_id") // api-sports fixture ID（去重主鍵）
+  season       Int // 2026
+  round        String? // api-sports round 文字
+  kickoffAt    DateTime @map("kickoff_at") // UTC
   venue        String?
   venueCity    String?  @map("venue_city")
 
@@ -662,13 +663,13 @@ model FriendlyMatch {
 
   homeScore   Int?    @map("home_score")
   awayScore   Int?    @map("away_score")
-  status      String  @default("scheduled")              // scheduled | live | finished
-  statusShort String? @map("status_short")               // 原始 api short code（FT/NS/1H...）
-  liveMinute  Int?    @map("live_minute")                // 進行中的分鐘
+  status      String  @default("scheduled") // scheduled | live | finished
+  statusShort String? @map("status_short") // 原始 api short code（FT/NS/1H...）
+  liveMinute  Int?    @map("live_minute") // 進行中的分鐘
 
   // 焦點戰白名單：只有 isFeatured=true 的場次才生成可索引頁面，其餘 noindex
   // （避免 488 場薄頁面反傷整站 SEO quality signal）
-  isFeatured  Boolean @default(false) @map("is_featured")
+  isFeatured Boolean @default(false) @map("is_featured")
 
   updatedAt DateTime @updatedAt @map("updated_at")
   createdAt DateTime @default(now()) @map("created_at")
@@ -683,16 +684,16 @@ model FriendlyMatch {
 // 紀錄管理員執行的敏感操作，例如代登入會員、密碼重設等
 // 動作分類用 string 而非 enum，方便未來新增動作不需 migration
 model AuditLog {
-  id            String   @id @default(cuid())
-  actorAdminId  String   @map("actor_admin_id")  // 執行動作的管理員 ID
-  actorNickname String   @map("actor_nickname")  // 快照當下的暱稱，避免 admin 改名後失真
-  action        String                            // IMPERSONATE_START | IMPERSONATE_STOP | RESET_PASSWORD | ...
-  targetUserId  String?  @map("target_user_id")   // 被操作的目標會員 ID（可為 null，例如系統設定變更）
-  targetNickname String? @map("target_nickname")
-  metadata      Json?                             // 額外資訊（IP、reason、tokenJti…）
-  ip            String?
-  userAgent     String?  @map("user_agent")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id             String   @id @default(cuid())
+  actorAdminId   String   @map("actor_admin_id") // 執行動作的管理員 ID
+  actorNickname  String   @map("actor_nickname") // 快照當下的暱稱，避免 admin 改名後失真
+  action         String // IMPERSONATE_START | IMPERSONATE_STOP | RESET_PASSWORD | ...
+  targetUserId   String?  @map("target_user_id") // 被操作的目標會員 ID（可為 null，例如系統設定變更）
+  targetNickname String?  @map("target_nickname")
+  metadata       Json? // 額外資訊（IP、reason、tokenJti…）
+  ip             String?
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   @@index([actorAdminId, createdAt])
   @@index([targetUserId, createdAt])
@@ -703,15 +704,15 @@ model AuditLog {
 // ===== 體育賽事 API 設定（後台可編輯） =====
 model SportsConfig {
   id          String   @id @default(cuid())
-  boardSlug   String   @unique @map("board_slug")      // 對應 Board.slug（如 nba, cba, epl）
-  sportType   String   @map("sport_type")              // football, basketball, baseball
-  displayName String   @map("display_name")            // NBA, CBA, 英超
+  boardSlug   String   @unique @map("board_slug") // 對應 Board.slug（如 nba, cba, epl）
+  sportType   String   @map("sport_type") // football, basketball, baseball
+  displayName String   @map("display_name") // NBA, CBA, 英超
   enabled     Boolean  @default(true)
-  apiHost     String   @map("api_host")                // API-Sports base host
+  apiHost     String   @map("api_host") // API-Sports base host
   leagueId    Int      @map("league_id")
-  season      String                                    // 賽季（如 2026, 2025-2026）
+  season      String // 賽季（如 2026, 2025-2026）
   cacheTtl    Json     @default("{}") @map("cache_ttl") // { live: 60, schedule: 300, ... }
-  extraConfig Json?    @map("extra_config")             // 額外設定
+  extraConfig Json?    @map("extra_config") // 額外設定
   updatedBy   String?  @map("updated_by")
   updatedAt   DateTime @updatedAt @map("updated_at")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -727,8 +728,8 @@ model SportsConfig {
 model AdminPagePermission {
   id              String   @id @default(cuid())
   pageKey         String   @unique @map("page_key")
-  allowModerator  Boolean  @default(false) @map("allow_moderator")  // 編輯人員
-  allowAdmin      Boolean  @default(false) @map("allow_admin")      // 總管理員
+  allowModerator  Boolean  @default(false) @map("allow_moderator") // 編輯人員
+  allowAdmin      Boolean  @default(false) @map("allow_admin") // 總管理員
   allowSuperAdmin Boolean  @default(true) @map("allow_super_admin") // 超級管理員
   updatedAt       DateTime @updatedAt @map("updated_at")
   createdAt       DateTime @default(now()) @map("created_at")
@@ -742,20 +743,21 @@ model AdminPagePermission {
 // 發/扣幣一律帶 idempotencyKey（@unique），同 key 重送不重複入帳。
 
 enum Currency {
-  G   // G幣：行為獎勵、論壇積分
-  P   // P幣：預測籌碼（只能用 G幣換）
+  G // G幣：行為獎勵、論壇積分
+  P // P幣：預測籌碼（只能用 G幣換）
   EXP // 經驗值：只增不減、用來升等（沿用帳本機制取得冪等與稽核）
 }
 
 enum LedgerReason {
-  TASK_REWARD       // 每日任務獎勵
-  SHOP_PURCHASE     // 裝飾商店購買（扣）
-  SHOP_REFUND       // 商店退款（入）
-  EXCHANGE_G_TO_P   // G→P 兌換
-  PREDICTION_STAKE  // 預測下注（扣 P）
+  TASK_REWARD // 每日任務獎勵
+  SHOP_PURCHASE // 裝飾商店購買（扣）
+  SHOP_REFUND // 商店退款（入）
+  EXCHANGE_G_TO_P // G→P 兌換
+  PREDICTION_STAKE // 預測下注（扣 P）
   PREDICTION_PAYOUT // 預測派彩（入 P）
   PREDICTION_REFUND // 延賽/平盤退本（入 P）
-  ADMIN_ADJUST      // 後台手動調整
+  PREDICTION_REVERSAL // 結算沖正（比分改判等；不准 UPDATE 舊帳，另記一筆更正）
+  ADMIN_ADJUST // 後台手動調整
 }
 
 model WalletAccount {
@@ -804,11 +806,11 @@ model LevelTier {
 // 任務「類型」由程式定義（綁事件）；獎勵數值程式預設 + seed，後台 CRUD 為後續增量。
 
 enum DailyTaskKey {
-  LOGIN       // 每日登入
-  VIEW_POSTS  // 瀏覽 5 篇文章
+  LOGIN // 每日登入
+  VIEW_POSTS // 瀏覽 5 篇文章
   CREATE_POST // 發表 1 篇文章
-  REPLY       // 回覆 3 篇文章
-  LIKE        // 按讚 5 次
+  REPLY // 回覆 3 篇文章
+  LIKE // 按讚 5 次
 }
 
 model DailyTaskDef {
@@ -858,20 +860,20 @@ model DailyTaskProgress {
 // 顏色一律由 rarity 決定（前端 token），不存自由填色。
 
 enum CosmeticType {
-  FRAME  // 頭像框
-  BADGE  // 勳章
-  TITLE  // 稱號
+  FRAME // 頭像框
+  BADGE // 勳章
+  TITLE // 稱號
   EFFECT // 頭像特效(Lottie，獨立槽位，可疊在任何框上)
 }
 
 enum Rarity {
-  COMMON    // 普通（中性灰/青綠淺）
-  RARE      // 稀有（青綠 #39B8BE 實心）
+  COMMON // 普通（中性灰/青綠淺）
+  RARE // 稀有（青綠 #39B8BE 實心）
   LEGENDARY // 傳說（琥珀金 #d97706 金邊）
 }
 
 enum CosmeticSource {
-  SHOP  // G幣購買
+  SHOP // G幣購買
   LEVEL // 等級解鎖
   EVENT // 賽事/活動獎勵（二期排行榜永久紀念勳章走這）
 }
@@ -890,13 +892,13 @@ model CosmeticItem {
   description   String?
   // Route A+：框可用「圖檔配件(assetUrl，電競軍階 PNG)」或純 CSS 環(無 assetUrl 看 rarity)；
   // 勳章=lucide(iconKey)；稱號=有色文字。
-  iconKey       String?      @map("icon_key")  // 勳章 lucide 名稱
+  iconKey       String?      @map("icon_key") // 勳章 lucide 名稱
   assetUrl      String?      @map("asset_url") // 圖檔配件 URL(頭像框/勳章圖)，優先於 CSS 環/lucide
   rarity        Rarity       @default(COMMON)
-  priceG        Int?         @map("price_g")        // null = 非販售品（純等級/賽事獲得）
-  purchasable   Boolean      @default(true)         // 是否販售中（停售=false，不影響已擁有者）
+  priceG        Int?         @map("price_g") // null = 非販售品（純等級/賽事獲得）
+  purchasable   Boolean      @default(true) // 是否販售中（停售=false，不影響已擁有者）
   levelRequired Int?         @map("level_required") // 購買需求等級（null=無）
-  enabled       Boolean      @default(true)         // 撤除開關(moderation)：false → 全站隱藏 + 卸下，罕用
+  enabled       Boolean      @default(true) // 撤除開關(moderation)：false → 全站隱藏 + 卸下，罕用
   availableFrom DateTime?    @map("available_from") // 限時上架（null=不限）
   availableTo   DateTime?    @map("available_to")
   sortOrder     Int          @default(0) @map("sort_order")
@@ -923,7 +925,7 @@ model UserCosmetic {
   acquiredAt   DateTime       @default(now()) @map("acquired_at")
   equippedSlot EquipSlot?     @map("equipped_slot") // FRAME/TITLE 裝備中；勳章一律 null
   isMainBadge  Boolean        @default(false) @map("is_main_badge") // 列表內聯展示的那 1 枚
-  pinnedOrder  Int?           @map("pinned_order")  // 個人頁釘選 1..3；null=未釘
+  pinnedOrder  Int?           @map("pinned_order") // 個人頁釘選 1..3；null=未釘
 
   @@unique([userId, itemId]) // 同品項只擁有一份（防重複購買）
   @@index([userId])
@@ -957,16 +959,16 @@ model PromoPartner {
 
 // 推廣碼：URL-safe 短碼，屬於某廠商，可標記渠道與到期。
 model PromoCode {
-  id        String      @id @default(cuid())
-  code      String      @unique // 短碼，如 FB2026（大小寫不敏感由 service 統一轉大寫存取）
-  partnerId String      @map("partner_id")
+  id        String       @id @default(cuid())
+  code      String       @unique // 短碼，如 FB2026（大小寫不敏感由 service 統一轉大寫存取）
+  partnerId String       @map("partner_id")
   partner   PromoPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   channel   String? // 渠道標記（FB/IG/LINE…）
-  status    PromoStatus @default(ACTIVE)
-  expiresAt DateTime?   @map("expires_at")
+  status    PromoStatus  @default(ACTIVE)
+  expiresAt DateTime?    @map("expires_at")
   note      String?
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
 
   visits    PromoVisit[]
   referrals PromoReferral[]
@@ -1005,4 +1007,97 @@ model PromoReferral {
 
   @@index([codeId, createdAt])
   @@map("promo_referrals")
+}
+
+// ===== P幣競猜（二期預測系統） =====
+// 設計依據：《P幣競猜系統-詳細設計規格.md》（2026-07-07 圓桌定案）。
+// 不可逆三件套：ledger 冪等鍵（沿用 LedgerEntry.idempotencyKey）、Bet 單向狀態機、賠率/比分快照。
+// 錢不進 bet 表：扣注/派彩/退款/沖正全走 LedgerEntry（reason=PREDICTION_*），bet 只是狀態機。
+// 冪等鍵慣例：bet_stake:{betId} / bet_payout:{betId} / bet_refund:{betId} / bet_reversal:{原ledgerId}
+
+enum PredictionMarket {
+  WINLOSE // 勝負盤
+  OVER_UNDER // 大小分（整數盤口線遇平盤 → PUSH 退本金）
+}
+
+enum BetStatus {
+  PENDING // 已下注待結算
+  WON // 命中（派彩 = potentialPayout，含本金）
+  LOST // 未命中（本金已於下注時扣除，不再入帳）
+  PUSH // 大小分平盤（退回本金）
+  VOIDED // 延賽/腰斬/取消（退回本金）
+}
+
+// 競猜賽事：封盤與結算的 DB 權威。cron 從 API-Sports 同步 startTime/status，
+// 收單判斷只信這張表（不信 Redis）：apiStatus == 'NS' 且 now < startTime - buffer。
+model PredictionMatch {
+  id           String    @id @default(cuid())
+  boardSlug    String    @map("board_slug") // LEAGUE_CONFIG key：world-cup / mlb / epl…
+  sportType    String    @map("sport_type") // football | baseball
+  apiFixtureId Int       @map("api_fixture_id") // API-Sports fixture/game id
+  homeName     String    @map("home_name")
+  awayName     String    @map("away_name")
+  startTime    DateTime  @map("start_time") // 封盤依據（UTC）；cron 同步時一併更新
+  apiStatus    String    @default("NS") @map("api_status") // API 原始 status；白名單映射見結算 service
+  frozenAt     DateTime? @map("frozen_at") // POSTPONED 凍結起點；凍結滿 N 小時仍未恢復才 VOIDED 退款
+  finalScore   Json?     @map("final_score") // 結算來源比分快照（主/客/總分）
+  settledAt    DateTime? @map("settled_at") // 該場注單全部結算完成時間
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  quotes OddsQuote[]
+  bets   Bet[]
+
+  @@unique([boardSlug, apiFixtureId])
+  @@index([apiStatus, startTime]) // 賠率 cron 掃未開賽場次 / 結算 cron 掃完賽場次
+  @@map("prediction_matches")
+}
+
+// 賠率快照（append-only 不可變）：cron 與下注重驗寫入，Redis 只是它的顯示快取。
+// Bet.quoteId 指向這裡 = 每一注的賠率完整溯源（哪家、何時抓、原始 payload hash）。
+model OddsQuote {
+  id          String           @id @default(cuid())
+  matchId     String           @map("match_id")
+  match       PredictionMatch  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  bookmakerId Int              @map("bookmaker_id") // football WH=7 / baseball WH=22；依聯盟×玩法後台設定
+  market      PredictionMarket
+  selection   String // HOME / AWAY / OVER / UNDER
+  line        Decimal?         @db.Decimal(6, 2) // 大小分盤口線；勝負盤 = null
+  odds        Decimal          @db.Decimal(8, 3)
+  fetchedAt   DateTime         @map("fetched_at") // 新鮮度依據：下注時超過 60-90 秒觸發重驗
+  payloadHash String           @map("payload_hash") // 原始回應 hash（稽核用）
+  active      Boolean          @default(true) // 同組合最新一筆 = true，舊的翻 false
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  bets Bet[]
+
+  @@index([matchId, market, active])
+  @@map("odds_quotes")
+}
+
+// 注單：單向狀態機 PENDING → WON | LOST | PUSH | VOIDED（無回頭箭頭）。
+// 結算冪等雙保險：樂觀鎖（UPDATE ... WHERE status='PENDING'）+ ledger idempotencyKey。
+// stake > 0、potentialPayout = floor(stake × lockedOdds) 由應用層守（prod db push 不保證 CHECK）。
+model Bet {
+  id              String           @id @default(cuid())
+  userId          String           @map("user_id")
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchId         String           @map("match_id")
+  match           PredictionMatch  @relation(fields: [matchId], references: [id]) // 不 cascade：有注單的賽事不可刪
+  market          PredictionMarket
+  selection       String // HOME / AWAY / OVER / UNDER
+  line            Decimal?         @db.Decimal(6, 2) // 下注當下盤口線快照
+  stake           Int // 投注 P 幣
+  lockedOdds      Decimal          @db.Decimal(8, 3) // 下注瞬間 server 權威值（前端傳的只做比對，永不採信）
+  potentialPayout Int              @map("potential_payout") // 含本金，下注瞬間定死
+  quoteId         String           @map("quote_id")
+  quote           OddsQuote        @relation(fields: [quoteId], references: [id])
+  status          BetStatus        @default(PENDING)
+  settledScore    Json?            @map("settled_score") // 結算當下最終比分快照（回答「當時為何這樣判」）
+  settledAt       DateTime?        @map("settled_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  @@index([matchId, status]) // 結算掃描
+  @@index([userId, createdAt]) // 個人注單列表
+  @@map("bets")
 }
