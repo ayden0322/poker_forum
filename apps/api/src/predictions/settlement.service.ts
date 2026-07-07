@@ -15,7 +15,7 @@ import { Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 import { RedisService } from '../common/redis.service';
 import { EconomyService } from '../economy/economy.service';
-import { classifyStatus, decideOutcome, Outcome } from './settlement-rules';
+import { classifyStatus, decideOutcome, NON_WAIT_HINT_STATUSES, Outcome } from './settlement-rules';
 import {
   PredictionBoardConfig,
   POSTPONE_FREEZE_MS,
@@ -37,6 +37,7 @@ type MatchRow = {
   startTime: Date;
   frozenAt: Date | null;
   finishedAt: Date | null;
+  settledAt: Date | null;
   finalScore: Prisma.JsonValue;
 };
 
@@ -54,8 +55,16 @@ export class SettlementService {
     this.apiKey = this.config.get<string>('API_SPORTS_KEY', '');
   }
 
+  /** 每 board 一把行程內互斥：擋 cron tick 重疊/手動觸發並行（Codex 複審 M：舊 snapshot 搶先結算） */
+  private readonly roundInFlight = new Set<string>();
+
   /** 跑一輪：賽果同步 + 到期結算。回傳 API 呼叫數。 */
   async runRound(board: PredictionBoardConfig): Promise<number> {
+    if (this.roundInFlight.has(board.boardSlug)) {
+      this.logger.warn(`結算輪跳過（${board.boardSlug}）：前一輪尚未結束`);
+      return 0;
+    }
+    this.roundInFlight.add(board.boardSlug);
     let calls = 0;
     try {
       calls += await this.syncResults(board);
@@ -63,6 +72,8 @@ export class SettlementService {
       if (calls > 0) await this.bumpQuota(board.apiHost, calls);
     } catch (err) {
       this.logger.error(`結算輪失敗（${board.boardSlug}）：${err}`);
+    } finally {
+      this.roundInFlight.delete(board.boardSlug);
     }
     return calls;
   }
@@ -70,8 +81,17 @@ export class SettlementService {
   // ===== 賽果同步：已開打且未結算的場次 → 刷新 status / 比分 =====
 
   private async syncResults(board: PredictionBoardConfig): Promise<number> {
+    // frozenAt / 非等待狀態即使 startTime 被改期推到未來也要持續同步（Codex 複審 H1）
     const pending = await this.prisma.predictionMatch.findMany({
-      where: { boardSlug: board.boardSlug, settledAt: null, startTime: { lte: new Date() } },
+      where: {
+        boardSlug: board.boardSlug,
+        settledAt: null,
+        OR: [
+          { startTime: { lte: new Date() } },
+          { frozenAt: { not: null } },
+          { apiStatus: { in: NON_WAIT_HINT_STATUSES } },
+        ],
+      },
       select: { id: true, apiFixtureId: true, apiStatus: true, startTime: true, frozenAt: true, finishedAt: true },
     });
     if (pending.length === 0) return 0;
@@ -89,10 +109,17 @@ export class SettlementService {
         for (const item of data?.response ?? []) {
           const m = byFixtureId.get(item.fixture?.id);
           if (!m) continue;
-          // 1X2/大小分以 90 分鐘比分結算：優先 score.fulltime，缺才退 goals
-          const home = item.score?.fulltime?.home ?? item.goals?.home ?? null;
-          const away = item.score?.fulltime?.away ?? item.goals?.away ?? null;
-          await this.applySync(board, m, item.fixture?.status?.short, home, away, item.fixture?.date);
+          // 1X2/大小分以「90 分鐘比分」結算：只認 score.fulltime。
+          // ⚠️ 只有 status=FT 才准 fallback goals（Codex 複審 H2：AET/PEN 的 goals 是含延長賽總比分，
+          //    拿去結 90 分鐘盤會把押 DRAW 的判輸）。AET/PEN 缺 fulltime → 不寫比分，等下輪或人工。
+          const st = item.fixture?.status?.short as string | undefined;
+          let home = item.score?.fulltime?.home ?? null;
+          let away = item.score?.fulltime?.away ?? null;
+          if ((home === null || away === null) && st === 'FT') {
+            home = item.goals?.home ?? null;
+            away = item.goals?.away ?? null;
+          }
+          await this.applySync(board, m, st, home, away, item.fixture?.date);
         }
       }
     } else {
@@ -135,9 +162,14 @@ export class SettlementService {
 
     const data: Prisma.PredictionMatchUpdateInput = { apiStatus: newStatus };
     if (newDate) data.startTime = new Date(newDate); // 延賽改期會更新開賽時間
-    if (cls === 'FINAL' && home !== null && away !== null) {
-      data.finalScore = { home, away }; // grace 期間每輪刷新（吃比分更正）
-      if (!m.finishedAt) data.finishedAt = new Date(); // 首次觀測到完賽才蓋章，grace 從此起算
+    if (cls === 'FINAL') {
+      if (home !== null && away !== null) {
+        data.finalScore = { home, away }; // grace 期間每輪刷新（吃比分更正）
+        if (!m.finishedAt) data.finishedAt = new Date(); // 首次觀測到完賽才蓋章，grace 從此起算
+      } else {
+        // 完賽但拿不到可結算比分（如 AET/PEN 缺 fulltime）→ 不蓋 finishedAt、不結算，告警
+        this.logger.error(`⚠️ 完賽但缺 90 分鐘比分（${board.boardSlug} match=${m.id} status=${newStatus}），暫不結算`);
+      }
     }
     if (cls === 'FREEZE' && !m.frozenAt) data.frozenAt = new Date();
     // 恢復比賽（FREEZE → 進行中/完賽）：解除凍結；注意「回 NS」不解除（那是改日，交給結算輪退款）
@@ -150,19 +182,32 @@ export class SettlementService {
 
   private async settleDue(board: PredictionBoardConfig): Promise<void> {
     const now = Date.now();
+    // 掃描不能只看 startTime<=now：凍結/取消/延賽的賽事 startTime 可能被改期推到未來（Codex 複審 H1）
     const candidates = (await this.prisma.predictionMatch.findMany({
-      where: { boardSlug: board.boardSlug, settledAt: null, startTime: { lte: new Date() } },
+      where: {
+        boardSlug: board.boardSlug,
+        settledAt: null,
+        OR: [
+          { startTime: { lte: new Date() } },
+          { frozenAt: { not: null } },
+          { apiStatus: { in: NON_WAIT_HINT_STATUSES } },
+        ],
+      },
     })) as MatchRow[];
 
     for (const m of candidates) {
       const cls = classifyStatus(board.sportType, m.apiStatus);
       try {
-        if (cls === 'VOID') {
-          await this.voidMatch(m, `賽況 ${m.apiStatus}`);
+        if (cls === 'FREEZE' && !m.frozenAt) {
+          // 凍結蓋章不依賴哪條同步路徑先看到（odds pipeline 的 upsert 也會改 status 但不蓋章）
+          await this.prisma.predictionMatch.update({ where: { id: m.id }, data: { frozenAt: new Date() } });
+        } else if (cls === 'VOID') {
+          await this.voidMatch(m, `賽況 ${m.apiStatus}`, { reopen: false });
         } else if (cls === 'FREEZE' && m.frozenAt && now - m.frozenAt.getTime() >= POSTPONE_FREEZE_MS) {
-          await this.voidMatch(m, `凍結期滿仍 ${m.apiStatus}`);
+          await this.voidMatch(m, `凍結期滿仍 ${m.apiStatus}`, { reopen: false });
         } else if (cls === 'WAIT' && m.apiStatus === 'NS' && m.frozenAt) {
-          await this.voidMatch(m, '延賽後確認改日'); // 規格 §4.3：確認改期 → 退款
+          // 規格 §4.3 確認改期 → 舊注退款；賽事「重開」（不蓋 settledAt），改期後可正常接新注、正常結算
+          await this.voidMatch(m, '延賽後確認改日', { reopen: true });
         } else if (cls === 'FINAL' && m.finishedAt && now - m.finishedAt.getTime() >= SETTLE_GRACE_MS) {
           await this.settleMatch(m);
         }
@@ -173,7 +218,12 @@ export class SettlementService {
   }
 
   /** 完賽結算：逐注判定 → 樂觀鎖轉移 + 派彩/退款同 tx */
-  private async settleMatch(m: MatchRow): Promise<void> {
+  private async settleMatch(snapshot: MatchRow): Promise<void> {
+    // 結算前重讀最新 row（Codex 複審 M：不用舊 snapshot 派彩——同步可能剛改了比分或翻成 VOID）
+    const m = (await this.prisma.predictionMatch.findUnique({ where: { id: snapshot.id } })) as MatchRow | null;
+    if (!m || m.settledAt) return;
+    const cls = classifyStatus(m.sportType as 'football' | 'baseball', m.apiStatus);
+    if (cls !== 'FINAL' || !m.finishedAt || Date.now() - m.finishedAt.getTime() < SETTLE_GRACE_MS) return;
     const score = m.finalScore as { home: number; away: number } | null;
     if (!score || typeof score.home !== 'number' || typeof score.away !== 'number') {
       this.logger.error(`⚠️ 完賽但無有效比分（match=${m.id}），不結算，請人工確認`);
@@ -209,8 +259,12 @@ export class SettlementService {
     );
   }
 
-  /** 退款作廢（取消/凍結期滿/改日）：全部 PENDING 注單 → VOIDED + 退本金 */
-  private async voidMatch(m: MatchRow, why: string): Promise<void> {
+  /**
+   * 退款作廢：全部 PENDING 注單 → VOIDED + 退本金。
+   * reopen=true（改日）：不蓋 settledAt，只清凍結——賽事改期後照常接新注、照常結算；
+   * reopen=false（取消/凍結期滿）：蓋 settledAt 關場（收單與寫盤都會擋 settledAt/frozenAt 場次）。
+   */
+  private async voidMatch(m: MatchRow, why: string, opts: { reopen: boolean }): Promise<void> {
     const bets = await this.prisma.bet.findMany({ where: { matchId: m.id, status: 'PENDING' } });
     let voided = 0;
     for (const bet of bets) {
@@ -221,8 +275,14 @@ export class SettlementService {
       });
       if (ok) voided++;
     }
-    await this.markMatchSettled(m.id);
-    this.logger.warn(`賽事作廢退款（${m.boardSlug} match=${m.id}，${why}）：退 ${voided}/${bets.length} 注`);
+    if (opts.reopen) {
+      await this.prisma.predictionMatch.update({ where: { id: m.id }, data: { frozenAt: null } });
+    } else {
+      await this.markMatchSettled(m.id);
+    }
+    this.logger.warn(
+      `賽事作廢退款（${m.boardSlug} match=${m.id}，${why}${opts.reopen ? '，賽事重開' : ''}）：退 ${voided}/${bets.length} 注`,
+    );
   }
 
   /**

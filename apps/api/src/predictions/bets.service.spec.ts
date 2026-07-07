@@ -15,6 +15,8 @@ function makeMocks(oddsNum = 1.85) {
     apiFixtureId: 1562344,
     apiStatus: 'NS',
     startTime: future,
+    settledAt: null,
+    frozenAt: null,
   };
   const quote = {
     id: 'q1',
@@ -30,7 +32,7 @@ function makeMocks(oddsNum = 1.85) {
     walletAccount: { upsert: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue([{ id: 'w1' }]),
     predictionMatch: {
-      findUniqueOrThrow: jest.fn().mockResolvedValue({ apiStatus: 'NS', startTime: future }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ apiStatus: 'NS', startTime: future, settledAt: null, frozenAt: null }),
     },
     oddsQuote: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({ active: true, fetchedAt: new Date(), odds: D(oddsNum) }),
@@ -135,6 +137,20 @@ describe('BetsService.placeBet', () => {
     await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
   });
 
+  it('凍結中的賽事（延賽）→ MARKET_LOCKED', async () => {
+    const { prisma, economy, pipeline, match } = makeMocks();
+    prisma.predictionMatch.findUnique.mockResolvedValue({ ...match, frozenAt: new Date() });
+    const svc = new BetsService(prisma, economy, pipeline);
+    await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
+  });
+
+  it('已結算關場的賽事（取消後 API 翻回 NS+未來時間）→ MARKET_LOCKED，不可復活收注', async () => {
+    const { prisma, economy, pipeline, match } = makeMocks();
+    prisma.predictionMatch.findUnique.mockResolvedValue({ ...match, settledAt: new Date() });
+    const svc = new BetsService(prisma, economy, pipeline);
+    await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
+  });
+
   it('quote 與下注組合不符 → STALE_ODDS', async () => {
     const { prisma, economy, pipeline, quote } = makeMocks();
     prisma.oddsQuote.findUnique.mockResolvedValue({ ...quote, selection: 'AWAY' });
@@ -197,7 +213,7 @@ describe('BetsService.placeBet', () => {
   it('交易內封盤重查：交易期間賽事翻 live → MARKET_LOCKED、不扣款', async () => {
     const { prisma, economy, pipeline, txMock } = makeMocks();
     txMock.predictionMatch.findUniqueOrThrow.mockResolvedValue({
-      apiStatus: 'LIVE', startTime: new Date(Date.now() + 60 * 60 * 1000),
+      apiStatus: 'LIVE', startTime: new Date(Date.now() + 60 * 60 * 1000), settledAt: null, frozenAt: null,
     });
     const svc = new BetsService(prisma, economy, pipeline);
     await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');

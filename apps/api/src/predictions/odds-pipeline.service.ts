@@ -281,12 +281,13 @@ export class OddsPipelineService {
 
     const match = await this.prisma.predictionMatch.findUnique({
       where: { boardSlug_apiFixtureId: { boardSlug: board.boardSlug, apiFixtureId: parsed.apiFixtureId } },
-      select: { id: true, apiStatus: true, startTime: true },
+      select: { id: true, apiStatus: true, startTime: true, settledAt: true, frozenAt: true },
     });
     // 賽事不在 DB（football odds 視窗比 fixtures lookahead 大時可能發生）→ 跳過，下輪 fixtures 同步到再寫
     if (!match) return 0;
-    // 已開賽/完賽不寫盤（football odds 回應無 status，靠 DB 值擋）
+    // 已開賽/完賽/凍結/已結算不寫盤（凍結與已關場賽事不得重新開盤，Codex 結算複審 H1）
     if (match.apiStatus !== 'NS' || match.startTime.getTime() <= Date.now()) return 0;
+    if (match.settledAt || match.frozenAt) return 0;
 
     const payloadHash = createHash('sha256').update(JSON.stringify(rawItem)).digest('hex').slice(0, 32);
     const now = new Date();

@@ -35,6 +35,12 @@ export function classifyStatus(sportType: 'football' | 'baseball', status: strin
   return cls ?? 'UNKNOWN';
 }
 
+/**
+ * 「非等待」提示狀態（結算掃描用）：這些狀態即使 startTime 被改期推到未來，
+ * 也必須留在結算候選內（Codex 複審 H1：改期會把賽事推出 startTime<=now 掃描範圍，退款永遠不觸發）。
+ */
+export const NON_WAIT_HINT_STATUSES = ['CANC', 'ABD', 'AWD', 'WO', 'PST', 'POST', 'INTR'];
+
 export type Outcome = 'WON' | 'LOST' | 'PUSH';
 
 /**

@@ -97,7 +97,7 @@ export class BetsService {
     if (!board?.enabled || !board.markets.includes(input.market)) {
       reject('MARKET_LOCKED', '此賽事/玩法未開放競猜', HttpStatus.BAD_REQUEST);
     }
-    this.assertOpen(match.apiStatus, match.startTime);
+    this.assertOpen(match);
 
     // ── 檢查 3：quote 存在且屬於這個組合；超齡 → demand-driven 重驗（規格 §2.3）
     const lineDecimal = input.line == null ? null : new Prisma.Decimal(input.line);
@@ -154,12 +154,12 @@ export class BetsService {
         });
         await tx.$queryRaw`SELECT id FROM wallet_accounts WHERE user_id = ${userId} AND currency = 'P' FOR UPDATE`;
 
-        // 1) 封盤重查（開賽瞬間臨界競態；cron 可能剛把 status 翻掉）
+        // 1) 封盤重查（開賽瞬間臨界競態；cron 可能剛把 status 翻掉/凍結/結算）
         const freshMatch = await tx.predictionMatch.findUniqueOrThrow({
           where: { id: match.id },
-          select: { apiStatus: true, startTime: true },
+          select: { apiStatus: true, startTime: true, settledAt: true, frozenAt: true },
         });
-        this.assertOpen(freshMatch.apiStatus, freshMatch.startTime);
+        this.assertOpen(freshMatch);
 
         // 2) quote 重查（H2：檢查與成單之間 pipeline 可能翻盤，鎖到舊價就是漏洞）
         const freshQuote = await tx.oddsQuote.findUniqueOrThrow({
@@ -274,10 +274,15 @@ export class BetsService {
     };
   }
 
-  /** 收單條件：未開賽 + 未進封盤 buffer（規格 §3.2 檢查 1+2；交易內外共用） */
-  private assertOpen(apiStatus: string, startTime: Date): void {
-    if (apiStatus !== 'NS') reject('MARKET_LOCKED', '賽事已開賽或不可競猜', HttpStatus.CONFLICT);
-    if (Date.now() >= startTime.getTime() - LOCK_BUFFER_MS) {
+  /**
+   * 收單條件：未開賽 + 未進封盤 buffer + 未凍結 + 未結算（規格 §3.2；交易內外共用）。
+   * settledAt/frozenAt 檢查堵「取消/凍結期滿後 API 又翻回 NS+未來時間 → 已關場賽事被復活收注」
+   * （Codex 結算複審 H1）。
+   */
+  private assertOpen(m: { apiStatus: string; startTime: Date; settledAt: Date | null; frozenAt: Date | null }): void {
+    if (m.settledAt || m.frozenAt) reject('MARKET_LOCKED', '賽事已凍結或結算，不可競猜', HttpStatus.CONFLICT);
+    if (m.apiStatus !== 'NS') reject('MARKET_LOCKED', '賽事已開賽或不可競猜', HttpStatus.CONFLICT);
+    if (Date.now() >= m.startTime.getTime() - LOCK_BUFFER_MS) {
       reject('MARKET_LOCKED', '已封盤', HttpStatus.CONFLICT);
     }
   }
