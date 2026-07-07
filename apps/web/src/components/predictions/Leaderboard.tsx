@@ -8,10 +8,11 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { usePredictionLeaderboard } from '@/lib/predictions';
 
+// 金=榮譽：鎖品牌 accent #d97706（與裝飾系統傳說金同語義域；不用 Tailwind 預設 amber 避免色票漂移）
 const RANK_STYLE: Record<number, string> = {
-  1: 'bg-amber-500 text-white',
-  2: 'bg-amber-400/80 text-white',
-  3: 'bg-amber-300/80 text-amber-900',
+  1: 'bg-accent-500 text-white',
+  2: 'bg-accent-400/80 text-white',
+  3: 'bg-accent-300/80 text-accent-900',
 };
 
 export default function Leaderboard() {
@@ -64,6 +65,7 @@ export default function Leaderboard() {
                 </div>
               </div>
               <div className="text-right shrink-0">
+                <div className="text-[10px] text-gray-400">表現分</div>
                 <div className="font-mono-stadium tabular-nums font-bold text-gray-900">{r.score}</div>
                 <div className={`text-xs font-mono-stadium tabular-nums ${r.profit >= 0 ? 'text-[#2a8d92]' : 'text-gray-400'}`}>
                   {r.profit >= 0 ? '+' : ''}{r.profit} P

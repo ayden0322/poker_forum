@@ -39,12 +39,12 @@ export default function RecordClient({ nickname }: { nickname: string }) {
         ))}
       </div>
 
-      {/* 近期預測 */}
-      <h2 className="mt-6 text-base font-bold text-gray-900">近期預測</h2>
+      {/* 近期競猜 */}
+      <h2 className="mt-6 text-base font-bold text-gray-900">近期競猜</h2>
       <div className="mt-2 space-y-2">
         {(rec.recent ?? []).length === 0 ? (
           <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-400">
-            還沒有已結算的預測
+            還沒有已結算的競猜
           </div>
         ) : (
           rec.recent!.map((b, i) => {

@@ -261,7 +261,7 @@ export default function PredictionsClient() {
         </>
       )}
 
-      {slip && <BetSlip selection={slip} onClose={() => setSlip(null)} />}
+      <BetSlip selection={slip} onClose={() => setSlip(null)} />
     </div>
   );
 }
