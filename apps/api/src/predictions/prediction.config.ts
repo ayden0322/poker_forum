@@ -77,6 +77,13 @@ export const MATCH_MARKET_STAKE_CAP = 20_000;
 export const REVALIDATE_DAILY_BUDGET = 1_000;
 export const REVALIDATE_KEY_PREFIX = 'prediction:quota:revalidate';
 
+// ===== 結算（規格 §4） =====
+
+/** 完賽後寬限期：吃掉大部分官方比分更正窗，期滿才結算 */
+export const SETTLE_GRACE_MS = 20 * 60 * 1000;
+/** POSTPONED 凍結時長：期滿仍未恢復 → VOIDED 全額退款 */
+export const POSTPONE_FREEZE_MS = 12 * 60 * 60 * 1000;
+
 // ===== Redis 顯示快取 =====
 
 /** 顯示快取 TTL：需大於遠期頻率（30 分），否則遠期輪之間會空窗 */

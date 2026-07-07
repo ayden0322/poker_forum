@@ -1040,6 +1040,7 @@ model PredictionMatch {
   startTime    DateTime  @map("start_time") // 封盤依據（UTC）；cron 同步時一併更新
   apiStatus    String    @default("NS") @map("api_status") // API 原始 status；白名單映射見結算 service
   frozenAt     DateTime? @map("frozen_at") // POSTPONED 凍結起點；凍結滿 N 小時仍未恢復才 VOIDED 退款
+  finishedAt   DateTime? @map("finished_at") // 首次觀測到完賽狀態的時間；結算須等 grace period（吃掉比分更正窗）
   finalScore   Json?     @map("final_score") // 結算來源比分快照（主/客/總分）
   settledAt    DateTime? @map("settled_at") // 該場注單全部結算完成時間
   createdAt    DateTime  @default(now()) @map("created_at")

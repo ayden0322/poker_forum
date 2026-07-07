@@ -150,6 +150,40 @@ export class EconomyService {
     });
   }
 
+  /**
+   * 在「呼叫端提供的交易」內入帳。與 debitInTx 對稱：讓「結算派彩/退款 + 注單狀態轉移」
+   * 能在同一交易原子完成（任一步失敗整批 rollback，不會發生狀態轉了卻沒入帳）。
+   * 冪等由交易內回查 + DB @unique 雙保險（並發 P2002 由呼叫端 rollback 處理）。
+   */
+  async creditInTx(
+    tx: Prisma.TransactionClient,
+    params: MoveParams,
+  ): Promise<LedgerEntry> {
+    this.assertPositive(params.amount);
+
+    const existing = await tx.ledgerEntry.findUnique({
+      where: { idempotencyKey: params.idempotencyKey },
+    });
+    if (existing) return existing;
+
+    const account = await tx.walletAccount.upsert({
+      where: { userId_currency: { userId: params.userId, currency: params.currency } },
+      create: { userId: params.userId, currency: params.currency, balance: params.amount },
+      update: { balance: { increment: params.amount } },
+    });
+    return tx.ledgerEntry.create({
+      data: {
+        accountId: account.id,
+        amount: params.amount,
+        reason: params.reason,
+        refType: params.refType,
+        refId: params.refId,
+        idempotencyKey: params.idempotencyKey,
+        balanceAfter: account.balance,
+      },
+    });
+  }
+
   private assertPositive(amount: number) {
     if (!Number.isInteger(amount) || amount <= 0) {
       throw new BadRequestException('金額必須是正整數');
