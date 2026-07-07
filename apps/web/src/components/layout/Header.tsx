@@ -380,6 +380,15 @@ export function Header() {
                             會員中心
                           </Link>
                         )}
+                        {predData?.data.enabled === true && (
+                          <Link
+                            href={`/predictions/record/${encodeURIComponent(user.nickname)}`}
+                            className="block px-4 py-2 text-sm hover:bg-gray-50"
+                            onClick={() => setShowUserMenu(false)}
+                          >
+                            競猜紀錄
+                          </Link>
+                        )}
                         <Link
                           href="/settings"
                           className="block px-4 py-2 text-sm hover:bg-gray-50"
