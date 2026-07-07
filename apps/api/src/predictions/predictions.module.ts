@@ -3,6 +3,7 @@ import { EconomyModule } from '../economy/economy.module';
 import { OddsPipelineService } from './odds-pipeline.service';
 import { PredictionsCron } from './predictions.cron';
 import { BetsService } from './bets.service';
+import { MarketsService } from './markets.service';
 import { PredictionsController } from './predictions.controller';
 import { SettlementService } from './settlement.service';
 import { SettlementCron } from './settlement.cron';
@@ -17,7 +18,7 @@ import { PredictionsAdminController } from './predictions.admin.controller';
   imports: [EconomyModule],
   controllers: [PredictionsController, PredictionsAdminController],
   providers: [
-    OddsPipelineService, PredictionsCron, BetsService,
+    OddsPipelineService, PredictionsCron, BetsService, MarketsService,
     SettlementService, SettlementCron,
     ReconciliationService, ReconciliationCron, PredictionsAdminService,
   ],
