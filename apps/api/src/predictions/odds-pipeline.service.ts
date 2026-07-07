@@ -68,6 +68,9 @@ export class OddsPipelineService {
 
   /** demand-driven 重驗的 in-flight map（single-flight：同場併發下注共用一次重抓） */
   private readonly revalidateInFlight = new Map<string, Promise<boolean>>();
+  /** 同場寫盤互斥（Codex 複審 H3：cron 與重驗併發寫同組合會產生多筆 active）。
+   *  單行程互斥 + 寫入時 updateMany 全量翻舊，雙保險；跨 instance 由 prod 加固 partial unique 擋（規格 §10）。 */
+  private readonly storeMutex = new Map<string, Promise<unknown>>();
 
   /**
    * 單場 demand-driven 重驗（規格 §2.3）：下注時 quote 超齡 → 即時重抓該場盤口寫入 OddsQuote。
@@ -84,12 +87,11 @@ export class OddsPipelineService {
     const task = (async (): Promise<boolean> => {
       // 重驗預算（每 host 每日；與顯示 cron 的額度分開計，爆了 fail-closed）
       const budgetKey = `${REVALIDATE_KEY_PREFIX}:${board.apiHost}:${new Date().toISOString().slice(0, 10).replace(/-/g, '')}`;
-      const used = (await this.redis.get<number>(budgetKey)) ?? 0;
-      if (used >= REVALIDATE_DAILY_BUDGET) {
+      const used = await this.redis.incrWithTtl(budgetKey, 26 * 60 * 60); // 原子遞增（先佔額再打，超了拒單）
+      if (used > REVALIDATE_DAILY_BUDGET) {
         this.logger.warn(`重驗預算爆量：${board.apiHost} 今日 ${used}/${REVALIDATE_DAILY_BUDGET}，拒單`);
         return false;
       }
-      await this.redis.set(budgetKey, used + 1, 26 * 60 * 60);
       await this.bumpQuota(board.apiHost, 1);
 
       const idParam = board.sportType === 'football' ? 'fixture' : 'game';
@@ -137,9 +139,7 @@ export class OddsPipelineService {
 
   private async bumpQuota(host: string, calls: number): Promise<void> {
     if (calls <= 0) return;
-    const key = this.quotaKey(host);
-    const used = (await this.redis.get<number>(key)) ?? 0;
-    await this.redis.set(key, used + calls, 26 * 60 * 60); // 存 26h，跨日自然換 key
+    await this.redis.incrWithTtl(this.quotaKey(host), 26 * 60 * 60, calls); // 原子；存 26h 跨日自然換 key
   }
 
   // ===== API 呼叫（保留 paging，callApi 模式沿用 sports.service） =====
@@ -290,50 +290,70 @@ export class OddsPipelineService {
 
     const payloadHash = createHash('sha256').update(JSON.stringify(rawItem)).digest('hex').slice(0, 32);
     const now = new Date();
-    let written = 0;
 
-    for (const q of parsed.quotes) {
-      const existing = await this.prisma.oddsQuote.findFirst({
-        where: {
-          matchId: match.id,
-          market: q.market,
-          selection: q.selection,
-          line: q.line === null ? null : new Prisma.Decimal(q.line),
-          active: true,
-        },
-        select: { id: true, odds: true },
-      });
-
-      if (existing && existing.odds.toNumber() === q.odds) {
-        // 賠率沒變：re-confirm 新鮮度（odds/line/selection 維持不可變）
-        await this.prisma.oddsQuote.update({
-          where: { id: existing.id },
-          data: { fetchedAt: now, payloadHash },
+    // 同場寫盤互斥（single-flight 串行化）：等前一個寫完才寫，cron 與重驗不互踩
+    const prev = this.storeMutex.get(match.id) ?? Promise.resolve();
+    const task = prev.catch(() => undefined).then(async () => {
+      let written = 0;
+      for (const q of parsed.quotes) {
+        const lineDecimal = q.line === null ? null : new Prisma.Decimal(q.line);
+        const existing = await this.prisma.oddsQuote.findFirst({
+          where: {
+            matchId: match.id,
+            bookmakerId: board.bookmakerId,
+            market: q.market,
+            selection: q.selection,
+            line: lineDecimal,
+            active: true,
+          },
+          orderBy: { fetchedAt: 'desc' },
+          select: { id: true, odds: true },
         });
-      } else {
-        await this.prisma.$transaction([
-          ...(existing
-            ? [this.prisma.oddsQuote.update({ where: { id: existing.id }, data: { active: false } })]
-            : []),
-          this.prisma.oddsQuote.create({
-            data: {
-              matchId: match.id,
-              bookmakerId: board.bookmakerId,
-              market: q.market,
-              selection: q.selection,
-              line: q.line,
-              odds: q.odds,
-              fetchedAt: now,
-              payloadHash,
-            },
-          }),
-        ]);
-      }
-      written++;
-    }
 
-    await this.writeDisplayCache(board, parsed, match.id);
-    return written;
+        if (existing && existing.odds.toNumber() === q.odds) {
+          // 賠率沒變：re-confirm 新鮮度（odds/line/selection 維持不可變）
+          await this.prisma.oddsQuote.update({
+            where: { id: existing.id },
+            data: { fetchedAt: now, payloadHash },
+          });
+        } else {
+          // updateMany 全量翻舊（而非只翻 findFirst 那筆）：若歷史競態殘留多筆 active，這裡自癒
+          await this.prisma.$transaction([
+            this.prisma.oddsQuote.updateMany({
+              where: {
+                matchId: match.id,
+                bookmakerId: board.bookmakerId,
+                market: q.market,
+                selection: q.selection,
+                line: lineDecimal,
+                active: true,
+              },
+              data: { active: false },
+            }),
+            this.prisma.oddsQuote.create({
+              data: {
+                matchId: match.id,
+                bookmakerId: board.bookmakerId,
+                market: q.market,
+                selection: q.selection,
+                line: q.line,
+                odds: q.odds,
+                fetchedAt: now,
+                payloadHash,
+              },
+            }),
+          ]);
+        }
+        written++;
+      }
+      await this.writeDisplayCache(board, parsed, match.id);
+      return written;
+    });
+    this.storeMutex.set(match.id, task);
+    task.finally(() => {
+      if (this.storeMutex.get(match.id) === task) this.storeMutex.delete(match.id);
+    });
+    return task;
   }
 
   /** Redis 顯示快取（前端讀這裡；收單不看） */

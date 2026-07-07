@@ -1095,8 +1095,11 @@ model Bet {
   status          BetStatus        @default(PENDING)
   settledScore    Json?            @map("settled_score") // 結算當下最終比分快照（回答「當時為何這樣判」）
   settledAt       DateTime?        @map("settled_at")
+  // 請求級冪等（Codex 複審 M2）：前端每次確認產生 uuid，timeout 重送/雙擊回同一張單，不重複扣款
+  clientRequestId String?          @map("client_request_id")
   createdAt       DateTime         @default(now()) @map("created_at")
 
+  @@unique([userId, clientRequestId])
   @@index([matchId, status]) // 結算掃描
   @@index([userId, createdAt]) // 個人注單列表
   @@map("bets")

@@ -16,6 +16,8 @@ class PlaceBetDto {
   @IsInt() @IsPositive() stake!: number;
   @IsString() quoteId!: string;
   @IsNumber() @Min(1) clientOdds!: number;
+  /** 請求級冪等鍵（前端每次確認產生 uuid） */
+  @IsOptional() @IsString() requestId?: string;
 }
 
 @Controller('predictions')

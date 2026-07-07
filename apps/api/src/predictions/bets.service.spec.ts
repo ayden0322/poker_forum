@@ -6,7 +6,7 @@ import { QUOTE_MAX_AGE_MS, DAILY_STAKE_CAP } from './prediction.config';
 
 const D = (n: number) => new Prisma.Decimal(n);
 
-function makeMocks() {
+function makeMocks(oddsNum = 1.85) {
   const future = new Date(Date.now() + 60 * 60 * 1000); // 1 小時後開賽
   const match = {
     id: 'm1',
@@ -22,28 +22,32 @@ function makeMocks() {
     market: 'WINLOSE',
     selection: 'HOME',
     line: null,
-    odds: D(1.85),
+    odds: D(oddsNum),
     fetchedAt: new Date(), // 新鮮
     active: true,
   };
   const txMock = {
+    walletAccount: { upsert: jest.fn().mockResolvedValue({}) },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'w1' }]),
     predictionMatch: {
       findUniqueOrThrow: jest.fn().mockResolvedValue({ apiStatus: 'NS', startTime: future }),
     },
+    oddsQuote: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ active: true, fetchedAt: new Date(), odds: D(oddsNum) }),
+    },
     bet: {
-      create: jest.fn().mockResolvedValue({
-        id: 'b1', stake: 500, line: null, status: 'PENDING',
-      }),
+      aggregate: jest.fn().mockResolvedValue({ _sum: { stake: 0 } }),
+      create: jest.fn().mockImplementation(({ data }: any) =>
+        Promise.resolve({
+          id: 'b1', stake: data.stake, line: data.line, lockedOdds: data.lockedOdds,
+          potentialPayout: data.potentialPayout, status: 'PENDING',
+        })),
     },
   };
   const prisma: any = {
     predictionMatch: { findUnique: jest.fn().mockResolvedValue(match) },
     oddsQuote: { findUnique: jest.fn().mockResolvedValue(quote), findFirst: jest.fn() },
-    bet: {
-      aggregate: jest.fn().mockResolvedValue({ _sum: { stake: 0 } }),
-      create: jest.fn(),
-      findMany: jest.fn(),
-    },
+    bet: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn() },
     $transaction: jest.fn((fn: any) => fn(txMock)),
   };
   const economy: any = { debitInTx: jest.fn().mockResolvedValue({}) };
@@ -70,22 +74,41 @@ describe('BetsService.placeBet', () => {
   beforeAll(() => { process.env.PREDICTION_ENABLED = 'true'; });
   afterAll(() => { delete process.env.PREDICTION_ENABLED; });
 
-  it('happy path：鎖權威賠率、floor 派彩、bet_stake 冪等鍵', async () => {
+  it('happy path：錢包鎖→重查→鎖權威賠率、floor 派彩、bet_stake 冪等鍵', async () => {
     const { prisma, economy, pipeline, txMock } = makeMocks();
     const svc = new BetsService(prisma, economy, pipeline);
     const r = await svc.placeBet('u1', validInput);
 
     expect(r.betId).toBe('b1');
-    expect(r.potentialPayout).toBe(Math.floor(500 * 1.85)); // 925
-    expect(txMock.bet.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ potentialPayout: 925, quoteId: 'q1' }) }),
-    );
+    expect(r.potentialPayout).toBe(925); // 500 × 1.85
+    expect(txMock.$queryRaw).toHaveBeenCalled(); // 錢包行鎖（H1）
+    expect(txMock.oddsQuote.findUniqueOrThrow).toHaveBeenCalled(); // 交易內 quote 重查（H2）
     expect(economy.debitInTx).toHaveBeenCalledWith(
       txMock,
       expect.objectContaining({
         currency: 'P', amount: 500, reason: 'PREDICTION_STAKE', idempotencyKey: 'bet_stake:b1',
       }),
     );
+  });
+
+  it('派彩精度（M1）：100×1.15 必須是 115，不能被浮點吃成 114', async () => {
+    const { prisma, economy, pipeline } = makeMocks(1.15);
+    const svc = new BetsService(prisma, economy, pipeline);
+    expect(Math.floor(100 * 1.15)).toBe(114); // JS 浮點的坑本尊
+    const r = await svc.placeBet('u1', { ...validInput, stake: 100, clientOdds: 1.15 });
+    expect(r.potentialPayout).toBe(115); // Decimal 算的正確值
+  });
+
+  it('請求級冪等（M2）：同 requestId 已成單 → 回既有單、不再扣款', async () => {
+    const { prisma, economy, pipeline } = makeMocks();
+    prisma.bet.findUnique.mockResolvedValue({
+      id: 'b0', stake: 500, line: null, lockedOdds: D(1.85), potentialPayout: 925, status: 'PENDING',
+    });
+    const svc = new BetsService(prisma, economy, pipeline);
+    const r = await svc.placeBet('u1', { ...validInput, requestId: 'req-1' });
+    expect(r.betId).toBe('b0');
+    expect(r.idempotentReplay).toBe(true);
+    expect(economy.debitInTx).not.toHaveBeenCalled();
   });
 
   it('功能開關關閉 → PREDICTION_DISABLED（fail-closed）', async () => {
@@ -154,13 +177,14 @@ describe('BetsService.placeBet', () => {
     await expectReject(svc.placeBet('u1', { ...validInput, clientOdds: 9.9 }), 'ODDS_CHANGED');
   });
 
-  it('每日總額上限 → LIMIT_EXCEEDED', async () => {
-    const { prisma, economy, pipeline } = makeMocks();
-    prisma.bet.aggregate
+  it('每日總額上限（交易內、鎖後聚合）→ LIMIT_EXCEEDED', async () => {
+    const { prisma, economy, pipeline, txMock } = makeMocks();
+    txMock.bet.aggregate
       .mockResolvedValueOnce({ _sum: { stake: DAILY_STAKE_CAP } }) // 今日已滿
       .mockResolvedValueOnce({ _sum: { stake: 0 } });
     const svc = new BetsService(prisma, economy, pipeline);
     await expectReject(svc.placeBet('u1', validInput), 'LIMIT_EXCEEDED');
+    expect(economy.debitInTx).not.toHaveBeenCalled();
   });
 
   it('單注超過上限 → LIMIT_EXCEEDED（不打 DB）', async () => {
@@ -177,6 +201,16 @@ describe('BetsService.placeBet', () => {
     });
     const svc = new BetsService(prisma, economy, pipeline);
     await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
+    expect(economy.debitInTx).not.toHaveBeenCalled();
+  });
+
+  it('交易內 quote 重查（H2）：交易期間 pipeline 翻盤 → STALE_ODDS、不扣款', async () => {
+    const { prisma, economy, pipeline, txMock } = makeMocks();
+    txMock.oddsQuote.findUniqueOrThrow.mockResolvedValue({
+      active: false, fetchedAt: new Date(), odds: D(1.85), // 剛被翻掉
+    });
+    const svc = new BetsService(prisma, economy, pipeline);
+    await expectReject(svc.placeBet('u1', validInput), 'STALE_ODDS');
     expect(economy.debitInTx).not.toHaveBeenCalled();
   });
 
