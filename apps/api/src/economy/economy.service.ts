@@ -184,6 +184,43 @@ export class EconomyService {
     });
   }
 
+  /**
+   * G→P 兌換（單向，規格：預設 100G=1000P；比例之後搬後台可調）。
+   * 同一交易內：扣 G + 入 P（兩筆 ledger 同 reason EXCHANGE_G_TO_P、同 requestId 尾碼），
+   * 冪等：同 requestId 重送不重複兌換。
+   */
+  async exchangeGtoP(userId: string, gAmount: number, requestId: string): Promise<{ g: number; p: number; pGained: number }> {
+    this.assertPositive(gAmount);
+    const pGained = gAmount * EconomyService.EXCHANGE_P_PER_G;
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.debitInTx(tx, {
+        userId,
+        currency: 'G',
+        amount: gAmount,
+        reason: 'EXCHANGE_G_TO_P',
+        refType: 'exchange',
+        refId: requestId,
+        idempotencyKey: `exchange_g:${userId}:${requestId}`,
+      });
+      await this.creditInTx(tx, {
+        userId,
+        currency: 'P',
+        amount: pGained,
+        reason: 'EXCHANGE_G_TO_P',
+        refType: 'exchange',
+        refId: requestId,
+        idempotencyKey: `exchange_p:${userId}:${requestId}`,
+      });
+    });
+
+    const [g, p] = await Promise.all([this.getBalance(userId, 'G'), this.getBalance(userId, 'P')]);
+    return { g, p, pGained };
+  }
+
+  /** 兌換比例：1 G = 10 P（100 G = 1,000 P，規格 §0；搬後台可調為後續增量） */
+  static readonly EXCHANGE_P_PER_G = 10;
+
   private assertPositive(amount: number) {
     if (!Number.isInteger(amount) || amount <= 0) {
       throw new BadRequestException('金額必須是正整數');

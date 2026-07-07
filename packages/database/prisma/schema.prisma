@@ -1089,7 +1089,7 @@ model Bet {
   selection       String // HOME / AWAY / OVER / UNDER
   line            Decimal?         @db.Decimal(6, 2) // 下注當下盤口線快照
   stake           Int // 投注 P 幣
-  lockedOdds      Decimal          @db.Decimal(8, 3) // 下注瞬間 server 權威值（前端傳的只做比對，永不採信）
+  lockedOdds      Decimal          @map("locked_odds") @db.Decimal(8, 3) // 下注瞬間 server 權威值（前端傳的只做比對，永不採信）
   potentialPayout Int              @map("potential_payout") // 含本金，下注瞬間定死
   quoteId         String           @map("quote_id")
   quote           OddsQuote        @relation(fields: [quoteId], references: [id])

@@ -95,6 +95,47 @@ export function useMyBets() {
   });
 }
 
+export interface LeaderboardRow {
+  rank: number;
+  nickname: string;
+  score: number;
+  profit: number;
+  n: number;
+  winRate: number;
+  avgOdds: number;
+}
+
+/** 排行榜（公開；投注額加權 ROI 表現分） */
+export function usePredictionLeaderboard(period: 'week' | 'month') {
+  return useQuery<{ data: { enabled: boolean; periodStart: string; rows: LeaderboardRow[] } }>({
+    queryKey: ['predictions', 'leaderboard', period],
+    queryFn: () => apiFetch(`/predictions/leaderboard?period=${period}`),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export interface PublicRecord {
+  enabled: boolean;
+  found?: boolean;
+  nickname?: string;
+  stats?: { n: number; winRate: number; avgOdds: number };
+  recent?: Array<{
+    board: string; home: string; away: string; startTime: string;
+    market: 'WINLOSE' | 'OVER_UNDER'; selection: MyBet['selection']; line: number | null;
+    lockedOdds: number; status: 'WON' | 'LOST' | 'PUSH';
+  }>;
+}
+
+/** 公開戰績（不含金額——曬的是預測不是錢） */
+export function usePublicRecord(nickname: string | null) {
+  return useQuery<{ data: PublicRecord }>({
+    queryKey: ['predictions', 'record', nickname],
+    queryFn: () => apiFetch(`/predictions/record/${encodeURIComponent(nickname!)}`),
+    enabled: !!nickname,
+    staleTime: 60_000,
+  });
+}
+
 /** 下注（錯誤走 ApiError：code=ODDS_CHANGED 時 data 內含新 { quoteId, odds, line }） */
 export function placeBet(payload: PlaceBetPayload): Promise<{ data: PlaceBetResult }> {
   return apiFetch('/predictions/bets', {

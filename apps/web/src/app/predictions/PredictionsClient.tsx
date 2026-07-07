@@ -20,6 +20,7 @@ import {
   usePredictionMarkets,
 } from '@/lib/predictions';
 import BetSlip, { SlipSelection } from '@/components/predictions/BetSlip';
+import Leaderboard from '@/components/predictions/Leaderboard';
 
 const BOARD_LABEL: Record<string, string> = {
   'world-cup': '世界盃',
@@ -177,6 +178,7 @@ export default function PredictionsClient() {
   const enabled = boardsData?.data.enabled;
   const [board, setBoard] = useState<string | null>(null);
   const [slip, setSlip] = useState<SlipSelection | null>(null);
+  const [view, setView] = useState<'markets' | 'leaderboard'>('markets');
 
   useEffect(() => {
     if (!board && boards.length) setBoard(boards[0].board);
@@ -201,35 +203,63 @@ export default function PredictionsClient() {
       <h1 className="text-xl font-bold text-gray-900">賽事競猜</h1>
       <p className="mt-1 text-sm text-gray-500">賽前用 P 幣競猜，開賽即封盤，賠率在你確認當下鎖定。</p>
 
-      {/* 板塊切換 */}
-      <div className="mt-4 flex gap-2">
-        {boards.map((b) => (
-          <button
-            key={b.board}
-            onClick={() => setBoard(b.board)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              board === b.board ? 'bg-[#39B8BE] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-[#39B8BE]/60'
-            }`}
-          >
-            {BOARD_LABEL[b.board] ?? b.board}
-          </button>
-        ))}
+      {/* 主視圖切換：盤口 / 排行榜 */}
+      <div className="mt-4 flex gap-2 border-b border-gray-100 pb-3">
+        <button
+          onClick={() => setView('markets')}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            view === 'markets' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600'
+          }`}
+        >
+          競猜盤口
+        </button>
+        <button
+          onClick={() => setView('leaderboard')}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            view === 'leaderboard' ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600'
+          }`}
+        >
+          排行榜
+        </button>
       </div>
 
-      {/* 賽事列表 */}
-      <div className="mt-4 space-y-3">
-        {boardsLoading || isLoading ? (
-          <div className="text-center text-sm text-gray-400 py-10">載入盤口中…</div>
-        ) : matches.length === 0 ? (
-          <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-400">
-            目前沒有可競猜的賽事，開賽前會陸續開盤
+      {view === 'leaderboard' ? (
+        <div className="mt-4">
+          <Leaderboard />
+        </div>
+      ) : (
+        <>
+          {/* 板塊切換 */}
+          <div className="mt-4 flex gap-2">
+            {boards.map((b) => (
+              <button
+                key={b.board}
+                onClick={() => setBoard(b.board)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  board === b.board ? 'bg-[#39B8BE] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-[#39B8BE]/60'
+                }`}
+              >
+                {BOARD_LABEL[b.board] ?? b.board}
+              </button>
+            ))}
           </div>
-        ) : (
-          matches.map((m) => <MatchCard key={m.matchId} m={m} slip={slip} onPick={pick} />)
-        )}
-      </div>
 
-      <MyBetsSection />
+          {/* 賽事列表 */}
+          <div className="mt-4 space-y-3">
+            {boardsLoading || isLoading ? (
+              <div className="text-center text-sm text-gray-400 py-10">載入盤口中…</div>
+            ) : matches.length === 0 ? (
+              <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-400">
+                目前沒有可競猜的賽事，開賽前會陸續開盤
+              </div>
+            ) : (
+              matches.map((m) => <MatchCard key={m.matchId} m={m} slip={slip} onPick={pick} />)
+            )}
+          </div>
+
+          <MyBetsSection />
+        </>
+      )}
 
       {slip && <BetSlip selection={slip} onClose={() => setSlip(null)} />}
     </div>

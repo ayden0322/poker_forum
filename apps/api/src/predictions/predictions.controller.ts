@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { BetsService } from './bets.service';
 import { MarketsService } from './markets.service';
+import { LeaderboardService } from './leaderboard.service';
 import { isPredictionEnabled } from './prediction.flags';
 
 class PlaceBetDto {
@@ -26,6 +27,7 @@ export class PredictionsController {
   constructor(
     private bets: BetsService,
     private markets: MarketsService,
+    private leaderboardSvc: LeaderboardService,
   ) {}
 
   /** 公開：板塊清單（未登入可看，「看得到玩不到」是註冊鉤，圓桌 growth 定案） */
@@ -39,6 +41,18 @@ export class PredictionsController {
   @Get('markets/:board')
   async openMatches(@Param('board') board: string) {
     return { data: await this.markets.openMatches(board) };
+  }
+
+  /** 公開：排行榜（週/月，投注額加權 ROI 表現分） */
+  @Get('leaderboard')
+  async leaderboard(@Query('period') period?: string) {
+    return { data: await this.leaderboardSvc.top(period === 'month' ? 'month' : 'week') };
+  }
+
+  /** 公開：會員戰績頁（三元組 + 近期注單；不含金額） */
+  @Get('record/:nickname')
+  async record(@Param('nickname') nickname: string) {
+    return { data: await this.leaderboardSvc.publicRecord(nickname) };
   }
 
   @Post('bets')

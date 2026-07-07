@@ -33,6 +33,8 @@ type MatchRow = {
   boardSlug: string;
   sportType: string;
   apiFixtureId: number;
+  homeName: string;
+  awayName: string;
   apiStatus: string;
   startTime: Date;
   frozenAt: Date | null;
@@ -250,6 +252,15 @@ export class SettlementService {
       if (ok) {
         settled++;
         tally[outcome]++;
+        // 結算通知（best-effort，失敗不影響帳）：贏報數字、輸報賽果（design 定案：輸家不推損益）
+        await this.notify(
+          bet.userId,
+          outcome === 'WON'
+            ? `競猜命中！${m.homeName} vs ${m.awayName} 拿回 ${bet.potentialPayout} P`
+            : outcome === 'PUSH'
+              ? `平盤退回：${m.homeName} vs ${m.awayName}，本金 ${bet.stake} P 已退回`
+              : `賽果出爐：${m.homeName} ${score.home}:${score.away} ${m.awayName}`,
+        );
       }
     }
     await this.markMatchSettled(m.id);
@@ -273,7 +284,10 @@ export class SettlementService {
         stake: bet.stake,
         settledScore: null,
       });
-      if (ok) voided++;
+      if (ok) {
+        voided++;
+        await this.notify(bet.userId, `賽事異動：${m.homeName} vs ${m.awayName} ${opts.reopen ? '改期' : '取消'}，本金 ${bet.stake} P 已退回`);
+      }
     }
     if (opts.reopen) {
       await this.prisma.predictionMatch.update({ where: { id: m.id }, data: { frozenAt: null } });
@@ -330,6 +344,17 @@ export class SettlementService {
       // LOST：本金已於下注時扣除，不入帳
       return true;
     });
+  }
+
+  /** 站內通知（best-effort：通知失敗只記 log，不影響結算帳） */
+  private async notify(userId: string, content: string): Promise<void> {
+    try {
+      await this.prisma.notification.create({
+        data: { userId, type: 'SYSTEM', content, sourceUrl: '/predictions' },
+      });
+    } catch (err) {
+      this.logger.warn(`結算通知寫入失敗（user=${userId}）：${err}`);
+    }
   }
 
   /** 該場已無 PENDING 注單 → 蓋結算完成章（之後結算輪不再掃它） */

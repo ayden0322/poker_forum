@@ -7,6 +7,7 @@ import { useMemberSummary, useDailyTasks, levelName } from '@/lib/member';
 import ExperienceBar from '@/components/member/ExperienceBar';
 import DailyTaskList from '@/components/member/DailyTaskList';
 import CosmeticsPanel from '@/components/member/CosmeticsPanel';
+import ExchangePanel from '@/components/member/ExchangePanel';
 
 /**
  * 會員中心：等級 / 經驗、G幣（P幣即將開放）、今日每日任務。
@@ -73,10 +74,11 @@ export default function MemberCenterPage() {
           </div>
           <div>
             <div className="text-xs text-gray-400">P幣（預測幣）</div>
-            <div className="text-2xl font-bold text-gray-300">{m.p ?? 0}</div>
-            <div className="text-[11px] text-gray-400">即將開放</div>
+            <div className="text-2xl font-bold text-[#2a8d92]">{m.p ?? 0}</div>
+            <a href="/predictions" className="text-[11px] text-[#2a8d92] hover:underline">前往競猜 →</a>
           </div>
         </div>
+        <ExchangePanel gBalance={m.g ?? 0} />
       </section>
 
       {/* 每日任務 */}
