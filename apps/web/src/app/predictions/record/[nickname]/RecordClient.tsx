@@ -5,7 +5,23 @@
 // 不預留任何付費版位（三期榮譽版定案）。
 
 import Link from 'next/link';
-import { BET_STATUS_VIEW, SELECTION_LABEL, twTime, usePublicRecord } from '@/lib/predictions';
+import { BET_STATUS_VIEW, RecordBet, SELECTION_LABEL, twTime, usePublicRecord } from '@/lib/predictions';
+
+function RecordBetCard({ b }: { b: RecordBet }) {
+  const sv = BET_STATUS_VIEW[b.status];
+  const sel = b.market === 'OVER_UNDER' ? `${SELECTION_LABEL[b.selection]} ${b.line}` : SELECTION_LABEL[b.selection];
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-gray-900 truncate">{b.home} vs {b.away}</div>
+        <div className="mt-0.5 text-xs text-gray-500">
+          {sel} <span className="font-mono-stadium tabular-nums">@{b.lockedOdds}</span> · {twTime(b.startTime)}
+        </div>
+      </div>
+      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${sv.className}`}>{sv.label}</span>
+    </div>
+  );
+}
 
 export default function RecordClient({ nickname }: { nickname: string }) {
   const { data, isLoading } = usePublicRecord(nickname);
@@ -39,7 +55,17 @@ export default function RecordClient({ nickname }: { nickname: string }) {
         ))}
       </div>
 
-      {/* 近期競猜 */}
+      {/* 進行中（賽前公開曬單=社會證明；不含金額） */}
+      {(rec.pending ?? []).length > 0 && (
+        <>
+          <h2 className="mt-6 text-base font-bold text-gray-900">進行中</h2>
+          <div className="mt-2 space-y-2">
+            {rec.pending!.map((b, i) => <RecordBetCard key={`p-${i}`} b={b} />)}
+          </div>
+        </>
+      )}
+
+      {/* 近期競猜（已結算） */}
       <h2 className="mt-6 text-base font-bold text-gray-900">近期競猜</h2>
       <div className="mt-2 space-y-2">
         {(rec.recent ?? []).length === 0 ? (
@@ -47,21 +73,7 @@ export default function RecordClient({ nickname }: { nickname: string }) {
             還沒有已結算的競猜
           </div>
         ) : (
-          rec.recent!.map((b, i) => {
-            const sv = BET_STATUS_VIEW[b.status];
-            const sel = b.market === 'OVER_UNDER' ? `${SELECTION_LABEL[b.selection]} ${b.line}` : SELECTION_LABEL[b.selection];
-            return (
-              <div key={i} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">{b.home} vs {b.away}</div>
-                  <div className="mt-0.5 text-xs text-gray-500">
-                    {sel} <span className="font-mono-stadium tabular-nums">@{b.lockedOdds}</span> · {twTime(b.startTime)}
-                  </div>
-                </div>
-                <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${sv.className}`}>{sv.label}</span>
-              </div>
-            );
-          })
+          rec.recent!.map((b, i) => <RecordBetCard key={i} b={b} />)
         )}
       </div>
     </div>

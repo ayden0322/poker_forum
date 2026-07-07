@@ -114,16 +114,20 @@ export function usePredictionLeaderboard(period: 'week' | 'month') {
   });
 }
 
+export interface RecordBet {
+  board: string; home: string; away: string; startTime: string;
+  market: 'WINLOSE' | 'OVER_UNDER'; selection: MyBet['selection']; line: number | null;
+  lockedOdds: number; status: 'PENDING' | 'WON' | 'LOST' | 'PUSH';
+}
+
 export interface PublicRecord {
   enabled: boolean;
   found?: boolean;
   nickname?: string;
   stats?: { n: number; winRate: number; avgOdds: number };
-  recent?: Array<{
-    board: string; home: string; away: string; startTime: string;
-    market: 'WINLOSE' | 'OVER_UNDER'; selection: MyBet['selection']; line: number | null;
-    lockedOdds: number; status: 'WON' | 'LOST' | 'PUSH';
-  }>;
+  /** 進行中（賽前公開曬單；不含金額） */
+  pending?: RecordBet[];
+  recent?: RecordBet[];
 }
 
 /** 公開戰績（不含金額——曬的是預測不是錢） */

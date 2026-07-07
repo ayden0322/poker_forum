@@ -113,15 +113,25 @@ export class LeaderboardService {
       FROM bets WHERE user_id = ${user.id}
     `);
 
-    const recent = await this.prisma.bet.findMany({
-      where: { userId: user.id, status: { in: ['WON', 'LOST', 'PUSH'] } },
-      orderBy: { settledAt: 'desc' },
-      take: 10,
-      select: {
-        market: true, selection: true, line: true, lockedOdds: true, status: true, settledAt: true,
-        match: { select: { boardSlug: true, homeName: true, awayName: true, startTime: true } },
-      },
-    });
+    const betSelect = {
+      market: true, selection: true, line: true, lockedOdds: true, status: true, settledAt: true,
+      match: { select: { boardSlug: true, homeName: true, awayName: true, startTime: true } },
+    } as const;
+    const [recent, pending] = await Promise.all([
+      this.prisma.bet.findMany({
+        where: { userId: user.id, status: { in: ['WON', 'LOST', 'PUSH'] } },
+        orderBy: { settledAt: 'desc' },
+        take: 10,
+        select: betSelect,
+      }),
+      // 進行中（賽前公開曬單=社會證明，圓桌 growth 定案；一樣不含金額）
+      this.prisma.bet.findMany({
+        where: { userId: user.id, status: 'PENDING' },
+        orderBy: { match: { startTime: 'asc' } },
+        take: 10,
+        select: betSelect,
+      }),
+    ]);
 
     return {
       enabled: true as const,
@@ -132,17 +142,25 @@ export class LeaderboardService {
         winRate: agg && agg.n > 0 ? Math.round((agg.wins / agg.n) * 1000) / 10 : 0,
         avgOdds: agg ? Math.round(agg.avg_odds * 100) / 100 : 0,
       },
-      recent: recent.map((b) => ({
-        board: b.match.boardSlug,
-        home: b.match.homeName,
-        away: b.match.awayName,
-        startTime: b.match.startTime,
-        market: b.market,
-        selection: b.selection,
-        line: b.line?.toNumber() ?? null,
-        lockedOdds: b.lockedOdds.toNumber(),
-        status: b.status,
-      })),
+      pending: pending.map((b) => this.toRecordBet(b)),
+      recent: recent.map((b) => this.toRecordBet(b)),
+    };
+  }
+
+  private toRecordBet(b: {
+    market: string; selection: string; line: Prisma.Decimal | null; lockedOdds: Prisma.Decimal; status: string;
+    match: { boardSlug: string; homeName: string; awayName: string; startTime: Date };
+  }) {
+    return {
+      board: b.match.boardSlug,
+      home: b.match.homeName,
+      away: b.match.awayName,
+      startTime: b.match.startTime,
+      market: b.market,
+      selection: b.selection,
+      line: b.line?.toNumber() ?? null,
+      lockedOdds: b.lockedOdds.toNumber(),
+      status: b.status,
     };
   }
 }
