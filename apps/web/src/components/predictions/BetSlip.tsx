@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 import { useAuth } from '@/context/auth';
 import { useMemberSummary } from '@/lib/member';
+import { teamZh } from '@/components/predictions/TeamLabel';
 import {
   MatchMarketsView,
   MarketQuoteView,
@@ -179,7 +180,7 @@ export default function BetSlip({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm text-gray-500">
-                  {active.match.home} vs {active.match.away} · {twTime(active.match.startTime)}
+                  {teamZh(active.match.home)} vs {teamZh(active.match.away)} · {twTime(active.match.startTime)}
                 </div>
                 <div className="mt-1 text-lg font-bold text-gray-900">
                   {selLabel}

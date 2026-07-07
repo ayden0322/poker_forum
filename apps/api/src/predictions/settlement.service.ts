@@ -16,6 +16,7 @@ import { PrismaService } from '../common/prisma.service';
 import { RedisService } from '../common/redis.service';
 import { EconomyService } from '../economy/economy.service';
 import { classifyStatus, decideOutcome, NON_WAIT_HINT_STATUSES, Outcome } from './settlement-rules';
+import { teamZh } from './team-display';
 import {
   PredictionBoardConfig,
   POSTPONE_FREEZE_MS,
@@ -234,6 +235,10 @@ export class SettlementService {
     const bets = await this.prisma.bet.findMany({ where: { matchId: m.id, status: 'PENDING' } });
     let settled = 0;
     const tally: Record<Outcome, number> = { WON: 0, LOST: 0, PUSH: 0 };
+    const [homeZh, awayZh] = await Promise.all([
+      teamZh(this.prisma, m.sportType, m.homeName),
+      teamZh(this.prisma, m.sportType, m.awayName),
+    ]);
 
     for (const bet of bets) {
       const outcome = decideOutcome(
@@ -256,10 +261,10 @@ export class SettlementService {
         await this.notify(
           bet.userId,
           outcome === 'WON'
-            ? `競猜命中！${m.homeName} vs ${m.awayName} 拿回 ${bet.potentialPayout} P`
+            ? `競猜命中！${homeZh} vs ${awayZh} 拿回 ${bet.potentialPayout} P`
             : outcome === 'PUSH'
-              ? `平盤退回：${m.homeName} vs ${m.awayName}，本金 ${bet.stake} P 已退回`
-              : `賽果出爐：${m.homeName} ${score.home}:${score.away} ${m.awayName}`,
+              ? `平盤退回：${homeZh} vs ${awayZh}，本金 ${bet.stake} P 已退回`
+              : `賽果出爐：${homeZh} ${score.home}:${score.away} ${awayZh}`,
         );
       }
     }
@@ -278,6 +283,10 @@ export class SettlementService {
   private async voidMatch(m: MatchRow, why: string, opts: { reopen: boolean }): Promise<void> {
     const bets = await this.prisma.bet.findMany({ where: { matchId: m.id, status: 'PENDING' } });
     let voided = 0;
+    const [homeZh, awayZh] = await Promise.all([
+      teamZh(this.prisma, m.sportType, m.homeName),
+      teamZh(this.prisma, m.sportType, m.awayName),
+    ]);
     for (const bet of bets) {
       const ok = await this.transitionAndPay(bet.id, bet.userId, 'VOIDED', {
         payout: 0,
@@ -286,7 +295,7 @@ export class SettlementService {
       });
       if (ok) {
         voided++;
-        await this.notify(bet.userId, `賽事異動：${m.homeName} vs ${m.awayName} ${opts.reopen ? '改期' : '取消'}，本金 ${bet.stake} P 已退回`);
+        await this.notify(bet.userId, `賽事異動：${homeZh} vs ${awayZh} ${opts.reopen ? '改期' : '取消'}，本金 ${bet.stake} P 已退回`);
       }
     }
     if (opts.reopen) {

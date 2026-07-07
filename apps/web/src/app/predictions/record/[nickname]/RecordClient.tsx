@@ -6,6 +6,7 @@
 
 import Link from 'next/link';
 import { BET_STATUS_VIEW, RecordBet, SELECTION_LABEL, twTime, usePublicRecord } from '@/lib/predictions';
+import TeamLabel from '@/components/predictions/TeamLabel';
 
 function RecordBetCard({ b }: { b: RecordBet }) {
   const sv = BET_STATUS_VIEW[b.status];
@@ -13,7 +14,7 @@ function RecordBetCard({ b }: { b: RecordBet }) {
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <div className="text-sm font-medium text-gray-900 truncate">{b.home} vs {b.away}</div>
+        <div className="text-sm font-medium text-gray-900 truncate"><TeamLabel nameEn={b.home} /> <span className="text-xs text-gray-300 mx-0.5">vs</span> <TeamLabel nameEn={b.away} /></div>
         <div className="mt-0.5 text-xs text-gray-500">
           {sel} <span className="font-mono-stadium tabular-nums">@{b.lockedOdds}</span> · {twTime(b.startTime)}
         </div>

@@ -23,35 +23,14 @@ import {
   usePredictionLeaderboard,
   usePredictionMarkets,
 } from '@/lib/predictions';
-import { teamAbbr, teamMeta } from '@/lib/team-meta';
 import BetSlip, { SlipSelection } from '@/components/predictions/BetSlip';
+import TeamLabel from '@/components/predictions/TeamLabel';
 import Leaderboard from '@/components/predictions/Leaderboard';
 
 const BOARD_LABEL: Record<string, string> = {
   'world-cup': '世界盃',
   mlb: 'MLB',
 };
-
-// ===== 隊伍標示（P1-E：國旗/隊徽 + 中文名；查不到 fallback 縮寫圓徽） =====
-
-function TeamLabel({ nameEn }: { nameEn: string }) {
-  const meta = teamMeta(nameEn);
-  return (
-    <span className="inline-flex items-center gap-1.5 min-w-0">
-      {meta?.flag ? (
-        <span className="text-base leading-none">{meta.flag}</span>
-      ) : meta?.mlbId ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={`https://www.mlbstatic.com/team-logos/${meta.mlbId}.svg`} alt="" className="w-5 h-5" />
-      ) : (
-        <span className="w-5 h-5 rounded-full bg-gray-100 text-[9px] text-gray-500 flex items-center justify-center shrink-0">
-          {teamAbbr(nameEn)}
-        </span>
-      )}
-      <span className="truncate">{meta?.nameZh ?? nameEn}</span>
-    </span>
-  );
-}
 
 // ===== 賠率格（P1-G affordance + P2-I 變盤 flash） =====
 
@@ -206,7 +185,7 @@ function PendingBets({ variant }: { variant: 'rail' | 'bar' }) {
       {pending.map((b) => (
         <div key={b.betId} className="flex items-center justify-between gap-2 text-xs">
           <div className="min-w-0">
-            <div className="font-medium text-gray-900 truncate">{b.home} vs {b.away}</div>
+            <div className="font-medium text-gray-900 truncate"><TeamLabel nameEn={b.home} size="sm" /> <span className="text-gray-300">vs</span> <TeamLabel nameEn={b.away} size="sm" /></div>
             <div className="text-gray-400">
               {selectionText(b)} <span className="font-mono-stadium tabular-nums">@{b.lockedOdds}</span> · 投入 <span className="font-mono-stadium tabular-nums">{b.stake}</span> P
             </div>
