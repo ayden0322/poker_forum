@@ -39,6 +39,7 @@ export const ADMIN_PAGES: PageDef[] = [
   { key: 'cosmetics', label: '裝飾商店管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'promo', label: '推廣管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'world-cup', label: '世界盃管理', defaults: { moderator: F, admin: T, superAdmin: T } },
+  { key: 'predictions', label: '競猜管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   { key: 'translations', label: '翻譯管理', defaults: { moderator: F, admin: T, superAdmin: T } },
   // 超級管理員專屬（敏感）
   { key: 'banned-ips', label: '封鎖 IP', defaults: { moderator: F, admin: F, superAdmin: T } },
