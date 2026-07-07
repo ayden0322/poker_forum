@@ -164,7 +164,7 @@ export default function BetSlip({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 0.15 } }}
           transition={{ duration: 0.15 }}
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm"
           onClick={onClose}
         >
           <motion.div
@@ -172,7 +172,7 @@ export default function BetSlip({
             animate={{ y: 0 }}
             exit={{ y: '100%', transition: { type: 'tween', duration: 0.15 } }}
             transition={{ type: 'tween', duration: 0.22 }}
-            className="w-full max-w-lg bg-white rounded-t-2xl shadow-2xl p-5 pb-8"
+            className="w-full max-w-lg bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl p-5 pb-8 sm:pb-5"
             onClick={(e) => e.stopPropagation()}
           >
             {/* 場次與選項（oddsChanged 時舊價劃掉、新價並列——同屏不留兩個「現行價」） */}

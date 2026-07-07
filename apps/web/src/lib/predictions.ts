@@ -174,5 +174,21 @@ export function twTime(iso: string): string {
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false, // 與世界盃 widget 對齊（design P2-D）
   });
+}
+
+/** 只取時分（日期已在分組標顯示時用） */
+export function twClock(iso: string): string {
+  return new Date(iso).toLocaleTimeString('zh-TW', {
+    timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+}
+
+/** 台北日期 key（分組用）+ 顯示標（7/8（週三）） */
+export function twDateGroup(iso: string): { key: string; label: string } {
+  const d = new Date(iso);
+  const key = d.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric' });
+  const weekday = d.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', weekday: 'short' });
+  return { key, label: `${key}（${weekday}）` };
 }
