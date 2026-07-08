@@ -13,6 +13,7 @@ import { Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 import { EconomyService, InsufficientBalanceError } from '../economy/economy.service';
 import { OddsPipelineService } from './odds-pipeline.service';
+import { MatchLinkService } from './match-link.service';
 import {
   BET_MAX_STAKE,
   BET_MIN_STAKE,
@@ -60,6 +61,7 @@ export class BetsService {
     private prisma: PrismaService,
     private economy: EconomyService,
     private pipeline: OddsPipelineService,
+    private matchLink: MatchLinkService,
   ) {}
 
   async placeBet(userId: string, input: PlaceBetInput) {
@@ -244,9 +246,10 @@ export class BetsService {
         match: { select: { boardSlug: true, homeName: true, awayName: true, startTime: true, apiStatus: true } },
       },
     });
-    return bets.map((b) => ({
+    return Promise.all(bets.map(async (b) => ({
       betId: b.id,
       board: b.match.boardSlug,
+      detailUrl: await this.matchLink.detailUrl(b.match.boardSlug, b.match.homeName, b.match.startTime),
       home: b.match.homeName,
       away: b.match.awayName,
       startTime: b.match.startTime,
@@ -259,7 +262,7 @@ export class BetsService {
       status: b.status,
       settledAt: b.settledAt,
       createdAt: b.createdAt,
-    }));
+    })));
   }
 
   private toBetResult(bet: BetRow, idempotentReplay: boolean) {

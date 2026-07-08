@@ -22,6 +22,7 @@ import {
   usePredictionBoards,
   usePredictionLeaderboard,
   usePredictionMarkets,
+  matchInfoUrl,
 } from '@/lib/predictions';
 import BetSlip, { SlipSelection } from '@/components/predictions/BetSlip';
 import TeamLabel from '@/components/predictions/TeamLabel';
@@ -100,9 +101,11 @@ function MatchCard({
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-      {/* meta 行 */}
+      {/* meta 行（板塊名 → 賽事資訊連結：詳情頁優先，fallback 討論板） */}
       <div className="flex items-center justify-between text-[11px] text-gray-400">
-        <span>{BOARD_LABEL[m.board] ?? m.board}</span>
+        <Link href={matchInfoUrl(m)} className="hover:text-[#2a8d92] hover:underline">
+          {BOARD_LABEL[m.board] ?? m.board} · 賽事資訊 →
+        </Link>
         {lockSoon ? (
           <span className="text-accent-600 font-medium">1 小時內封盤</span>
         ) : (
@@ -185,7 +188,7 @@ function PendingBets({ variant }: { variant: 'rail' | 'bar' }) {
       {pending.map((b) => (
         <div key={b.betId} className="flex items-center justify-between gap-2 text-xs">
           <div className="min-w-0">
-            <div className="font-medium text-gray-900 truncate"><TeamLabel nameEn={b.home} size="sm" /> <span className="text-gray-300">vs</span> <TeamLabel nameEn={b.away} size="sm" /></div>
+            <Link href={matchInfoUrl(b)} className="block font-medium text-gray-900 truncate hover:text-[#2a8d92]"><TeamLabel nameEn={b.home} size="sm" /> <span className="text-gray-300">vs</span> <TeamLabel nameEn={b.away} size="sm" /></Link>
             <div className="text-gray-400">
               {selectionText(b)} <span className="font-mono-stadium tabular-nums">@{b.lockedOdds}</span> · 投入 <span className="font-mono-stadium tabular-nums">{b.stake}</span> P
             </div>

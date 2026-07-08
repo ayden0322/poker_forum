@@ -17,6 +17,8 @@ export interface MatchMarketsView {
   away: string;
   startTime: string;
   lockAt: string;
+  /** 站內賽事詳情頁（世界盃有；無法對應為 null → 前端 fallback 討論板） */
+  detailUrl: string | null;
   winlose: Partial<Record<'HOME' | 'DRAW' | 'AWAY', MarketQuoteView>>;
   overUnder: Array<{ line: number; over?: MarketQuoteView; under?: MarketQuoteView }>;
 }
@@ -30,6 +32,7 @@ export interface PredictionBoard {
 export interface MyBet {
   betId: string;
   board: string;
+  detailUrl: string | null;
   home: string;
   away: string;
   startTime: string;
@@ -115,7 +118,8 @@ export function usePredictionLeaderboard(period: 'week' | 'month') {
 }
 
 export interface RecordBet {
-  board: string; home: string; away: string; startTime: string;
+  board: string;
+  detailUrl: string | null; home: string; away: string; startTime: string;
   market: 'WINLOSE' | 'OVER_UNDER'; selection: MyBet['selection']; line: number | null;
   lockedOdds: number; status: 'PENDING' | 'WON' | 'LOST' | 'PUSH';
 }
@@ -157,6 +161,11 @@ export const SELECTION_LABEL: Record<string, string> = {
   OVER: '大',
   UNDER: '小',
 };
+
+/** 賽事資訊連結：詳情頁優先，對不上就去該板討論區 */
+export function matchInfoUrl(b: { detailUrl: string | null; board: string }): string {
+  return b.detailUrl ?? `/board/${b.board}`;
+}
 
 export const BET_STATUS_VIEW: Record<MyBet['status'], { label: string; className: string }> = {
   PENDING: { label: '待開賽', className: 'bg-gray-100 text-gray-600' },

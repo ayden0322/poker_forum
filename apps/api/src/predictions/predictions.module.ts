@@ -5,6 +5,7 @@ import { PredictionsCron } from './predictions.cron';
 import { BetsService } from './bets.service';
 import { MarketsService } from './markets.service';
 import { LeaderboardService } from './leaderboard.service';
+import { MatchLinkService } from './match-link.service';
 import { PredictionsController } from './predictions.controller';
 import { SettlementService } from './settlement.service';
 import { SettlementCron } from './settlement.cron';
@@ -19,7 +20,7 @@ import { PredictionsAdminController } from './predictions.admin.controller';
   imports: [EconomyModule],
   controllers: [PredictionsController, PredictionsAdminController],
   providers: [
-    OddsPipelineService, PredictionsCron, BetsService, MarketsService, LeaderboardService,
+    OddsPipelineService, PredictionsCron, BetsService, MarketsService, LeaderboardService, MatchLinkService,
     SettlementService, SettlementCron,
     ReconciliationService, ReconciliationCron, PredictionsAdminService,
   ],

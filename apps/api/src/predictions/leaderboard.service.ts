@@ -9,6 +9,7 @@ import { Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 import { RedisService } from '../common/redis.service';
 import { isPredictionEnabled } from './prediction.flags';
+import { MatchLinkService } from './match-link.service';
 
 /** 參榜門檻：期間內已結算投注額（後台可調為後續增量） */
 const MIN_STAKED = 1_000;
@@ -45,6 +46,7 @@ export class LeaderboardService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private matchLink: MatchLinkService,
   ) {}
 
   async top(period: 'week' | 'month'): Promise<{ enabled: boolean; periodStart: string; rows: LeaderboardRow[] }> {
@@ -142,17 +144,18 @@ export class LeaderboardService {
         winRate: agg && agg.n > 0 ? Math.round((agg.wins / agg.n) * 1000) / 10 : 0,
         avgOdds: agg ? Math.round(agg.avg_odds * 100) / 100 : 0,
       },
-      pending: pending.map((b) => this.toRecordBet(b)),
-      recent: recent.map((b) => this.toRecordBet(b)),
+      pending: await Promise.all(pending.map((b) => this.toRecordBet(b))),
+      recent: await Promise.all(recent.map((b) => this.toRecordBet(b))),
     };
   }
 
-  private toRecordBet(b: {
+  private async toRecordBet(b: {
     market: string; selection: string; line: Prisma.Decimal | null; lockedOdds: Prisma.Decimal; status: string;
     match: { boardSlug: string; homeName: string; awayName: string; startTime: Date };
   }) {
     return {
       board: b.match.boardSlug,
+      detailUrl: await this.matchLink.detailUrl(b.match.boardSlug, b.match.homeName, b.match.startTime),
       home: b.match.homeName,
       away: b.match.awayName,
       startTime: b.match.startTime,

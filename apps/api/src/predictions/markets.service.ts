@@ -5,6 +5,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { RedisService } from '../common/redis.service';
+import { MatchLinkService } from './match-link.service';
 import { enabledBoards, LOCK_BUFFER_MS, PREDICTION_BOARDS } from './prediction.config';
 import { isPredictionEnabled } from './prediction.flags';
 
@@ -21,6 +22,8 @@ export interface MatchMarketsView {
   startTime: string;
   /** 封盤時間（startTime − buffer），前端倒數與置灰用 */
   lockAt: string;
+  /** 站內賽事詳情頁（世界盃有；MLB 對不上 gamePk 為 null，前端 fallback 討論板） */
+  detailUrl: string | null;
   winlose: Partial<Record<'HOME' | 'DRAW' | 'AWAY', MarketQuoteView>>;
   overUnder: Array<{ line: number; over?: MarketQuoteView; under?: MarketQuoteView }>;
 }
@@ -33,6 +36,7 @@ export class MarketsService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private matchLink: MatchLinkService,
   ) {}
 
   /** 板塊清單（前端導覽用） */
@@ -67,8 +71,11 @@ export class MarketsService {
       },
     });
 
-    const matches: MatchMarketsView[] = rows
-      .map((m) => {
+    const matches: MatchMarketsView[] = (await Promise.all(rows.map(async (m) => {
+        const detailUrl = await this.matchLink.detailUrl(boardSlug, m.homeName, m.startTime);
+        return { row: m, detailUrl };
+      })))
+      .map(({ row: m, detailUrl }) => {
         const winlose: MatchMarketsView['winlose'] = {};
         const ouByLine = new Map<number, MatchMarketsView['overUnder'][number]>();
         for (const q of m.quotes) {
@@ -86,6 +93,7 @@ export class MarketsService {
         return {
           matchId: m.id,
           board: boardSlug,
+          detailUrl,
           home: m.homeName,
           away: m.awayName,
           startTime: m.startTime.toISOString(),
