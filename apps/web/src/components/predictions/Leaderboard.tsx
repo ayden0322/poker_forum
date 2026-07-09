@@ -1,14 +1,14 @@
 'use client';
 
-// 排行榜（設計規格 §6/§7.5）：
-// - 視覺主角 = 表現分（風險調整報酬）+ 三元組（勝率 · 平均賠率 · 注數）；金額降級為小字
+// 排行榜（2026-07-09 定案）：獲利榜 / 勝率榜 雙榜，滿 30 場入榜
+// - 獲利榜：期間淨獲利 P 幣排序（增加競爭感，週冠軍發限定稱號）
+// - 勝率榜：勝率排序，平均賠率同列顯示（透明防「只押大熱門刷勝率」）
 // - 僅前三名用琥珀（金=榮譽不是錢）；不引入紅綠漲跌色
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { usePredictionLeaderboard } from '@/lib/predictions';
+import { LeaderboardType, usePredictionLeaderboard } from '@/lib/predictions';
 
-// 金=榮譽：鎖品牌 accent #d97706（與裝飾系統傳說金同語義域；不用 Tailwind 預設 amber 避免色票漂移）
 const RANK_STYLE: Record<number, string> = {
   1: 'bg-accent-500 text-white',
   2: 'bg-accent-400/80 text-white',
@@ -17,39 +17,59 @@ const RANK_STYLE: Record<number, string> = {
 
 export default function Leaderboard() {
   const [period, setPeriod] = useState<'week' | 'month'>('week');
-  const { data, isLoading } = usePredictionLeaderboard(period);
+  const [type, setType] = useState<LeaderboardType>('profit');
+  const { data, isLoading } = usePredictionLeaderboard(period, type);
   const rows = data?.data.rows ?? [];
+  const minSettled = data?.data.minSettled ?? 30;
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      {/* 榜別切換：獲利榜 / 勝率榜 */}
+      <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 w-fit">
+        {([['profit', '獲利榜'], ['winrate', '勝率榜']] as const).map(([t, label]) => (
+          <button
+            key={t}
+            onClick={() => setType(t)}
+            className={`px-4 py-1 rounded-md text-sm font-medium transition-colors ${
+              type === t ? 'bg-[#39B8BE] text-white' : 'text-gray-600'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 期間切換 + 榜別說明 */}
+      <div className="mt-3 flex items-center justify-between">
         <div className="flex gap-2">
           {(['week', 'month'] as const).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-3 py-1 rounded-full text-sm ${
-                period === p ? 'bg-[#39B8BE] text-white' : 'bg-white border border-gray-200 text-gray-600'
+                period === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600'
               }`}
             >
               {p === 'week' ? '本週' : '本月'}
             </button>
           ))}
         </div>
-        <div
-          className="text-xs text-gray-400 cursor-help"
-          title="表現分＝你打贏賠率的程度（風險調整報酬），不是賺賠多少 P、也不是猜中次數。負分代表目前輸給賠率，樣本越少越接近 0；池子有抽水，通常大家都是負分，第 1 名＝最不虧的人。"
-        >
-          表現分 = 打贏賠率的程度（可為負）ⓘ
+        <div className="text-xs text-gray-400">
+          {type === 'profit' ? '比期間淨賺 P 幣' : '比獲勝機率'}
         </div>
       </div>
 
-      <div className="mt-3 rounded-xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-50">
+      {/* 入榜門檻說明 */}
+      <div className="mt-2 text-xs text-gray-400">
+        滿 {minSettled} 場已結算競猜才列入排名{type === 'winrate' ? '，平均賠率同列顯示' : ''}
+      </div>
+
+      <div className="mt-2 rounded-xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-50">
         {isLoading ? (
           <div className="p-8 text-center text-sm text-gray-400">載入中…</div>
         ) : rows.length === 0 ? (
           <div className="p-8 text-center text-sm text-gray-400">
-            本期還沒有人上榜——結算滿 1,000 P 的競猜即可入榜
+            本期還沒有人達 {minSettled} 場——累積競猜場次即可入榜
           </div>
         ) : (
           rows.map((r) => (
@@ -66,15 +86,19 @@ export default function Leaderboard() {
                   {r.nickname}
                 </Link>
                 <div className="text-xs text-gray-400 font-mono-stadium tabular-nums">
-                  勝率 {r.winRate}% · 均賠 @{r.avgOdds} · {r.n} 注
+                  {type === 'profit'
+                    ? `勝率 ${r.winRate}% · ${r.n} 場`
+                    : `均賠 @${r.avgOdds} · ${r.n} 場`}
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[10px] text-gray-400">表現分</div>
-                <div className="font-mono-stadium tabular-nums font-bold text-gray-900">{r.score}</div>
-                <div className={`text-xs font-mono-stadium tabular-nums ${r.profit >= 0 ? 'text-[#2a8d92]' : 'text-gray-400'}`}>
-                  {r.profit >= 0 ? '+' : ''}{r.profit} P
-                </div>
+                {type === 'profit' ? (
+                  <div className={`font-mono-stadium tabular-nums font-bold ${r.profit >= 0 ? 'text-[#2a8d92]' : 'text-gray-500'}`}>
+                    {r.profit >= 0 ? '+' : ''}{r.profit} P
+                  </div>
+                ) : (
+                  <div className="font-mono-stadium tabular-nums font-bold text-gray-900">{r.winRate}%</div>
+                )}
               </div>
             </div>
           ))

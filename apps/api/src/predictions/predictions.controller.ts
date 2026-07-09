@@ -45,8 +45,13 @@ export class PredictionsController {
 
   /** 公開：排行榜（週/月，投注額加權 ROI 表現分） */
   @Get('leaderboard')
-  async leaderboard(@Query('period') period?: string) {
-    return { data: await this.leaderboardSvc.top(period === 'month' ? 'month' : 'week') };
+  async leaderboard(@Query('period') period?: string, @Query('type') type?: string) {
+    return {
+      data: await this.leaderboardSvc.top(
+        period === 'month' ? 'month' : 'week',
+        type === 'winrate' ? 'winrate' : 'profit',
+      ),
+    };
   }
 
   /** 公開：會員戰績頁（三元組 + 近期注單；不含金額） */

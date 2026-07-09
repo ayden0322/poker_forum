@@ -98,21 +98,24 @@ export function useMyBets() {
   });
 }
 
+export type LeaderboardType = 'profit' | 'winrate';
+
 export interface LeaderboardRow {
   rank: number;
   nickname: string;
-  score: number;
-  profit: number;
-  n: number;
-  winRate: number;
-  avgOdds: number;
+  profit: number; // 獲利榜主指標
+  winRate: number; // 勝率榜主指標
+  n: number; // 已結算場次
+  avgOdds: number; // 勝率榜同列顯示
 }
 
-/** 排行榜（公開；投注額加權 ROI 表現分） */
-export function usePredictionLeaderboard(period: 'week' | 'month') {
-  return useQuery<{ data: { enabled: boolean; periodStart: string; rows: LeaderboardRow[] } }>({
-    queryKey: ['predictions', 'leaderboard', period],
-    queryFn: () => apiFetch(`/predictions/leaderboard?period=${period}`),
+/** 排行榜（公開）：type=profit 獲利榜 / winrate 勝率榜；滿 30 場入榜 */
+export function usePredictionLeaderboard(period: 'week' | 'month', type: LeaderboardType = 'profit') {
+  return useQuery<{
+    data: { enabled: boolean; periodStart: string; type: LeaderboardType; minSettled: number; rows: LeaderboardRow[] };
+  }>({
+    queryKey: ['predictions', 'leaderboard', period, type],
+    queryFn: () => apiFetch(`/predictions/leaderboard?period=${period}&type=${type}`),
     staleTime: 5 * 60_000,
   });
 }
