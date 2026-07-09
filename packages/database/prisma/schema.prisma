@@ -926,6 +926,8 @@ model UserCosmetic {
   equippedSlot EquipSlot?     @map("equipped_slot") // FRAME/TITLE 裝備中；勳章一律 null
   isMainBadge  Boolean        @default(false) @map("is_main_badge") // 列表內聯展示的那 1 枚
   pinnedOrder  Int?           @map("pinned_order") // 個人頁釘選 1..3；null=未釘
+  // 到期時間（週冠軍臨時稱號用；null=永久）。到期後由序列化層濾除、不再顯示/裝備。
+  expiresAt    DateTime?      @map("expires_at")
 
   @@unique([userId, itemId]) // 同品項只擁有一份（防重複購買）
   @@index([userId])

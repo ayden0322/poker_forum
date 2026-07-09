@@ -15,6 +15,7 @@ export const AUTHOR_COSMETIC_SELECT = {
     select: {
       equippedSlot: true,
       isMainBadge: true,
+      expiresAt: true, // 到期稱號在序列化層濾除（fail-safe，不依賴卸下 cron）
       item: { select: { type: true, name: true, iconKey: true, assetUrl: true, rarity: true } },
     },
   },
@@ -23,6 +24,7 @@ export const AUTHOR_COSMETIC_SELECT = {
 interface CosmeticRow {
   equippedSlot: 'FRAME' | 'TITLE' | 'EFFECT' | null;
   isMainBadge: boolean;
+  expiresAt: Date | null;
   item: { type: 'FRAME' | 'BADGE' | 'TITLE' | 'EFFECT'; name: string; iconKey: string | null; assetUrl: string | null; rarity: Rarity };
 }
 
@@ -37,7 +39,9 @@ export function serializeAuthorCosmetics(
   user: { cosmetics?: CosmeticRow[] | null } | null | undefined,
 ): AuthorCosmetics | null {
   if (!isMemberEconomyEnabled()) return null; // fail-closed
-  const cos = user?.cosmetics;
+  const now = Date.now();
+  // 濾除已到期的裝飾（週冠軍臨時稱號到期即不顯示，不等卸下 cron）
+  const cos = user?.cosmetics?.filter((c) => !c.expiresAt || c.expiresAt.getTime() > now);
   if (!cos?.length) return null;
   const frame = cos.find((c) => c.equippedSlot === 'FRAME');
   const title = cos.find((c) => c.equippedSlot === 'TITLE');

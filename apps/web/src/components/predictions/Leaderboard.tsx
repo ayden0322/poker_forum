@@ -61,7 +61,9 @@ export default function Leaderboard() {
 
       {/* 入榜門檻說明 */}
       <div className="mt-2 text-xs text-gray-400">
-        滿 {minSettled} 場已結算競猜才列入排名{type === 'winrate' ? '，平均賠率同列顯示' : ''}
+        {type === 'winrate'
+          ? `勝率只計 @1.5 以上的競猜，滿 ${minSettled} 場入榜——只押大熱門不算數`
+          : `滿 ${minSettled} 場已結算競猜才列入排名`}
       </div>
 
       <div className="mt-2 rounded-xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-50">

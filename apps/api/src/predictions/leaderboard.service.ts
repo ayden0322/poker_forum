@@ -13,6 +13,8 @@ import { MatchLinkService } from './match-link.service';
 
 /** 入榜門檻：期間內已結算場次（勝/負）。後台可調為後續增量。 */
 export const MIN_SETTLED = 30;
+/** 勝率榜「有效競猜」的最低賠率：低於此的大熱門不計入勝率（防只押 1.05 刷勝率，red-team A 刀） */
+export const WINRATE_MIN_ODDS = 1.5;
 const CACHE_TTL_SEC = 300;
 
 export type LeaderboardType = 'profit' | 'winrate';
@@ -58,31 +60,35 @@ export class LeaderboardService {
     const cached = await this.redis.get<LeaderboardRow[]>(cacheKey);
     if (cached) return { enabled: true, ...base, periodStart: start.toISOString(), rows: cached };
 
-    // 期間內已結算注單聚合（PUSH/VOIDED 退本不影響損益、不計入場次）
+    // 期間內已結算注單聚合。
+    // 獲利榜：全部勝負注（n / profit）；勝率榜：只計賠率 ≥1.5 的「有效競猜」（qn / qwins / q_avg_odds）
     const raw = await this.prisma.$queryRaw<
-      Array<{ nickname: string; n: number; profit: number; wins: number; avg_odds: number }>
+      Array<{ nickname: string; n: number; profit: number; qn: number; qwins: number; q_avg_odds: number }>
     >(Prisma.sql`
       SELECT u.nickname,
              COUNT(*) FILTER (WHERE b.status IN ('WON','LOST'))::int AS n,
              COALESCE(SUM(CASE WHEN b.status = 'WON' THEN b.potential_payout - b.stake
                                WHEN b.status = 'LOST' THEN -b.stake ELSE 0 END), 0)::int AS profit,
-             COUNT(*) FILTER (WHERE b.status = 'WON')::int AS wins,
-             COALESCE(AVG(b.locked_odds) FILTER (WHERE b.status IN ('WON','LOST')), 0)::float AS avg_odds
+             COUNT(*) FILTER (WHERE b.status IN ('WON','LOST') AND b.locked_odds >= ${WINRATE_MIN_ODDS})::int AS qn,
+             COUNT(*) FILTER (WHERE b.status = 'WON' AND b.locked_odds >= ${WINRATE_MIN_ODDS})::int AS qwins,
+             COALESCE(AVG(b.locked_odds) FILTER (WHERE b.status IN ('WON','LOST') AND b.locked_odds >= ${WINRATE_MIN_ODDS}), 0)::float AS q_avg_odds
       FROM bets b
       JOIN users u ON u.id = b.user_id
       WHERE b.settled_at >= ${start} AND b.status IN ('WON','LOST')
       GROUP BY u.id, u.nickname
-      HAVING COUNT(*) FILTER (WHERE b.status IN ('WON','LOST')) >= ${MIN_SETTLED}
     `);
 
-    const mapped = raw.map((r) => ({
-      rank: 0,
-      nickname: r.nickname,
-      profit: r.profit,
-      winRate: r.n > 0 ? Math.round((r.wins / r.n) * 1000) / 10 : 0,
-      n: r.n,
-      avgOdds: Math.round(r.avg_odds * 100) / 100,
-    }));
+    // 依榜別各自套門檻：獲利榜看總場數 n；勝率榜看「有效競猜」場數 qn（都要 ≥30）
+    const mapped = raw
+      .filter((r) => (type === 'winrate' ? r.qn : r.n) >= MIN_SETTLED)
+      .map((r) => ({
+        rank: 0,
+        nickname: r.nickname,
+        profit: r.profit,
+        winRate: r.qn > 0 ? Math.round((r.qwins / r.qn) * 1000) / 10 : 0, // 有效競猜勝率
+        n: type === 'winrate' ? r.qn : r.n,
+        avgOdds: Math.round(r.q_avg_odds * 100) / 100,
+      }));
 
     // 獲利榜：淨獲利降序（同分場次多者優先）
     // 勝率榜：勝率降序（同率場次多者優先＝樣本更可信）
