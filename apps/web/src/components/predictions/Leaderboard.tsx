@@ -36,7 +36,12 @@ export default function Leaderboard() {
             </button>
           ))}
         </div>
-        <div className="text-xs text-gray-400">表現分 = 打贏賠率的程度，不是猜中次數</div>
+        <div
+          className="text-xs text-gray-400 cursor-help"
+          title="表現分＝你打贏賠率的程度（風險調整報酬），不是賺賠多少 P、也不是猜中次數。負分代表目前輸給賠率，樣本越少越接近 0；池子有抽水，通常大家都是負分，第 1 名＝最不虧的人。"
+        >
+          表現分 = 打贏賠率的程度（可為負）ⓘ
+        </div>
       </div>
 
       <div className="mt-3 rounded-xl border border-gray-100 bg-white shadow-sm divide-y divide-gray-50">

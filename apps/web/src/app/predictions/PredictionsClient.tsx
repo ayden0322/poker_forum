@@ -243,19 +243,30 @@ function TopFiveCard({ onViewFull }: { onViewFull: () => void }) {
       {rows.length === 0 ? (
         <div className="mt-3 text-xs text-gray-400">結算滿 1,000 P 即可入榜</div>
       ) : (
-        <div className="mt-3 space-y-2">
-          {rows.map((r) => (
-            <div key={r.nickname} className="flex items-center gap-2 text-xs">
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                r.rank === 1 ? 'bg-accent-500 text-white' : r.rank <= 3 ? 'bg-accent-300/80 text-accent-900' : 'bg-gray-100 text-gray-500'
-              }`}>{r.rank}</span>
-              <Link href={`/predictions/record/${encodeURIComponent(r.nickname)}`} className="flex-1 truncate text-gray-900 hover:text-[#2a8d92]">
-                {r.nickname}
-              </Link>
-              <span className="font-mono-stadium tabular-nums font-bold text-gray-900">{r.score}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          {/* 欄位標題：讓右側數字不再是「無名數字」（design 驗收 Level 1） */}
+          <div className="mt-3 flex items-center justify-end">
+            <span
+              className="text-[10px] text-gray-400 cursor-help"
+              title="表現分＝你打贏賠率的程度（風險調整報酬），不是賺賠多少 P。負分代表目前輸給賠率，樣本越少越接近 0。"
+            >
+              表現分 ⓘ
+            </span>
+          </div>
+          <div className="mt-1.5 space-y-2">
+            {rows.map((r) => (
+              <div key={r.nickname} className="flex items-center gap-2 text-xs">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                  r.rank === 1 ? 'bg-accent-500 text-white' : r.rank <= 3 ? 'bg-accent-300/80 text-accent-900' : 'bg-gray-100 text-gray-500'
+                }`}>{r.rank}</span>
+                <Link href={`/predictions/record/${encodeURIComponent(r.nickname)}`} className="flex-1 truncate text-gray-900 hover:text-[#2a8d92]">
+                  {r.nickname}
+                </Link>
+                <span className="font-mono-stadium tabular-nums font-bold text-gray-900">{r.score}</span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
