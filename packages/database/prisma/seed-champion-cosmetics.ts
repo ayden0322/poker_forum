@@ -11,8 +11,8 @@ const prisma = new PrismaClient();
 const ITEMS: Array<{ name: string; type: 'TITLE' | 'BADGE'; iconKey: string | null; assetUrl: string | null; description: string }> = [
   { name: '本週獲利王', type: 'TITLE', iconKey: null, assetUrl: null, description: '本週獲利榜冠軍限定稱號（掛一週）' },
   { name: '本週神算子', type: 'TITLE', iconKey: null, assetUrl: null, description: '本週勝率榜冠軍限定稱號（掛一週）' },
-  { name: '獲利榜冠軍', type: 'BADGE', iconKey: 'trophy', assetUrl: null, description: '獲利榜週冠軍紀念勳章' },
-  { name: '勝率榜冠軍', type: 'BADGE', iconKey: 'target', assetUrl: null, description: '勝率榜週冠軍紀念勳章' },
+  { name: '獲利榜冠軍', type: 'BADGE', iconKey: 'trophy', assetUrl: '/cosmetics/champion-profit-medallion.png', description: '獲利榜週冠軍紀念勳章' },
+  { name: '勝率榜冠軍', type: 'BADGE', iconKey: 'target', assetUrl: '/cosmetics/champion-winrate-medallion.png', description: '勝率榜週冠軍紀念勳章' },
 ];
 
 async function main() {
