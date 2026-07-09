@@ -60,8 +60,24 @@ export class LeaderboardService {
     const cached = await this.redis.get<LeaderboardRow[]>(cacheKey);
     if (cached) return { enabled: true, ...base, periodStart: start.toISOString(), rows: cached };
 
-    // 期間內已結算注單聚合。
-    // 獲利榜：全部勝負注（n / profit）；勝率榜：只計賠率 ≥1.5 的「有效競猜」（qn / qwins / q_avg_odds）
+    const rows = await this.rankForRange(start, null, type);
+
+    await this.redis.set(cacheKey, rows, CACHE_TTL_SEC);
+    return { enabled: true, ...base, periodStart: start.toISOString(), rows };
+  }
+
+  /** 上週榜首（週冠軍 cron 用）：回 nickname + 指標，達門檻才有；無人達標回 null */
+  async championOf(type: LeaderboardType, start: Date, end: Date): Promise<LeaderboardRow | null> {
+    const rows = await this.rankForRange(start, end, type);
+    return rows[0] ?? null;
+  }
+
+  /**
+   * 共用聚合排名：[start, end) 期間內已結算注單。end=null 表示到現在。
+   * 獲利榜：全部勝負注；勝率榜：只計賠率 ≥1.5 的「有效競猜」（防只押大熱門刷勝率）。
+   */
+  private async rankForRange(start: Date, end: Date | null, type: LeaderboardType): Promise<LeaderboardRow[]> {
+    const endCond = end ? Prisma.sql`AND b.settled_at < ${end}` : Prisma.empty;
     const raw = await this.prisma.$queryRaw<
       Array<{ nickname: string; n: number; profit: number; qn: number; qwins: number; q_avg_odds: number }>
     >(Prisma.sql`
@@ -74,7 +90,7 @@ export class LeaderboardService {
              COALESCE(AVG(b.locked_odds) FILTER (WHERE b.status IN ('WON','LOST') AND b.locked_odds >= ${WINRATE_MIN_ODDS}), 0)::float AS q_avg_odds
       FROM bets b
       JOIN users u ON u.id = b.user_id
-      WHERE b.settled_at >= ${start} AND b.status IN ('WON','LOST')
+      WHERE b.settled_at >= ${start} ${endCond} AND b.status IN ('WON','LOST')
       GROUP BY u.id, u.nickname
     `);
 
@@ -85,20 +101,14 @@ export class LeaderboardService {
         rank: 0,
         nickname: r.nickname,
         profit: r.profit,
-        winRate: r.qn > 0 ? Math.round((r.qwins / r.qn) * 1000) / 10 : 0, // 有效競猜勝率
+        winRate: r.qn > 0 ? Math.round((r.qwins / r.qn) * 1000) / 10 : 0,
         n: type === 'winrate' ? r.qn : r.n,
         avgOdds: Math.round(r.q_avg_odds * 100) / 100,
       }));
-
-    // 獲利榜：淨獲利降序（同分場次多者優先）
-    // 勝率榜：勝率降序（同率場次多者優先＝樣本更可信）
     mapped.sort((a, b) =>
       type === 'winrate' ? b.winRate - a.winRate || b.n - a.n : b.profit - a.profit || b.n - a.n,
     );
-    const rows: LeaderboardRow[] = mapped.slice(0, 20).map((r, i) => ({ ...r, rank: i + 1 }));
-
-    await this.redis.set(cacheKey, rows, CACHE_TTL_SEC);
-    return { enabled: true, ...base, periodStart: start.toISOString(), rows };
+    return mapped.slice(0, 20).map((r, i) => ({ ...r, rank: i + 1 }));
   }
 
   /**
