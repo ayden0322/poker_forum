@@ -14,6 +14,7 @@ import { PrismaService } from '../common/prisma.service';
 import { EconomyService, InsufficientBalanceError } from '../economy/economy.service';
 import { OddsPipelineService } from './odds-pipeline.service';
 import { MatchLinkService } from './match-link.service';
+import { HonorService } from './honor.service';
 import {
   BET_MAX_STAKE,
   BET_MIN_STAKE,
@@ -62,7 +63,82 @@ export class BetsService {
     private economy: EconomyService,
     private pipeline: OddsPipelineService,
     private matchLink: MatchLinkService,
+    private honor: HonorService,
   ) {}
+
+  /**
+   * 跟這單（二期·影響力）：跟隨某人的公開預測單並「實際下同方向注」。
+   * 複用 placeBet 全套驗證（封盤/即時賠率/餘額/限額）；記 PickFollow（每人每單去重）。
+   */
+  async followPick(followerId: string, pickBetId: string, stake: number) {
+    if (!isPredictionEnabled()) reject('MARKET_LOCKED', '競猜未開放', HttpStatus.BAD_REQUEST);
+    const pick = await this.prisma.bet.findUnique({
+      where: { id: pickBetId },
+      select: { userId: true, matchId: true, market: true, selection: true, line: true, status: true },
+    });
+    if (!pick) reject('MARKET_LOCKED', '找不到此預測單', HttpStatus.NOT_FOUND);
+    if (pick!.userId === followerId) reject('MARKET_LOCKED', '不能跟自己的單', HttpStatus.BAD_REQUEST);
+    if (pick!.status !== 'PENDING') reject('MARKET_LOCKED', '此單已結算，無法跟', HttpStatus.BAD_REQUEST);
+
+    const existing = await this.prisma.pickFollow.findUnique({
+      where: { pickBetId_followerId: { pickBetId, followerId } },
+      select: { id: true },
+    });
+    if (existing) reject('ALREADY_FOLLOWED', '你已經跟過這單了', HttpStatus.CONFLICT);
+
+    const follower = await this.prisma.user.findUnique({
+      where: { id: followerId },
+      select: { phoneVerified: true, phoneVerificationBypass: true },
+    });
+    if (!follower?.phoneVerified && !follower?.phoneVerificationBypass) {
+      reject('PHONE_REQUIRED', '需完成手機驗證才能跟單', HttpStatus.FORBIDDEN);
+    }
+
+    const match = await this.prisma.predictionMatch.findUnique({ where: { id: pick!.matchId } });
+    if (!match) reject('MARKET_LOCKED', '賽事不存在', HttpStatus.NOT_FOUND);
+    const board = PREDICTION_BOARDS[match!.boardSlug];
+    const quote = await this.prisma.oddsQuote.findFirst({
+      where: {
+        matchId: pick!.matchId,
+        bookmakerId: board?.bookmakerId,
+        market: pick!.market,
+        selection: pick!.selection,
+        line: pick!.line,
+        active: true,
+      },
+      orderBy: { fetchedAt: 'desc' },
+    });
+    if (!quote) reject('FEED_DOWN', '此盤口已收盤，暫時無法跟單', HttpStatus.SERVICE_UNAVAILABLE);
+
+    // idempotent：同一人跟同一單重送 → placeBet 回同張、PickFollow unique 擋重複
+    const requestId = `follow:${pickBetId}:${followerId}`;
+    const result = await this.placeBet(followerId, {
+      matchId: pick!.matchId,
+      market: pick!.market as PlaceBetInput['market'],
+      selection: pick!.selection as PlaceBetInput['selection'],
+      line: pick!.line?.toNumber() ?? undefined,
+      stake,
+      quoteId: quote!.id,
+      clientOdds: quote!.odds.toNumber(),
+      requestId,
+    });
+    const followBet = await this.prisma.bet.findUnique({
+      where: { userId_clientRequestId: { userId: followerId, clientRequestId: requestId } },
+      select: { id: true },
+    });
+    await this.prisma.pickFollow.upsert({
+      where: { pickBetId_followerId: { pickBetId, followerId } },
+      create: { pickBetId, followerId, followBetId: followBet?.id ?? null },
+      update: { followBetId: followBet?.id ?? null },
+    });
+    // 帶單成就（best-effort，不影響下注）
+    try {
+      await this.honor.onFollowed(pick!.userId);
+    } catch (err) {
+      this.logger.error(`帶單成就重算失敗 owner=${pick!.userId}：${err}`);
+    }
+    return { follow: true as const, bet: result };
+  }
 
   async placeBet(userId: string, input: PlaceBetInput) {
     if (!isPredictionEnabled()) reject('PREDICTION_DISABLED', '競猜功能未開放', HttpStatus.FORBIDDEN);

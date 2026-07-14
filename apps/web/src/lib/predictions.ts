@@ -121,6 +121,7 @@ export function usePredictionLeaderboard(period: 'week' | 'month', type: Leaderb
 }
 
 export interface RecordBet {
+  id: string;
   board: string;
   detailUrl: string | null; home: string; away: string; startTime: string;
   market: 'WINLOSE' | 'OVER_UNDER'; selection: MyBet['selection']; line: number | null;

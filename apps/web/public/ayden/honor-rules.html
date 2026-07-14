@@ -1,0 +1,103 @@
+<title>博客邦 · 榮譽系統 規則定案 v1</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f4f6f8;--card:#fff;--ink:#131a17;--soft:#5b6472;--faint:#8b95a1;--line:#e7ebee;--teal:#0d9488;--teal2:#39B8BE;--gold:#b8860b;--goldbg:#fffbeb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1416;--card:#171d20;--ink:#e6ecee;--soft:#9aa7b2;--faint:#6b7681;--line:#252d31;--teal:#2dd4bf;--gold:#e8b64a;--goldbg:rgba(232,182,74,.08)}}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.6;padding:38px 20px 80px}
+.wrap{max-width:820px;margin:0 auto}
+.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);font-weight:800}
+h1{font-size:25px;font-weight:800;margin:6px 0 3px}
+.meta{color:var(--faint);font-size:13px}
+.sec{margin-top:26px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.sh{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sh .n{width:26px;height:26px;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sh h2{font-size:16.5px;font-weight:800}
+.sh .lock{margin-left:auto;font-size:10.5px;font-weight:800;color:var(--teal);background:color-mix(in srgb,var(--teal) 12%,transparent);padding:2px 9px;border-radius:9999px}
+ul{list-style:none;padding:0} li{padding:5px 0 5px 18px;position:relative;font-size:14px;color:var(--soft)}
+li::before{content:"";position:absolute;left:2px;top:12px;width:6px;height:6px;border-radius:9999px;background:var(--teal2)}
+li b{color:var(--ink)}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:color-mix(in srgb,var(--teal) 8%,transparent);font-weight:800;font-size:12px}
+td b{color:var(--ink)}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+@media(max-width:620px){.tiers{grid-template-columns:1fr}}
+.tier{border:1px solid var(--line);border-radius:10px;padding:10px}
+.tier b{color:var(--teal);font-size:13px}.tier p{font-size:11.5px;color:var(--soft);margin-top:3px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}
+@media(max-width:620px){.two{grid-template-columns:1fr}}
+.lyr{border-radius:10px;padding:12px}
+.honor{background:var(--goldbg);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent)}
+.shop{background:color-mix(in srgb,var(--teal) 5%,var(--card));border:1px solid var(--line)}
+.lyr b{display:block;margin-bottom:5px}.lyr.honor b{color:var(--gold)}.lyr.shop b{color:var(--teal)}
+.lyr p{font-size:12px;color:var(--soft)}
+.flag{margin-top:26px;background:var(--goldbg);border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);border-radius:12px;padding:16px 18px}
+.flag b{color:var(--ink)} .flag .t{font-size:13px;font-weight:800;color:var(--gold);margin-bottom:8px}
+.flag li::before{background:var(--gold)}
+</style>
+<div class="wrap">
+<div class="eyebrow">榮譽系統 · 規則定案</div>
+<h1>博客邦 榮譽系統 規則 v1</h1>
+<div class="meta">六項規則討論定案 · 榮耀憑證(戰績解鎖·買不到) 與 門面裝飾(可買可換) 兩層並行</div>
+
+<div class="sec"><div class="sh"><span class="n">1</span><h2>賽季週期 · 三層時間軸</h2><span class="lock">定案</span></div>
+<ul>
+<li><b>週榜</b>（已有）：高頻日常，人人有機會，每週有新聞</li>
+<li><b>月賽季</b>（新增）：一個月一季，產生「本季神算王」等冠軍，發冠軍限定裝飾</li>
+<li><b>名人堂</b>（新增）：賽季冠軍與各項紀錄永久留名</li>
+</ul></div>
+
+<div class="sec"><div class="sh"><span class="n">2</span><h2>三條榜的口徑</h2><span class="lock">定案</span></div>
+<table>
+<tr><th>榜</th><th>口徑</th><th>門檻/防刷</th></tr>
+<tr><td><b>神算王</b>（準度）</td><td>本季勝率</td><td>本季 ≥30 注、只計賠率 ≥1.5</td></tr>
+<tr><td><b>獲利王</b>（P幣淨利）</td><td>本季結算淨利</td><td>本季 ≥20 注、<b>不限賠率</b>（本金＋量＋技術軸）</td></tr>
+<tr><td><b>人氣王</b>（影響力）</td><td>本季被「跟這單並實下」次數</td><td>跟單者手機驗證、每人每單去重 <b>⚠需新建跟單功能</b></td></tr>
+</table>
+<ul><li>三榜 → 三位月冠軍：<b>本季神算王 / 獲利王 / 人氣王</b>，不同打法各有寶座</li></ul></div>
+
+<div class="sec"><div class="sh"><span class="n">3</span><h2>冠軍歸屬 · 月末加冕、次月在位</h2><span class="lock">定案</span></div>
+<ul>
+<li>每月底結算出三榜冠軍</li>
+<li>冠軍<b>在位整個次月</b>，全站帶著冠軍限定裝飾</li>
+<li>月界<b>卸冕收回</b>，限定裝飾移交新冠軍</li>
+<li>即時榜同時顯示「本月現任榜首」＝正在搶的下一頂</li>
+</ul></div>
+
+<div class="sec"><div class="sh"><span class="n">4</span><h2>防刷紅線</h2><span class="lock">定案</span></div>
+<ul>
+<li><b>通用</b>：只計有盤口賽事（足球/MLB，NBA 不列）、只計已結算注單、<b>最低注額門檻</b>（數字待定）、只有手機驗證帳號能上榜/計影響力</li>
+<li><b>連勝</b>：連續命中須 賠率≥1.5＋注額達門檻；<b>void/延賽/和局 → 略過不中斷</b></li>
+<li><b>命中類</b>：該注注額須達門檻（不能用 1 幣單宣稱封神）</li>
+<li><b>影響力</b>：跟單者須手機驗證、每位跟單者每張預測單只計 1 次</li>
+</ul></div>
+
+<div class="sec"><div class="sh"><span class="n">5</span><h2>三種榮耀本質 + 門檻表</h2><span class="lock">定案</span></div>
+<div class="tiers">
+<div class="tier"><b>成就徽章</b><p>永久，曾達成即擁有。→ 榮耀圖鑑</p></div>
+<div class="tier"><b>紀錄保持</b><p>可被超越，全站唯一保持人。→ 名人堂（舊保持人留歷史）</p></div>
+<div class="tier"><b>賽季冠軍</b><p>月冠·次月在位。→ 限定裝飾＋名人堂歷代</p></div>
+</div>
+<table style="margin-top:12px">
+<tr><th>類</th><th>成就</th><th>條件（建議值·上線校準）</th></tr>
+<tr><td>賽季</td><td>神算王/獲利王/人氣王</td><td>各榜月末 <b>#1</b>；#2/#3 亞軍季軍（輕徽章·無限定裝飾）</td></tr>
+<tr><td>連勝</td><td>五連勝 / 十連勝 / 二十連勝</td><td>連續命中（賠率≥1.5、注額達門檻、void 略過）</td></tr>
+<tr><td>命中</td><td>冷門獵人 / 一戰封神</td><td>單注命中 賠率 ≥5 / ≥15</td></tr>
+<tr><td>準度</td><td>神準射手（可分 70/75/80%）</td><td>單月準度 ≥70%（≥30 場）</td></tr>
+<tr><td>影響力</td><td>帶單百人 / 千人 / 萬人</td><td>累計被跟單 100 / 1,000 / 10,000</td></tr>
+<tr><td>資歷</td><td>開站元老 / 週年</td><td>開站首月加入 / 加入滿一年</td></tr>
+</table></div>
+
+<div class="sec"><div class="sh"><span class="n">6</span><h2>買不到 vs 可買 · 兩層</h2><span class="lock">定案</span></div>
+<div class="two">
+<div class="lyr honor"><b>榮耀憑證（買不到·戰績解鎖）</b><p>賽季冠軍前三、冠軍限定裝飾、全部成就徽章、名人堂紀錄、戰績數字本身、<b>戰績稱號</b>（神算王/冷門獵人…）</p></div>
+<div class="lyr shop"><b>門面裝飾（可買·G幣·絕不真錢）</b><p>頭像框樣式、卡片主題/配色、上傳頭像、<b>可買風格稱號</b>（純風格/搞笑）</p></div>
+</div>
+<ul style="margin-top:8px"><li>紅線：牽涉戰績/成就/賽季 → 一律 earned-only；門面只收 G 幣、<b>絕不接真錢</b>（純虛擬經濟）</li></ul></div>
+
+<div class="flag"><div class="t">⚠ 規則討論中浮出的兩個實作前置</div>
+<ul>
+<li><b>影響力榜</b>需先建「<b>公開預測單 + 跟這單</b>」功能——目前 P幣競猜沒有。一期可先不上人氣王，只上神算王＋獲利王（現有戰績就能算）。</li>
+<li><b>最低注額門檻</b>的實際數字，要依 P 幣經濟規模定，先佔位、上線校準。</li>
+</ul></div>
+</div>

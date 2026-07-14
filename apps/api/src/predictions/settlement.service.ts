@@ -17,6 +17,7 @@ import { RedisService } from '../common/redis.service';
 import { EconomyService } from '../economy/economy.service';
 import { classifyStatus, decideOutcome, NON_WAIT_HINT_STATUSES, Outcome } from './settlement-rules';
 import { teamZh } from './team-display';
+import { HonorService } from './honor.service';
 import {
   PredictionBoardConfig,
   POSTPONE_FREEZE_MS,
@@ -54,6 +55,7 @@ export class SettlementService {
     private config: ConfigService,
     private redis: RedisService,
     private economy: EconomyService,
+    private honor: HonorService,
   ) {
     this.apiKey = this.config.get<string>('API_SPORTS_KEY', '');
   }
@@ -273,6 +275,14 @@ export class SettlementService {
       `結算完成（${m.boardSlug} match=${m.id} ${score.home}:${score.away}）：` +
         `${settled}/${bets.length} 注（贏 ${tally.WON}／輸 ${tally.LOST}／平 ${tally.PUSH}）`,
     );
+    // 榮耀成就重算（best-effort，失敗不影響派彩/帳）
+    if (settled > 0) {
+      try {
+        await this.honor.onMatchSettled(bets.map((b) => b.userId));
+      } catch (err) {
+        this.logger.error(`榮耀成就重算失敗（match=${m.id}）：${err}`);
+      }
+    }
   }
 
   /**

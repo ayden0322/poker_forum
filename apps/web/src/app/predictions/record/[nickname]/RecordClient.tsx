@@ -8,7 +8,10 @@
 // 不預留任何付費版位（三期榮譽版定案）。
 
 import Link from 'next/link';
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/context/auth';
+import { apiFetch } from '@/lib/api';
 import {
   BET_STATUS_VIEW,
   matchInfoUrl,
@@ -25,8 +28,55 @@ function selText(b: { market: string; selection: string; line: number | null }):
   return b.market === 'OVER_UNDER' ? `${SELECTION_LABEL[b.selection]} ${b.line}` : SELECTION_LABEL[b.selection];
 }
 
-/** 訪客版注單卡（無金額） */
-function PublicBetCard({ b }: { b: RecordBet }) {
+/** 跟這單：跟隨他人公開的進行中預測單並實下同方向注（二期·影響力） */
+function FollowButton({ betId }: { betId: string }) {
+  const [open, setOpen] = useState(false);
+  const [stake, setStake] = useState(100);
+  const qc = useQueryClient();
+  const mut = useMutation({
+    mutationFn: () => apiFetch(`/predictions/picks/${betId}/follow`, { method: 'POST', body: JSON.stringify({ stake }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['prediction'] });
+      qc.invalidateQueries({ queryKey: ['user'] });
+    },
+  });
+
+  if (mut.isSuccess) return <span className="shrink-0 text-xs font-medium text-[#2a8d92]">已跟單 ✓</span>;
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="shrink-0 rounded-lg bg-[#0d9488] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0f766e]"
+      >
+        跟這單
+      </button>
+    );
+  }
+  return (
+    <div className="shrink-0 flex items-center gap-1.5">
+      <input
+        type="number"
+        min={1}
+        value={stake}
+        onChange={(e) => setStake(Math.max(1, Number(e.target.value) || 0))}
+        className="w-16 rounded-md border border-gray-200 px-2 py-1 text-xs tabular-nums"
+      />
+      <span className="text-xs text-gray-400">P</span>
+      <button
+        onClick={() => mut.mutate()}
+        disabled={mut.isPending}
+        className="rounded-md bg-[#0d9488] px-2.5 py-1 text-xs font-bold text-white disabled:opacity-50"
+      >
+        {mut.isPending ? '…' : '確認'}
+      </button>
+      <button onClick={() => setOpen(false)} className="text-xs text-gray-400 hover:text-gray-600">取消</button>
+      {mut.isError && <span className="text-[11px] text-red-500">跟單失敗</span>}
+    </div>
+  );
+}
+
+/** 訪客版注單卡（無金額）。canFollow：登入且非本人時，進行中單可跟。 */
+function PublicBetCard({ b, canFollow }: { b: RecordBet; canFollow?: boolean }) {
   const sv = BET_STATUS_VIEW[b.status];
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm flex items-center justify-between gap-3">
@@ -39,7 +89,11 @@ function PublicBetCard({ b }: { b: RecordBet }) {
           <Link href={matchInfoUrl(b)} className="ml-2 text-[#2a8d92] hover:underline">賽事資訊 →</Link>
         </div>
       </div>
-      <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${sv.className}`}>{sv.label}</span>
+      {b.status === 'PENDING' && canFollow ? (
+        <FollowButton betId={b.id} />
+      ) : (
+        <span className={`shrink-0 inline-block px-2 py-0.5 rounded-full text-xs font-medium ${sv.className}`}>{sv.label}</span>
+      )}
     </div>
   );
 }
@@ -149,7 +203,7 @@ export default function RecordClient({ nickname }: { nickname: string }) {
             <>
               <h2 className="mt-6 text-base font-bold text-gray-900">進行中</h2>
               <div className="mt-2 space-y-2">
-                {rec.pending!.map((b, i) => <PublicBetCard key={`p-${i}`} b={b} />)}
+                {rec.pending!.map((b, i) => <PublicBetCard key={`p-${i}`} b={b} canFollow={!!user && !isOwner} />)}
               </div>
             </>
           )}

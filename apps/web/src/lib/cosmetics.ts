@@ -23,10 +23,25 @@ const FRAME_PLACEMENTS: Record<string, FramePlacement> = {
   'shield-emblem.png':      { scale: 0.55, dx: 0.33, dy: 0.33 },// 盾徽：縮小、右下角
   'wings-emblem.png':       { scale: 0.58, dx: 0.32, dy: 0.32 },// 翼徽：右下角徽章(不框頭像)
   'laurel-emblem.png':      { scale: 0.58, dx: 0.32, dy: 0.32 },// 桂冠徽：右下角徽章
+  // 官方套組「三球金框」：方形相框，窗口≈框0.64；框放大1.56× → 窗口≈頭像1.0，把上傳圖裱在中央。
+  'three-ball-frame.png':   { scale: 1.56, dx: 0, dy: 0 },
 };
 export function framePlacement(assetUrl: string): FramePlacement {
   const base = assetUrl.split('/').pop() ?? '';
   return FRAME_PLACEMENTS[base] ?? { scale: 1.55, dx: 0, dy: 0 }; // 預設置中包覆
+}
+
+/**
+ * 框的「頭像形狀」：圓形環(桂冠/翼章等)讓頭像維持圓形；方形相框(three-ball-frame)則把
+ * 上傳圖裱成圓角方形填滿相框窗口——像真正的相框把照片裱起來，對「裝飾裱著你的圖」語意最貼。
+ */
+export type FrameShape = 'circle' | 'square';
+const FRAME_SHAPES: Record<string, FrameShape> = {
+  'three-ball-frame.png': 'square',
+};
+export function frameShape(assetUrl?: string | null): FrameShape {
+  if (!assetUrl) return 'circle';
+  return FRAME_SHAPES[assetUrl.split('/').pop() ?? ''] ?? 'circle';
 }
 
 // 註：特效已改為獨立可選購的 EFFECT 裝飾類型(獨立槽，疊在任何框上)，

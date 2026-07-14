@@ -22,6 +22,10 @@ class PlaceBetDto {
   @IsOptional() @IsString() requestId?: string;
 }
 
+class FollowPickDto {
+  @IsInt() @IsPositive() stake!: number;
+}
+
 @Controller('predictions')
 export class PredictionsController {
   constructor(
@@ -65,6 +69,17 @@ export class PredictionsController {
   async placeBet(@CurrentUser() user: { id: string }, @Body() dto: PlaceBetDto) {
     // enabled 檢查在 service 內（回機器可讀 PREDICTION_DISABLED），這裡不重複
     return { data: await this.bets.placeBet(user.id, dto) };
+  }
+
+  /** 跟這單（二期·影響力）：跟隨某人的公開預測單並實下同方向注 */
+  @Post('picks/:betId/follow')
+  @UseGuards(JwtAuthGuard)
+  async followPick(
+    @CurrentUser() user: { id: string },
+    @Param('betId') betId: string,
+    @Body() dto: FollowPickDto,
+  ) {
+    return { data: await this.bets.followPick(user.id, betId, dto.stake) };
   }
 
   @Get('bets')

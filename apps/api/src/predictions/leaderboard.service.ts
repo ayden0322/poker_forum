@@ -72,6 +72,28 @@ export class LeaderboardService {
     return rows[0] ?? null;
   }
 
+  /** 期間內排名前 N（月賽季冠亞季 + 神準射手用）。 */
+  async standingsForRange(type: LeaderboardType, start: Date, end: Date, limit = 3): Promise<LeaderboardRow[]> {
+    const rows = await this.rankForRange(start, end, type);
+    return rows.slice(0, limit);
+  }
+
+  /** 影響力榜（二期）：期間內「被跟單」數（每人每單已去重），依被跟單擁有者排序。end=null 到現在。 */
+  async influenceRanking(start: Date, end: Date | null, limit = 20): Promise<Array<{ rank: number; nickname: string; follows: number }>> {
+    const endCond = end ? Prisma.sql`AND pf.created_at < ${end}` : Prisma.empty;
+    const raw = await this.prisma.$queryRaw<Array<{ nickname: string; follows: number }>>(Prisma.sql`
+      SELECT owner.nickname, COUNT(*)::int AS follows
+      FROM pick_follows pf
+      JOIN bets pb ON pb.id = pf.pick_bet_id
+      JOIN users owner ON owner.id = pb.user_id
+      WHERE pf.created_at >= ${start} ${endCond}
+      GROUP BY owner.id, owner.nickname
+      ORDER BY follows DESC
+      LIMIT ${limit}
+    `);
+    return raw.map((r, i) => ({ rank: i + 1, nickname: r.nickname, follows: r.follows }));
+  }
+
   /**
    * 共用聚合排名：[start, end) 期間內已結算注單。end=null 表示到現在。
    * 獲利榜：全部勝負注；勝率榜：只計賠率 ≥1.5 的「有效競猜」（防只押大熱門刷勝率）。
@@ -131,6 +153,7 @@ export class LeaderboardService {
     `);
 
     const betSelect = {
+      id: true,
       market: true, selection: true, line: true, lockedOdds: true, status: true, settledAt: true,
       match: { select: { boardSlug: true, homeName: true, awayName: true, startTime: true } },
     } as const;
@@ -165,10 +188,11 @@ export class LeaderboardService {
   }
 
   private async toRecordBet(b: {
-    market: string; selection: string; line: Prisma.Decimal | null; lockedOdds: Prisma.Decimal; status: string;
+    id: string; market: string; selection: string; line: Prisma.Decimal | null; lockedOdds: Prisma.Decimal; status: string;
     match: { boardSlug: string; homeName: string; awayName: string; startTime: Date };
   }) {
     return {
+      id: b.id,
       board: b.match.boardSlug,
       detailUrl: await this.matchLink.detailUrl(b.match.boardSlug, b.match.homeName, b.match.startTime),
       home: b.match.homeName,

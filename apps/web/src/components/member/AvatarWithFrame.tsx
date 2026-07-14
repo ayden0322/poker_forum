@@ -1,6 +1,6 @@
 'use client';
 
-import { FRAME_RING, framePlacement, type Rarity } from '@/lib/cosmetics';
+import { FRAME_RING, framePlacement, frameShape, type Rarity } from '@/lib/cosmetics';
 import LottieFrame from './LottieFrame';
 import ShaderEffect from './ShaderEffect';
 
@@ -27,14 +27,17 @@ export default function AvatarWithFrame({
   effectUrl?: string | null;
   context?: 'list' | 'profile';
 }) {
+  // 方形相框(如三球金框)：頭像裱成圓角方形填滿窗口；其餘框：維持圓形。
+  const isSquare = frameShape(frame?.assetUrl) === 'square';
+  const avatarRadius = isSquare ? Math.round(size * 0.12) : 9999;
   const insetShadow = 'inset 0 1px 3px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.12)';
   const inner = avatar ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={avatar} width={size} height={size} alt={nickname}
-      style={{ borderRadius: '9999px', display: 'block', objectFit: 'cover', boxShadow: insetShadow }} />
+      style={{ borderRadius: avatarRadius, display: 'block', objectFit: 'cover', boxShadow: insetShadow }} />
   ) : (
     <span style={{
-      width: size, height: size, borderRadius: '9999px', display: 'flex',
+      width: size, height: size, borderRadius: avatarRadius, display: 'flex',
       alignItems: 'center', justifyContent: 'center',
       background: 'linear-gradient(145deg, #60a5fa, #3b82f6)',
       color: '#fff', fontWeight: 700, fontSize: size * 0.45, boxShadow: insetShadow,

@@ -3,6 +3,8 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PostStatus } from '@betting-forum/database';
+import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
+import { isMemberEconomyEnabled } from '../economy/economy.flags';
 
 @Injectable()
 export class UsersService {
@@ -25,6 +27,7 @@ export class UsersService {
             following: true,
           },
         },
+        ...AUTHOR_COSMETIC_SELECT, // 已裝備 frame/title/mainBadge/effect（fail-closed 於序列化層）
       },
     });
     if (!user) throw new NotFoundException('找不到此用戶');
@@ -37,6 +40,43 @@ export class UsersService {
       isFollowing = !!follow;
     }
 
+    // 個人頁勳章牆：釘選的勳章（最多 3，依 pinnedOrder），到期者濾除；總開關關閉不外洩。
+    const pinnedBadges = isMemberEconomyEnabled()
+      ? (
+          await this.prisma.userCosmetic.findMany({
+            where: {
+              userId: user.id,
+              pinnedOrder: { not: null },
+              item: { type: 'BADGE' },
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            },
+            orderBy: { pinnedOrder: 'asc' },
+            take: 3,
+            select: { item: { select: { name: true, iconKey: true, assetUrl: true, rarity: true } } },
+          })
+        ).map((r) => r.item)
+      : [];
+
+    // 戰績身份卡：勝率 / 連勝 / 在位冠軍（純戰績、公開；競猜關閉則回 null）
+    const now = new Date();
+    const [settled, wins, stat, reign, followRows] = await Promise.all([
+      this.prisma.bet.count({ where: { userId: user.id, status: { in: ['WON', 'LOST'] } } }),
+      this.prisma.bet.count({ where: { userId: user.id, status: 'WON' } }),
+      this.prisma.userBettingStat.findUnique({ where: { userId: user.id } }),
+      this.prisma.championReign.findFirst({
+        where: { userId: user.id, reignFrom: { lte: now }, reignTo: { gt: now } },
+        select: { board: true, reignFrom: true, reignTo: true },
+      }),
+      this.prisma.$queryRaw<Array<{ c: number }>>`SELECT COUNT(*)::int AS c FROM pick_follows pf JOIN bets b ON b.id = pf.pick_bet_id WHERE b.user_id = ${user.id}`,
+    ]);
+    const record = {
+      settled,
+      winRate: settled > 0 ? Math.round((wins / settled) * 1000) / 10 : 0,
+      currentStreak: stat?.currentStreak ?? 0,
+      bestStreak: stat?.bestStreak ?? 0,
+      followedCount: followRows[0]?.c ?? 0,
+    };
+
     return {
       id: user.id,
       nickname: user.nickname,
@@ -48,6 +88,10 @@ export class UsersService {
       followerCount: user._count.followers,
       followingCount: user._count.following,
       isFollowing,
+      cosmetics: serializeAuthorCosmetics(user),
+      pinnedBadges,
+      record,
+      championReign: reign ? { board: reign.board, reignFrom: reign.reignFrom, reignTo: reign.reignTo } : null,
     };
   }
 

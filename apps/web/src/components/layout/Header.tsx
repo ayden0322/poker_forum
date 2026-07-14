@@ -143,7 +143,7 @@ export function Header() {
     if (predData?.data.enabled !== true) return navItems;
     const withPredictions = [...navItems];
     const fifaIdx = withPredictions.findIndex((n) => n.label === 'FIFA 2026');
-    withPredictions.splice(fifaIdx + 1, 0, { label: '賽事競猜', href: '/predictions' });
+    withPredictions.splice(fifaIdx + 1, 0, { label: '賽事競猜', href: '/predictions' }, { label: '榮譽', href: '/honor' });
     return withPredictions;
   }, [predData?.data.enabled]);
   // 會員經濟總開關狀態（與 MemberBadges 共用快取）：關閉時連選單入口都不露（fail-closed）

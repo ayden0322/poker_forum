@@ -56,6 +56,11 @@ model User {
   bets               Bet[]
   promoReferral      PromoReferral?
   adminPermissions   AdminPermission[]
+  bettingStat        UserBettingStat?
+  honorAwards        HonorAward[]
+  seasonStandings    SeasonStanding[]
+  championReigns     ChampionReign[]
+  hallOfFameRecords  HallOfFameRecord[]
 
   @@map("users")
 }
@@ -1106,4 +1111,126 @@ model Bet {
   @@index([matchId, status]) // 結算掃描
   @@index([userId, createdAt]) // 個人注單列表
   @@map("bets")
+}
+
+// ===== 榮譽系統（月賽季冠軍 / 成就徽章 / 名人堂 / 連勝統計）2026-07 =====
+// 榮耀憑證＝戰績解鎖、買不到（CosmeticItem.purchasable=false 發放）；接在 P幣競猜之上。
+
+enum HonorBoard {
+  ACCURACY // 神算王（準度）
+  PROFIT // 獲利王（P幣淨利）
+  INFLUENCE // 人氣王（被跟單，二期）
+}
+
+enum SeasonStatus {
+  ACTIVE
+  CLOSING
+  CLOSED
+}
+
+// 月賽季（台北月為界）
+model Season {
+  id        String           @id @default(cuid())
+  key       String           @unique // "2026-07"
+  startAt   DateTime         @map("start_at")
+  endAt     DateTime         @map("end_at")
+  status    SeasonStatus     @default(ACTIVE)
+  createdAt DateTime         @default(now()) @map("created_at")
+  standings SeasonStanding[]
+  reigns    ChampionReign[]
+
+  @@map("seasons")
+}
+
+// 月末凍結的排名快照（每季·每榜·每人）
+model SeasonStanding {
+  id           String     @id @default(cuid())
+  seasonId     String     @map("season_id")
+  season       Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  userId       String     @map("user_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board        HonorBoard
+  value        Float // 準度%/淨利/跟單數
+  rank         Int
+  settledCount Int        @map("settled_count")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@unique([seasonId, board, userId])
+  @@index([seasonId, board, rank])
+  @@map("season_standings")
+}
+
+// 成就徽章 earned 紀錄（永久）
+model HonorAward {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  code      String // STREAK_10 / UPSET_HUNTER / LEGEND_STRIKE / SHARP_SHOOTER / SEASON_ORACLE_1 ...
+  seasonId  String?  @map("season_id") // 賽季類才有
+  value     Float? // 連勝數/命中賠率等佐證
+  context   String?
+  awardedAt DateTime @default(now()) @map("awarded_at")
+
+  @@unique([userId, code, seasonId])
+  @@index([userId])
+  @@map("honor_awards")
+}
+
+// 冠軍在位（月冠 → 次月在位）
+model ChampionReign {
+  id        String     @id @default(cuid())
+  seasonId  String     @map("season_id")
+  season    Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  board     HonorBoard
+  userId    String     @map("user_id")
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reignFrom DateTime   @map("reign_from")
+  reignTo   DateTime   @map("reign_to")
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@unique([seasonId, board])
+  @@index([board, reignTo])
+  @@map("champion_reigns")
+}
+
+// 名人堂紀錄（可被超越，保留歷史）
+model HallOfFameRecord {
+  id         String   @id @default(cuid())
+  recordType String   @map("record_type") // LONGEST_STREAK / BIGGEST_UPSET / BEST_MONTH_ACC / TOP_INFLUENCE
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  value      Float
+  context    String?
+  achievedAt DateTime @map("achieved_at")
+  isCurrent  Boolean  @default(true) @map("is_current")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([recordType, isCurrent])
+  @@map("hall_of_fame_records")
+}
+
+// 個人下注統計（連勝計數，維護式；可由 bet 歷史冪等重建）
+model UserBettingStat {
+  userId        String   @id @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStreak Int      @default(0) @map("current_streak")
+  bestStreak    Int      @default(0) @map("best_streak")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("user_betting_stats")
+}
+
+// 跟單（二期·影響力）：某人「跟這單並實下」。被跟單數 = 影響力榜/人氣王。
+// 純欄位不設關聯以降耦合；去重靠 @@unique([pickBetId, followerId])。
+model PickFollow {
+  id          String   @id @default(cuid())
+  pickBetId   String   @map("pick_bet_id") // 被跟的公開預測單(Bet.id)
+  followerId  String   @map("follower_id") // 跟單者
+  followBetId String?  @map("follow_bet_id") // 跟單者實際下的注(Bet.id)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([pickBetId, followerId]) // 每人每單只計 1 次
+  @@index([followerId])
+  @@index([createdAt])
+  @@map("pick_follows")
 }
