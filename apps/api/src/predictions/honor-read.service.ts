@@ -45,4 +45,26 @@ export class HonorReadService {
       })),
     };
   }
+
+  /** 榮耀圖鑑：全部榮耀徽章（買不到）+ 條件 + 擁有率（稀有度）。 */
+  async catalog() {
+    const RARITY_ORDER: Record<string, number> = { LEGENDARY: 0, RARE: 1, COMMON: 2 };
+    const [items, totalUsers] = await Promise.all([
+      this.prisma.cosmeticItem.findMany({
+        where: { type: 'BADGE', purchasable: false, enabled: true },
+        select: { name: true, description: true, assetUrl: true, rarity: true, _count: { select: { userCosmetics: true } } },
+      }),
+      this.prisma.user.count(),
+    ]);
+    return items
+      .map((i) => ({
+        name: i.name,
+        description: i.description,
+        assetUrl: i.assetUrl,
+        rarity: i.rarity,
+        owned: i._count.userCosmetics,
+        pct: totalUsers > 0 ? Math.round((i._count.userCosmetics / totalUsers) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => (RARITY_ORDER[a.rarity] ?? 3) - (RARITY_ORDER[b.rarity] ?? 3) || a.pct - b.pct);
+  }
 }

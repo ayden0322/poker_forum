@@ -10,4 +10,9 @@ export class HonorController {
   async overview() {
     return { success: true, data: await this.read.overview() };
   }
+
+  @Get('catalog')
+  async catalog() {
+    return { success: true, data: await this.read.catalog() };
+  }
 }

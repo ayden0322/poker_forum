@@ -92,10 +92,29 @@ function Board({ title, sub, rows, metric }: { title: string; sub: string; rows:
   );
 }
 
+interface CatalogItem {
+  name: string;
+  description: string | null;
+  assetUrl: string | null;
+  rarity: string;
+  owned: number;
+  pct: number;
+}
+
+const RARITY_STYLE: Record<string, { label: string; cls: string }> = {
+  LEGENDARY: { label: '傳說', cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+  RARE: { label: '稀有', cls: 'text-teal-700 bg-teal-50 border-teal-200' },
+  COMMON: { label: '普通', cls: 'text-gray-500 bg-gray-50 border-gray-200' },
+};
+
 export default function HonorPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['honor', 'overview'],
     queryFn: () => apiFetch<{ data: Overview }>('/honor/overview').then((r) => r.data),
+  });
+  const { data: catalog } = useQuery({
+    queryKey: ['honor', 'catalog'],
+    queryFn: () => apiFetch<{ data: CatalogItem[] }>('/honor/catalog').then((r) => r.data),
   });
 
   const monthLabel = data ? new Date(data.periodStart).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' }) : '';
@@ -190,6 +209,39 @@ export default function HonorPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 榮耀圖鑑 · 成就總表（買不到，只能戰績解鎖） */}
+      {catalog && catalog.length > 0 && (
+        <div className="mt-8">
+          <div className="mb-1 flex items-baseline gap-2">
+            <h2 className="text-lg font-extrabold text-gray-900">榮耀圖鑑</h2>
+            <span className="text-xs text-gray-400">全部榮耀憑證 · 買不到，只能戰績解鎖</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {catalog.map((c) => {
+              const rs = RARITY_STYLE[c.rarity] ?? RARITY_STYLE.COMMON;
+              return (
+                <div key={c.name} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                  {c.assetUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.assetUrl} alt="" width={44} height={44} className="flex-shrink-0" style={{ objectFit: 'contain' }} />
+                  ) : (
+                    <div className="h-11 w-11 flex-shrink-0 rounded-full bg-gray-100" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-bold text-gray-900">{c.name}</span>
+                      <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${rs.cls}`}>{rs.label}</span>
+                    </div>
+                    {c.description && <div className="truncate text-[11px] text-gray-400">{c.description}</div>}
+                    <div className="mt-0.5 text-[11px] font-semibold text-teal-700">全站 {c.pct}% 擁有</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
