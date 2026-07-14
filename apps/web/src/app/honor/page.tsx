@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
+import { useAuth } from '@/context/auth';
 
 interface Row {
   rank: number;
@@ -30,6 +31,12 @@ interface InfluenceRow {
   nickname: string;
   follows: number;
 }
+interface HonorEvent {
+  kind: 'crown' | 'award';
+  nickname: string;
+  label: string;
+  at: string;
+}
 interface Overview {
   enabled: boolean;
   periodStart: string;
@@ -38,6 +45,21 @@ interface Overview {
   influence: InfluenceRow[];
   champions: Champion[];
   hallOfFame: HofRecord[];
+  events: HonorEvent[];
+}
+interface MyHonor {
+  nickname: string;
+  currentStreak: number;
+  bestStreak: number;
+  followedCount: number;
+  awards: number;
+  reign: string | null;
+  collection: { owned: number; total: number };
+  ranks: { accuracy: number | null; profit: number | null; influence: number | null };
+  next: {
+    streak: { label: string; current: number; target: number } | null;
+    influence: { label: string; current: number; target: number } | null;
+  };
 }
 
 const BOARD_LABEL: Record<string, string> = { ACCURACY: '神算王', PROFIT: '獲利王', INFLUENCE: '人氣王' };
@@ -47,6 +69,10 @@ const HOF_LABEL: Record<string, string> = {
   BEST_MONTH_ACC: '單月最高準度',
   TOP_INFLUENCE: '影響力王',
 };
+
+function rankText(r: number | null): string {
+  return r ? `#${r}` : '未上榜';
+}
 
 function hofValue(t: string, v: number): string {
   if (t === 'LONGEST_STREAK') return `${v} 連`;
@@ -116,6 +142,12 @@ export default function HonorPage() {
     queryKey: ['honor', 'catalog'],
     queryFn: () => apiFetch<{ data: CatalogItem[] }>('/honor/catalog').then((r) => r.data),
   });
+  const { user, accessToken } = useAuth();
+  const { data: mine } = useQuery({
+    queryKey: ['honor', 'me', user?.id],
+    queryFn: () => apiFetch<{ data: MyHonor | null }>('/honor/me').then((r) => r.data),
+    enabled: !!accessToken,
+  });
 
   const monthLabel = data ? new Date(data.periodStart).toLocaleDateString('zh-TW', { year: 'numeric', month: 'long' }) : '';
 
@@ -126,6 +158,42 @@ export default function HonorPage() {
       <p className="mt-1 text-sm text-gray-500">
         榮耀只能靠戰績賺、買不到。冠軍每月加冕、紀錄永久留名。{monthLabel && `本季：${monthLabel}`}
       </p>
+
+      {/* 我的榮耀（登入者） */}
+      {mine && (
+        <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50/40 p-4">
+          <div className="mb-2.5 flex items-center gap-2">
+            <span className="text-xs font-extrabold text-teal-700">我的榮耀</span>
+            <Link href={`/user/${encodeURIComponent(mine.nickname)}`} className="text-sm font-bold text-gray-800 hover:underline">{mine.nickname}</Link>
+            {mine.reign && (
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">本季{BOARD_LABEL[mine.reign] ?? mine.reign}在位</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-sm text-gray-600">
+            <span>神算王榜 <b className="text-teal-700">{rankText(mine.ranks.accuracy)}</b></span>
+            <span>獲利王榜 <b className="text-teal-700">{rankText(mine.ranks.profit)}</b></span>
+            <span>人氣王榜 <b className="text-teal-700">{rankText(mine.ranks.influence)}</b></span>
+            <span>榮耀勳章 <b className="text-gray-900">{mine.collection.owned}/{mine.collection.total}</b></span>
+            <span>最佳連勝 <b className="text-amber-500">{mine.bestStreak}</b></span>
+            <span>被跟單 <b className="text-gray-900">{mine.followedCount.toLocaleString()}</b></span>
+          </div>
+          {(mine.next.streak || mine.next.influence) && (
+            <div className="mt-3 space-y-2">
+              {[mine.next.streak, mine.next.influence].filter(Boolean).map((n, i) => (
+                <div key={i}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-500">下一個榮耀 · {n!.label}</span>
+                    <b className="text-teal-700 tabular-nums">{n!.current.toLocaleString()} / {n!.target.toLocaleString()}</b>
+                  </div>
+                  <div className="h-2 rounded-full bg-white overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-teal-600 to-teal-400" style={{ width: `${Math.min(100, Math.round((n!.current / n!.target) * 100))}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {isLoading && <div className="py-16 text-center text-gray-400">載入中…</div>}
 
@@ -147,6 +215,23 @@ export default function HonorPage() {
                     <div className="text-xs text-white/70">本季{BOARD_LABEL[c.board] ?? c.board}</div>
                     <div className="text-lg font-extrabold text-amber-200 group-hover:underline">{c.nickname}</div>
                   </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 加冕動態 feed */}
+          {data.events.length > 0 && (
+            <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+              <div className="mb-2 text-sm font-extrabold text-teal-700">近期加冕動態</div>
+              <div className="divide-y divide-gray-50">
+                {data.events.map((e, i) => (
+                  <div key={i} className="flex items-center gap-2 py-2 text-sm">
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${e.kind === 'crown' ? 'bg-amber-400' : 'bg-teal-400'}`} />
+                    <Link href={`/user/${encodeURIComponent(e.nickname)}`} className="font-bold text-gray-800 hover:underline">{e.nickname}</Link>
+                    <span className={e.kind === 'crown' ? 'text-amber-600 font-semibold' : 'text-gray-600'}>{e.label}</span>
+                    <span className="ml-auto text-xs text-gray-400">{new Date(e.at).toLocaleDateString('zh-TW')}</span>
+                  </div>
                 ))}
               </div>
             </div>
