@@ -19,6 +19,11 @@ export interface PredictionBoardConfig {
 
 /** 二期上線範圍：足球（世界盃先行）+ MLB。NBA 無盤口延後（規格 §0 定案）。 */
 export const PREDICTION_BOARDS: Record<string, PredictionBoardConfig> = {
+  // 2026-07-20 下線：世界盃已於 07-19 打完，賽程表無未來場次，開著只會讓 cron 空轉燒額度。
+  // ⚠️ 保留設定不刪除：bets.service / markets.service 是用 PREDICTION_BOARDS[boardSlug] 直接查，
+  //    刪掉會讓既有世界盃注單與戰績頁查不到板塊設定而炸。enabled=false 只停 cron 與新下注入口。
+  //    ⚠️ enabled=false 同時會停掉 settlement.cron 對此板塊的結算 —— 下線前已確認
+  //    未結算世界盃賽事 0 場、未結算注單 0 筆，沒有會被卡住的單。下次要開新板塊沿用此檢查。
   'world-cup': {
     boardSlug: 'world-cup',
     sportType: 'football',
@@ -27,7 +32,7 @@ export const PREDICTION_BOARDS: Record<string, PredictionBoardConfig> = {
     season: 2026,
     bookmakerId: 7,
     markets: ['WINLOSE', 'OVER_UNDER'],
-    enabled: true,
+    enabled: false,
   },
   mlb: {
     boardSlug: 'mlb',
