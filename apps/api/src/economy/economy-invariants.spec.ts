@@ -70,7 +70,10 @@ describe('不變量｜法遵：純虛擬經濟，不存在真錢路徑', () => {
   it('LedgerReason 必須在已知虛擬白名單內（要新增理由＝必須有意識改這個測試）', () => {
     const ALLOWED = new Set([
       'TASK_REWARD', 'SHOP_PURCHASE', 'SHOP_REFUND', 'EXCHANGE_G_TO_P',
-      'PREDICTION_STAKE', 'PREDICTION_PAYOUT', 'PREDICTION_REFUND', 'ADMIN_ADJUST',
+      'PREDICTION_STAKE', 'PREDICTION_PAYOUT', 'PREDICTION_REFUND',
+      // 2026-07-07 P幣競猜二期：結算沖正（比分改判時另記更正，不 UPDATE 舊帳）——純虛擬，無真錢路徑
+      'PREDICTION_REVERSAL',
+      'ADMIN_ADJUST',
     ]);
     for (const r of Object.values(LedgerReason)) {
       expect(ALLOWED.has(r)).toBe(true);

@@ -1,0 +1,118 @@
+<title>博客邦 · 榮譽系統 落地實作 spec v1</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f4f6f8;--card:#fff;--ink:#131a17;--soft:#5b6472;--faint:#8b95a1;--line:#e7ebee;--teal:#0d9488;--gold:#b8860b}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1416;--card:#171d20;--ink:#e6ecee;--soft:#9aa7b2;--faint:#6b7681;--line:#252d31;--teal:#2dd4bf;--gold:#e8b64a}}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.6;padding:38px 20px 80px}
+.wrap{max-width:860px;margin:0 auto}
+.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);font-weight:800}
+h1{font-size:25px;font-weight:800;margin:6px 0 3px}
+.meta{color:var(--faint);font-size:13px}
+.sec{margin-top:24px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.sh{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sh .n{width:26px;height:26px;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sh h2{font-size:16.5px;font-weight:800}
+ul{list-style:none} li{padding:5px 0 5px 18px;position:relative;font-size:13.5px;color:var(--soft)}
+li::before{content:"";position:absolute;left:2px;top:12px;width:6px;height:6px;border-radius:9999px;background:var(--teal)}
+li b{color:var(--ink)} code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:color-mix(in srgb,var(--teal) 10%,transparent);padding:1px 5px;border-radius:5px;color:var(--ink)}
+pre{background:#0d1417;color:#dfe7e5;border-radius:10px;padding:14px 16px;overflow-x:auto;font-size:12px;line-height:1.5;margin-top:8px}
+pre .c{color:#7b8f8b}pre .k{color:#f0c869}pre .t{color:#7fd1c4}
+.phase{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}@media(max-width:680px){.phase{grid-template-columns:1fr}}
+.ph{border:1px solid var(--line);border-radius:10px;padding:12px}.ph b{color:var(--teal)}.ph p{font-size:12px;color:var(--soft);margin-top:5px}
+.warn{background:color-mix(in srgb,var(--gold) 10%,var(--card));border:1px solid color-mix(in srgb,var(--gold) 35%,transparent);border-radius:12px;padding:14px 16px;margin-top:24px}
+.warn .t{font-weight:800;color:var(--gold);font-size:13px;margin-bottom:6px}.warn li::before{background:var(--gold)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}th{background:color-mix(in srgb,var(--teal) 8%,transparent);font-weight:800;font-size:12px}
+td code{font-size:11.5px}
+</style>
+<div class="wrap">
+<div class="eyebrow">榮譽系統 · 落地實作 spec</div>
+<h1>資料模型 + P幣競猜戰績接點</h1>
+<div class="meta">接在現有 P幣競猜之上（NestJS + Prisma）。以現有 leaderboard/settlement/champion 為地基，最小增量。</div>
+
+<div class="sec"><div class="sh"><span class="n">0</span><h2>現有可直接複用（不要重造）</h2></div>
+<ul>
+<li><code>leaderboard.service.ts</code>：<b>準度榜/獲利榜已算好</b>，含防刷 <code>MIN_SETTLED=30</code>、<code>WINRATE_MIN_ODDS=1.5</code>（SQL 已 filter locked_odds≥1.5）。→ 神算王/獲利王直接沿用，只加「賽季時間窗」參數。</li>
+<li><code>champion.cron.ts</code> / <code>champion.service.ts</code>：週冠軍機制已存在。→ 月賽季結算照這個 pattern 加一支月 cron。</li>
+<li><code>settlement.service.ts</code>：注單結算入口。→ 連勝/命中類成就在這裡掛 hook。</li>
+<li><code>CosmeticItem / UserCosmetic</code> + <code>serializeAuthorCosmetics</code> 的 <b><code>expiresAt</code> 過濾</b>：→ 冠軍限定裝飾＝發一張 <code>expiresAt=在位到期</code> 的 UserCosmetic，到期自動失效、免額外卸下 cron。</li>
+<li><code>Bet</code>：<code>stake</code>(P幣)、<code>lockedOdds</code>、<code>status</code>(WON/LOST/VOID…)、<code>settledAt</code>。→ 一切戰績佐證來源。</li>
+</ul></div>
+
+<div class="sec"><div class="sh"><span class="n">1</span><h2>新增 Prisma 資料模型</h2></div>
+<pre><span class="c">// 月賽季</span>
+<span class="k">model</span> <span class="t">Season</span> { id String @id @default(cuid())
+  key String @unique <span class="c">// "2026-07"</span>
+  startAt DateTime  endAt DateTime
+  status SeasonStatus @default(ACTIVE) } <span class="c">// ACTIVE/CLOSING/CLOSED</span>
+
+<span class="c">// 月末凍結的排名快照（每季·每榜·每人）</span>
+<span class="k">model</span> <span class="t">SeasonStanding</span> { id String @id @default(cuid())
+  seasonId String  userId String
+  board HonorBoard <span class="c">// ACCURACY / PROFIT / INFLUENCE</span>
+  value Decimal  rank Int  settledCount Int
+  @@unique([seasonId, board, userId]) }
+
+<span class="c">// 成就徽章 earned 紀錄（永久）</span>
+<span class="k">model</span> <span class="t">HonorAward</span> { id String @id @default(cuid())
+  userId String
+  code String <span class="c">// STREAK_10 / UPSET_HUNTER / SHARP_SHOOTER / SEASON_ORACLE_1 …</span>
+  seasonId String?  value Decimal?  awardedAt DateTime @default(now())
+  @@unique([userId, code, seasonId]) } <span class="c">// 同成就同季不重複</span>
+
+<span class="c">// 冠軍在位（月冠 → 次月在位）</span>
+<span class="k">model</span> <span class="t">ChampionReign</span> { id String @id @default(cuid())
+  seasonId String  board HonorBoard  userId String
+  reignFrom DateTime  reignTo DateTime
+  @@unique([seasonId, board]) }
+
+<span class="c">// 名人堂紀錄（可被超越，保留歷史）</span>
+<span class="k">model</span> <span class="t">HallOfFameRecord</span> { id String @id @default(cuid())
+  recordType String <span class="c">// LONGEST_STREAK / BIGGEST_UPSET / BEST_MONTH_ACC / TOP_INFLUENCE</span>
+  userId String  value Decimal  context String?  achievedAt DateTime
+  isCurrent Boolean @default(true) }
+
+<span class="c">// 個人下注統計（連勝計數，維護式）</span>
+<span class="k">model</span> <span class="t">UserBettingStat</span> { userId String @id
+  currentStreak Int @default(0)  bestStreak Int @default(0) }
+
+<span class="c">// 影響力/跟單（二期新功能）</span>
+<span class="k">model</span> <span class="t">PickFollow</span> { id String @id @default(cuid())
+  pickBetId String  followerId String  followBetId String? <span class="c">// 實下才算</span>
+  createdAt DateTime @default(now())
+  @@unique([pickBetId, followerId]) } <span class="c">// 每人每單去重</span>
+</pre>
+<ul><li>另加 enum <code>HonorBoard</code>(ACCURACY/PROFIT/INFLUENCE)、<code>SeasonStatus</code>。冠軍限定裝飾與各成就徽章＝<code>CosmeticItem</code>（<code>purchasable=false</code>，買不到），發放走 <code>UserCosmetic</code>。</li></ul></div>
+
+<div class="sec"><div class="sh"><span class="n">2</span><h2>接點（在哪裡掛鉤）</h2></div>
+<table>
+<tr><th>接點</th><th>時機</th><th>做什麼</th></tr>
+<tr><td><code>settlement.service</code> hook</td><td>每筆注結算</td><td>更新 <code>UserBettingStat</code> 連勝（WON+1／LOST 歸零／VOID 略過，須 odds≥1.5＋stake≥門檻）；檢查並頒發 連勝5/10/20、冷門獵人(odds≥5)、一戰封神(odds≥15)；更新 <code>HallOfFame</code> 最長連勝/最大冷門</td></tr>
+<tr><td><b>月賽季 cron</b>（新，仿 champion.cron）</td><td>每月底</td><td>由 leaderboard 凍結 <code>SeasonStanding</code>；取三榜 top1/2/3 → <code>HonorAward</code> 冠亞季＋<code>ChampionReign</code>(次月)＋發冠軍限定 <code>UserCosmetic</code>(<code>expiresAt</code>=在位到期)＋收回上任；寫名人堂歷代冠軍；判神準射手(單月準度≥70%,≥30場)</td></tr>
+<tr><td><code>leaderboard.service</code></td><td>查榜</td><td>加「賽季時間窗」參數，沿用現有準度/獲利 SQL 與防刷 filter</td></tr>
+<tr><td>作者序列化<br>(<code>author-cosmetics</code>/<code>users.service</code>)</td><td>渲染卡</td><td>冠軍裝飾靠 <code>expiresAt</code> 自動生效/失效；再補上戰績列、榮耀勳章、在位資訊到 payload（前面已把裝飾接進 users 端點，同款擴充）</td></tr>
+</table></div>
+
+<div class="sec"><div class="sh"><span class="n">3</span><h2>分期落地</h2></div>
+<div class="phase">
+<div class="ph"><b>一期</b><p>Season＋SeasonStanding＋ChampionReign＋月 cron＋冠軍限定裝飾＋成就(連勝/命中/神準/資歷)＋戰績卡呈現。<b>神算王＋獲利王可上</b>（現有戰績就能算）。</p></div>
+<div class="ph"><b>二期</b><p>PickFollow「公開預測單＋跟這單」新功能 → 影響力榜＋人氣王＋帶單成就。</p></div>
+<div class="ph"><b>三期</b><p>名人堂頁、榮耀圖鑑頁、加冕全站公告串。</p></div>
+</div></div>
+
+<div class="sec"><div class="sh"><span class="n">4</span><h2>防刷落點（規則 → 程式）</h2></div>
+<ul>
+<li><b>準度/連勝 只計 odds≥1.5</b>：沿用 <code>WINRATE_MIN_ODDS</code>，在 settlement hook 與 leaderboard SQL 一致 filter。</li>
+<li><b>最低注額門檻</b>：settlement hook 判 <code>stake ≥ FLOOR</code> 才計入榮耀（FLOAT 數字待 P幣經濟定）。</li>
+<li><b>只計有盤口賽事</b>：Bet 一定綁 <code>OddsQuote</code>，天生排除 NBA 無盤口。</li>
+<li><b>手機驗證才上榜/計影響力</b>：榜/影響力查詢 join user 驗證狀態。</li>
+<li><b>跟單去重</b>：<code>PickFollow @@unique([pickBetId, followerId])</code>＋followerId 須驗證。</li>
+</ul></div>
+
+<div class="warn"><div class="t">⚠ Prod 注意（沿用博客邦既有教訓）</div>
+<ul>
+<li><b>prod 走 db push、不走 migration</b>：新表上 prod 後，任何 backfill（如既有用戶的 UserBettingStat 連勝回填、歷史成就補發）要<b>手動補跑腳本</b>，不會自動。</li>
+<li>冠軍限定裝飾靠 <code>expiresAt</code> 自動收回——別另寫即時卸下邏輯，避免與月 cron 打架。</li>
+<li>連勝計數是「維護式」：若 settlement 有補結算/重放，連勝重算要冪等（可由 Bet 歷史重建，不要只靠累加）。</li>
+</ul></div>
+</div>

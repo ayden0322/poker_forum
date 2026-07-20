@@ -28,6 +28,13 @@ export class RedisService implements OnModuleDestroy {
     await this.client.del(key);
   }
 
+  /** 原子遞增 + 首次設 TTL（計數器用；get/set 組合在併發下會少計） */
+  async incrWithTtl(key: string, ttlSeconds: number, by = 1): Promise<number> {
+    const val = await this.client.incrby(key, by);
+    if (val === by) await this.client.expire(key, ttlSeconds);
+    return val;
+  }
+
   onModuleDestroy() {
     this.client.disconnect();
   }

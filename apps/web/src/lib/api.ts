@@ -110,29 +110,35 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
 export class ApiError extends Error {
   code?: string;
   status: number;
-  constructor(message: string, status: number, code?: string) {
+  /** 後端拒單附帶的結構化資料（如 ODDS_CHANGED 的新賠率 { quoteId, odds, line }） */
+  data?: unknown;
+  constructor(message: string, status: number, code?: string, data?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
 async function parseApiError(res: Response): Promise<ApiError> {
   const body = (await res.json().catch(() => ({}))) as {
-    message?: string | { code?: string; message?: string };
+    message?: string | { code?: string; message?: string; data?: unknown };
     code?: string;
+    data?: unknown;
   };
   // NestJS ForbiddenException 傳 object 會包在 message 裡
   let code: string | undefined = body.code;
   let message = '請求失敗';
+  let data: unknown = body.data;
   if (typeof body.message === 'string') {
     message = body.message;
   } else if (body.message && typeof body.message === 'object') {
     code = body.message.code || code;
     message = body.message.message || message;
+    data = body.message.data ?? data;
   }
-  const err = new ApiError(message || `HTTP ${res.status}`, res.status, code);
+  const err = new ApiError(message || `HTTP ${res.status}`, res.status, code, data);
 
   // 全域廣播手機驗證要求事件，讓 UI 攔截
   if (typeof window !== 'undefined' && code === 'PHONE_VERIFICATION_REQUIRED') {

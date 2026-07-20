@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/context/auth';
+import { usePredictionBoards } from '@/lib/predictions';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { PhoneVerifyModal } from '@/components/auth/PhoneVerifyModal';
 import { useRouter } from 'next/navigation';
@@ -136,6 +137,15 @@ const navItems: NavItem[] = [
 
 export function Header() {
   const { user, accessToken, logout, showLoginModal, closeLoginModal, showPhoneVerifyModal, closePhoneVerifyModal } = useAuth();
+  // 競猜入口跟著 PREDICTION_ENABLED 走（fail-closed：功能沒開連結不露）
+  const { data: predData } = usePredictionBoards();
+  const items = useMemo<NavItem[]>(() => {
+    if (predData?.data.enabled !== true) return navItems;
+    const withPredictions = [...navItems];
+    const fifaIdx = withPredictions.findIndex((n) => n.label === 'FIFA 2026');
+    withPredictions.splice(fifaIdx + 1, 0, { label: '賽事競猜', href: '/predictions' }, { label: '榮譽榜', href: '/honor' });
+    return withPredictions;
+  }, [predData?.data.enabled]);
   // 會員經濟總開關狀態（與 MemberBadges 共用快取）：關閉時連選單入口都不露（fail-closed）
   const { data: memberData } = useMemberSummary();
   const memberEnabled = memberData?.data?.enabled === true;
@@ -205,7 +215,7 @@ export function Header() {
 
             {/* 桌面版 Nav */}
             <nav className="hidden md:flex items-center gap-6">
-              {navItems.map((item) =>
+              {items.map((item) =>
                 item.megaMenu ? (
                   // Mega Menu（體育賽事）
                   <div key={item.label} className="relative group">
@@ -370,6 +380,15 @@ export function Header() {
                             會員中心
                           </Link>
                         )}
+                        {predData?.data.enabled === true && (
+                          <Link
+                            href={`/predictions/record/${encodeURIComponent(user.nickname)}`}
+                            className="block px-4 py-2 text-sm hover:bg-gray-50"
+                            onClick={() => setShowUserMenu(false)}
+                          >
+                            競猜紀錄
+                          </Link>
+                        )}
                         <Link
                           href="/settings"
                           className="block px-4 py-2 text-sm hover:bg-gray-50"
@@ -431,7 +450,7 @@ export function Header() {
         {showMobileMenu && (
           <div className="md:hidden border-t border-blue-600/50 max-h-[70vh] overflow-y-auto">
             <nav className="px-4 py-3 space-y-1">
-              {navItems.map((item) => (
+              {items.map((item) => (
                 <div key={item.label}>
                   {item.highlight && item.href ? (
                     <Link

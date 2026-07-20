@@ -150,6 +150,77 @@ export class EconomyService {
     });
   }
 
+  /**
+   * 在「呼叫端提供的交易」內入帳。與 debitInTx 對稱：讓「結算派彩/退款 + 注單狀態轉移」
+   * 能在同一交易原子完成（任一步失敗整批 rollback，不會發生狀態轉了卻沒入帳）。
+   * 冪等由交易內回查 + DB @unique 雙保險（並發 P2002 由呼叫端 rollback 處理）。
+   */
+  async creditInTx(
+    tx: Prisma.TransactionClient,
+    params: MoveParams,
+  ): Promise<LedgerEntry> {
+    this.assertPositive(params.amount);
+
+    const existing = await tx.ledgerEntry.findUnique({
+      where: { idempotencyKey: params.idempotencyKey },
+    });
+    if (existing) return existing;
+
+    const account = await tx.walletAccount.upsert({
+      where: { userId_currency: { userId: params.userId, currency: params.currency } },
+      create: { userId: params.userId, currency: params.currency, balance: params.amount },
+      update: { balance: { increment: params.amount } },
+    });
+    return tx.ledgerEntry.create({
+      data: {
+        accountId: account.id,
+        amount: params.amount,
+        reason: params.reason,
+        refType: params.refType,
+        refId: params.refId,
+        idempotencyKey: params.idempotencyKey,
+        balanceAfter: account.balance,
+      },
+    });
+  }
+
+  /**
+   * G→P 兌換（單向，規格：預設 100G=1000P；比例之後搬後台可調）。
+   * 同一交易內：扣 G + 入 P（兩筆 ledger 同 reason EXCHANGE_G_TO_P、同 requestId 尾碼），
+   * 冪等：同 requestId 重送不重複兌換。
+   */
+  async exchangeGtoP(userId: string, gAmount: number, requestId: string): Promise<{ g: number; p: number; pGained: number }> {
+    this.assertPositive(gAmount);
+    const pGained = gAmount * EconomyService.EXCHANGE_P_PER_G;
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.debitInTx(tx, {
+        userId,
+        currency: 'G',
+        amount: gAmount,
+        reason: 'EXCHANGE_G_TO_P',
+        refType: 'exchange',
+        refId: requestId,
+        idempotencyKey: `exchange_g:${userId}:${requestId}`,
+      });
+      await this.creditInTx(tx, {
+        userId,
+        currency: 'P',
+        amount: pGained,
+        reason: 'EXCHANGE_G_TO_P',
+        refType: 'exchange',
+        refId: requestId,
+        idempotencyKey: `exchange_p:${userId}:${requestId}`,
+      });
+    });
+
+    const [g, p] = await Promise.all([this.getBalance(userId, 'G'), this.getBalance(userId, 'P')]);
+    return { g, p, pGained };
+  }
+
+  /** 兌換比例：1 G = 10 P（100 G = 1,000 P，規格 §0；搬後台可調為後續增量） */
+  static readonly EXCHANGE_P_PER_G = 10;
+
   private assertPositive(amount: number) {
     if (!Number.isInteger(amount) || amount <= 0) {
       throw new BadRequestException('金額必須是正整數');
