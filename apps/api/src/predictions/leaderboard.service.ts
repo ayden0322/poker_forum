@@ -13,6 +13,24 @@ import { MatchLinkService } from './match-link.service';
 
 /** 入榜門檻：期間內已結算場次（勝/負）。後台可調為後續增量。 */
 export const MIN_SETTLED = 30;
+/** 冷啟動軟門檻：開站期從零起步，30 場門檻會讓榜整個月都是空的（圓桌 growth 刀）。 */
+export const MIN_SETTLED_SOFT = 10;
+/**
+ * 冷啟動期截止（台北時間 ISO 字串，例：2026-09-01T00:00:00+08:00）。
+ * 未設 = 沒有冷啟動期，一律用正常門檻（fail-safe：寧可榜空，不要永久軟門檻）。
+ * go-live 時與 PREDICTION_ENABLED 一起設，通常給「開站後第一個完整賽季結束」。
+ */
+const SOFT_UNTIL = process.env.HONOR_SOFT_UNTIL ? new Date(process.env.HONOR_SOFT_UNTIL) : null;
+
+/**
+ * 該期間的入榜門檻。★ 刻意做成「期間起點的純函式」，不是可變全域常數：
+ *   同一期間不論何時重算，門檻都一樣 → 冷啟動期加冕的冠軍不會在軟門檻結束後被回頭踢掉。
+ *   這條對齊 honor.service 的鐵律「門檻不得溯及既往」——版本切分靠時間，不靠改常數。
+ */
+export function minSettledFor(periodStart: Date): number {
+  if (!SOFT_UNTIL || Number.isNaN(SOFT_UNTIL.getTime())) return MIN_SETTLED;
+  return periodStart < SOFT_UNTIL ? MIN_SETTLED_SOFT : MIN_SETTLED;
+}
 /** 勝率榜「有效競猜」的最低賠率：低於此的大熱門不計入勝率（防只押 1.05 刷勝率，red-team A 刀） */
 export const WINRATE_MIN_ODDS = 1.5;
 const CACHE_TTL_SEC = 300;
@@ -53,9 +71,13 @@ export class LeaderboardService {
     period: 'week' | 'month',
     type: LeaderboardType = 'profit',
   ): Promise<{ enabled: boolean; periodStart: string; type: LeaderboardType; minSettled: number; rows: LeaderboardRow[] }> {
-    const base = { periodStart: '', type, minSettled: MIN_SETTLED };
-    if (!isPredictionEnabled()) return { enabled: false, ...base, rows: [] };
+    if (!isPredictionEnabled()) {
+      return { enabled: false, periodStart: '', type, minSettled: MIN_SETTLED, rows: [] };
+    }
     const start = periodStart(period);
+    // minSettled 據實回報「這個期間實際套用的門檻」，前台照這個數字顯示：
+    // 冷啟動軟門檻要讓使用者看得見（≥10 注·開站期），不是偷偷放水。
+    const base = { periodStart: '', type, minSettled: minSettledFor(start) };
     const cacheKey = `prediction:leaderboard:${type}:${period}:${start.toISOString().slice(0, 10)}`;
     const cached = await this.redis.get<LeaderboardRow[]>(cacheKey);
     if (cached) return { enabled: true, ...base, periodStart: start.toISOString(), rows: cached };
@@ -116,9 +138,11 @@ export class LeaderboardService {
       GROUP BY u.id, u.nickname
     `);
 
-    // 依榜別各自套門檻：獲利榜看總場數 n；勝率榜看「有效競猜」場數 qn（都要 ≥30）
+    // 依榜別各自套門檻：獲利榜看總場數 n；勝率榜看「有效競猜」場數 qn。
+    // 門檻依「期間起點」決定（冷啟動期 10、之後 30），確保重算結果穩定、不溯及既往。
+    const threshold = minSettledFor(start);
     const mapped = raw
-      .filter((r) => (type === 'winrate' ? r.qn : r.n) >= MIN_SETTLED)
+      .filter((r) => (type === 'winrate' ? r.qn : r.n) >= threshold)
       .map((r) => ({
         rank: 0,
         nickname: r.nickname,

@@ -53,6 +53,7 @@ export class HonorReadService {
     return {
       enabled: accuracy.enabled,
       periodStart: accuracy.periodStart,
+      minSettled: accuracy.minSettled, // 冷啟動期會是軟門檻（10），前台照實顯示不寫死
       accuracy: accuracy.rows,
       profit: profit.rows,
       influence,

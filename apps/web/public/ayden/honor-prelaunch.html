@@ -75,10 +75,12 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;back
 
 <div class="sec"><div class="sh"><span class="n">☐</span><h2>上線前還要做／注意</h2><span class="lock lk-todo">待辦</span></div>
 <ul>
-<li><b>冷啟動策略</b>：從零開站 → 首季門檻放軟（如 ≥10 注）＋先靠週榜撐動態＋里程碑種子，別讓 /honor day1 空蕩蕩。<i>（需求已定，尚未實作；不急，等競猜本身先上線）</i></li>
+<li><b>冷啟動策略</b>：從零開站 → 首季門檻放軟（≥10 注）＋先靠週榜撐動態，別讓 /honor day1 空蕩蕩。<b style="color:#0d9488">✔ 2026-07-20 已實作</b>：門檻改成「期間起點的純函式」<code>minSettledFor(periodStart)</code>——冷啟動期算 10、之後算 30，<b>同一期間重算永遠同結果</b>，軟門檻結束不會回頭把已加冕的冠軍踢掉（對齊「門檻不得溯及既往」鐵律）。前台 <code>minSettled</code> 照實顯示不寫死。<b>神準射手刻意不放寬</b>（徽章說明寫 ≥30 場，放水會讓說明變謊話且永久稀釋徽章）。</li>
 <li><b>戰績身份卡進貼文/留言</b>：目前只在個人頁，發文 feed 看不到 → 榮譽會變孤島（growth 建議）。新手卡別掛 0 勝 0 負、我的榮耀別攤一面 0/5。</li>
 <li><b>中間層小榮耀階梯</b>：排行榜 30 注高門檻保值別動，另加新手參與型成就當留存鉤子，讓多數人也摸得到。</li>
-<li><b>db push（prod）</b>：6 張新表走 <code>db push</code> 不走 migration（同 PR#16 慣例）→ 上線 checklist 要列。</li>
+<li><b>db push（prod）</b>：<b style="color:#0d9488">✔ 2026-07-20 查核：不需要</b>——<code>prisma migrate diff</code> 回 empty migration，且 seasons／season_standings／champion_reigns／honor_awards／hall_of_fame_records／user_betting_stats／pick_follows 全部已存在（先前 session 已推）。</li>
+<li><b>正式站品項 seed</b>：<b style="color:#0d9488">✔ 2026-07-20 已跑</b>——榮譽 16 項＋週冠軍 4 項（本週獲利王／本週神算子／獲利榜冠軍／勝率榜冠軍）＝ 20 項，全 <code>purchasable=false</code>。<b>踩到的雷</b>：週冠軍那 4 項在另一支 <code>seed-champion-cosmetics.ts</code>，差點漏跑 → 週冠軍 cron 會靜默發不出東西。<br>副作用：「開站元老」由商店品項（曾手調 6000 G）轉為榮譽憑證，商店在售 16 → 15；當時持有者 0 人，無人受影響。</li>
+<li><b style="color:#b91c1c">⚠ go-live 要翻的是「兩個」環境變數</b>：<code>PREDICTION_ENABLED=true</code>（總開關，關著時導覽列連「榮譽榜」都不露出＝fail-closed 設計）<b>＋</b> <code>HONOR_SOFT_UNTIL=&lt;冷啟動期截止 ISO&gt;</code>。<b>只設前者會讓冷啟動軟門檻失效</b>（未設 = fail-safe 回 30 場），首月榜單就會是空的。翻開關同時也會啟動賠率管線 cron 開始燒 API-Sports 額度。</li>
 <li><b>backfill</b>：<b>本次不需要</b>（沒歷史競猜資料）；未來若有存量再做「可重跑可核對」的影子計算腳本。</li>
 <li><b>reconciliation.cron</b>（對帳，非榮譽）仍是 <code>0 21 * * *</code> 無時區——同款潛在賭注，日後有空一起補綁台北時區。</li>
 </ul>

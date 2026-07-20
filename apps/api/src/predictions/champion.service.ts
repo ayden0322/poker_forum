@@ -5,7 +5,7 @@
 // 冠軍品項由 seed 建立（見 seed-champion-cosmetics.ts）；本 service 依名稱查找後發放。
 
 import { Injectable, Logger } from '@nestjs/common';
-import { LeaderboardType, LeaderboardService } from './leaderboard.service';
+import { LeaderboardType, LeaderboardService, minSettledFor } from './leaderboard.service';
 import { PrismaService } from '../common/prisma.service';
 
 /** 冠軍品項（TITLE + BADGE）依名稱對應，seed 需建立同名品項 */
@@ -45,7 +45,7 @@ export class ChampionService {
     for (const type of ['profit', 'winrate'] as LeaderboardType[]) {
       const champ = await this.leaderboard.championOf(type, start, end);
       if (!champ) {
-        this.logger.log(`${weekLabel} ${type} 榜無人達 30 場門檻，不發冠軍`);
+        this.logger.log(`${weekLabel} ${type} 榜無人達 ${minSettledFor(start)} 場門檻，不發冠軍`);
         continue;
       }
       // D1：獲利榜榜首淨利 ≤ 0 → 本週獲利王從缺（不把「最不虧的輸家」封王）

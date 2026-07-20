@@ -40,6 +40,7 @@ interface HonorEvent {
 interface Overview {
   enabled: boolean;
   periodStart: string;
+  minSettled: number; // 該期間實際入榜門檻（冷啟動期＝軟門檻）
   accuracy: Row[];
   profit: Row[];
   influence: InfluenceRow[];
@@ -87,12 +88,14 @@ function Board({
   rows,
   metric,
   crownOk = () => true,
+  minSettled = 30,
 }: {
   title: string;
   sub: string;
   rows: Row[];
   metric: (r: Row) => string;
   crownOk?: (r: Row) => boolean; // D1：獲利榜榜首淨利 ≤ 0 時不掛「冠軍」
+  minSettled?: number; // 依 API 實際門檻顯示（冷啟動期＝軟門檻），不寫死 30
 }) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -100,7 +103,12 @@ function Board({
         <h3 className="text-sm font-extrabold text-teal-700">{title}</h3>
         <span className="text-xs text-gray-400">{sub}</span>
       </div>
-      {rows.length === 0 && <p className="py-6 text-center text-sm text-gray-400">本季尚無人達 30 場門檻</p>}
+      {rows.length === 0 && (
+        <p className="py-6 text-center text-sm text-gray-400">
+          本季尚無人達 {minSettled} 場門檻
+          <span className="mt-1 block text-xs text-gray-300">開站期間門檻放寬，累積競猜場次就有機會登榜</span>
+        </p>
+      )}
       <div className="space-y-0.5">
         {rows.slice(0, 10).map((r) => (
           <Link
@@ -251,8 +259,8 @@ export default function HonorPage() {
 
           {/* 三榜 */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <Board title="神算王榜" sub="本季準度" rows={data.accuracy} metric={(r) => `${r.winRate}%`} />
-            <Board title="獲利王榜" sub="本季 P 幣淨利" rows={data.profit} metric={(r) => `${r.profit > 0 ? '+' : ''}${r.profit.toLocaleString()}`} crownOk={(r) => r.profit > 0} />
+            <Board title="神算王榜" sub="本季準度" rows={data.accuracy} metric={(r) => `${r.winRate}%`} minSettled={data.minSettled} />
+            <Board title="獲利王榜" sub="本季 P 幣淨利" rows={data.profit} metric={(r) => `${r.profit > 0 ? '+' : ''}${r.profit.toLocaleString()}`} crownOk={(r) => r.profit > 0} minSettled={data.minSettled} />
           </div>
           {/* 人氣王榜（被跟單） */}
           <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">

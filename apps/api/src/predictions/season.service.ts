@@ -4,7 +4,7 @@
 // 亞軍/季軍 → HonorAward + 徽章；並判神準射手(單月準度≥70%,≥30場)。冪等：同季重跑 upsert 無害。
 
 import { Injectable, Logger } from '@nestjs/common';
-import { LeaderboardService, LeaderboardType, MIN_SETTLED } from './leaderboard.service';
+import { LeaderboardService, LeaderboardType, MIN_SETTLED, minSettledFor } from './leaderboard.service';
 import { PrismaService } from '../common/prisma.service';
 
 type HonorBoard = 'ACCURACY' | 'PROFIT' | 'INFLUENCE';
@@ -55,7 +55,7 @@ export class SeasonService {
     for (const { board, lbType, title } of BOARDS) {
       const rows = await this.leaderboard.standingsForRange(lbType, start, end, 3);
       if (!rows.length) {
-        this.logger.log(`賽季 ${key} ${board} 榜無人達 ${MIN_SETTLED} 場門檻，略過`);
+        this.logger.log(`賽季 ${key} ${board} 榜無人達 ${minSettledFor(start)} 場門檻，略過`);
         continue;
       }
       // D1：獲利榜榜首淨利 ≤ 0 → 獲利王從缺（博彩負和，不把「最不虧的輸家」封王）
@@ -88,6 +88,9 @@ export class SeasonService {
       }
 
       // 神準射手：準度榜達 ≥70% 且 ≥30 場者（一期取榜上可見者）
+      // ★ 這裡刻意「不」套冷啟動軟門檻：軟門檻只放寬「入榜/加冕」，
+      //   成就徽章的門檻寫在品項說明上（單月準度 ≥70%、≥30 場），放水會讓徽章說明變成謊話，
+      //   而且徽章是永久的——首月用 10 場發出去的「神準射手」會永遠稀釋這枚徽章。
       if (board === 'ACCURACY') {
         const wide = await this.leaderboard.standingsForRange('winrate', start, end, 20);
         const idMap = await this.userIdsByNickname(wide.map((r) => r.nickname));
