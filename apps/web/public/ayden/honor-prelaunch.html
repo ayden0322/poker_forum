@@ -1,0 +1,97 @@
+<title>博客邦 · 榮譽系統 上線前圓桌與檢查清單</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f4f6f8;--card:#fff;--ink:#131a17;--soft:#5b6472;--faint:#8b95a1;--line:#e7ebee;--teal:#0d9488;--teal2:#39B8BE;--gold:#b8860b;--goldbg:#fffbeb;--red:#c0392b;--redbg:#fff5f4;--green:#0f9d58;--greenbg:#f0fbf4}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1416;--card:#171d20;--ink:#e6ecee;--soft:#9aa7b2;--faint:#6b7681;--line:#252d31;--teal:#2dd4bf;--gold:#e8b64a;--goldbg:rgba(232,182,74,.08);--red:#ff6b5e;--redbg:rgba(255,107,94,.08);--green:#4ade80;--greenbg:rgba(74,222,128,.08)}}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;line-height:1.6;padding:38px 20px 80px}
+.wrap{max-width:860px;margin:0 auto}
+.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);font-weight:800}
+h1{font-size:25px;font-weight:800;margin:6px 0 3px}
+.meta{color:var(--faint);font-size:13px}
+.sec{margin-top:24px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+.sh{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.sh .n{width:26px;height:26px;border-radius:8px;background:var(--teal);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sh h2{font-size:16.5px;font-weight:800}
+.sh .lock{margin-left:auto;font-size:10.5px;font-weight:800;padding:2px 9px;border-radius:9999px}
+.lk-done{color:var(--green);background:var(--greenbg)}
+.lk-todo{color:var(--gold);background:var(--goldbg)}
+.lk-you{color:var(--teal);background:color-mix(in srgb,var(--teal) 12%,transparent)}
+ul{list-style:none;padding:0} li{padding:5px 0 5px 18px;position:relative;font-size:14px;color:var(--soft)}
+li::before{content:"";position:absolute;left:2px;top:12px;width:6px;height:6px;border-radius:9999px;background:var(--teal2)}
+li b{color:var(--ink)}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:color-mix(in srgb,var(--teal) 8%,transparent);font-weight:800;font-size:12px}
+td b{color:var(--ink)}
+.card2{border-radius:10px;padding:12px 14px;margin-top:8px}
+.crit{background:var(--redbg);border:1px solid color-mix(in srgb,var(--red) 32%,transparent)}
+.crit .t{font-size:13.5px;font-weight:800;color:var(--red);margin-bottom:4px}
+.ok{background:var(--greenbg);border:1px solid color-mix(in srgb,var(--green) 30%,transparent)}
+.ok .t{font-size:13.5px;font-weight:800;color:var(--green);margin-bottom:4px}
+.p{font-size:12.5px;color:var(--soft)}
+.tag{display:inline-block;font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:9999px;margin-left:6px;vertical-align:middle}
+.t-fatal{color:var(--red);background:var(--redbg)}
+.t-done{color:var(--green);background:var(--greenbg)}
+.t-skip{color:var(--faint);background:color-mix(in srgb,var(--faint) 12%,transparent)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:color-mix(in srgb,var(--teal) 9%,transparent);padding:1px 5px;border-radius:5px;color:var(--ink)}
+.dec{border-left:3px solid var(--teal);padding:4px 0 4px 12px;margin-top:10px}
+.dec b{color:var(--ink);font-size:14px}.dec .a{color:var(--teal);font-weight:800}.dec p{font-size:12.5px;color:var(--soft);margin-top:2px}
+</style>
+<div class="wrap">
+<div class="eyebrow">榮譽系統 · 上線前圓桌</div>
+<h1>上線前檢查清單 ＋ 老闆裁決</h1>
+<div class="meta">2026-07-19 圓桌（tech-mentor／growth-mentor／red-team／Codex 四席）＋ Ayden 拍板 ＋ 工程落地狀態</div>
+
+<div class="sec"><div class="sh"><span class="n">◆</span><h2>圓桌炸出的重點</h2></div>
+<p class="p" style="margin-bottom:6px">四席獨立審查（都實際讀了 code）。red-team 攻出兩個「上線級」地雷，其餘為技術與成長建議。</p>
+<div class="card2 crit"><div class="t">[A] 「獲利王」會加冕一個淨輸錢的人 <span class="tag t-done">已修</span></div>
+<div class="p">博彩負和，PROFIT 榜沒有 <code>profit&gt;0</code> 下限 → 淡月「最不虧的輸家」被封 LEGENDARY 獲利王。零攻擊、上線自動觸發，測試站已現形（榜上真有負數）。</div></div>
+<div class="card2 crit"><div class="t">[B] 「帶單/人氣王」算「次數」非「人數」 <span class="tag t-skip">老闆決定不擋</span></div>
+<div class="p">influence=<code>COUNT(*)</code>，1 支驗證分身跟你 100 張單＝帶單百人；且發公開單無手機驗證＝農場入口。→ Ayden 裁決：純虛擬、無真錢掛勾、仍需一直完成任務，<b>不擋</b>。</div></div>
+<div class="card2 crit"><div class="t">[C] 命中類可用虛擬 P 刷賠率 <span class="tag t-done">已定調 D4=b</span></div>
+<div class="p">無成本重試高賠率冷門，遲早中一次拿 LEGENDARY。→ 只認「公開曬單」的命中；現況所有注皆公開故天然滿足，不另設硬上限（與寬鬆調性一致）。</div></div>
+<div class="card2"><div class="p"><b style="color:var(--ink)">其它建議</b>：HONOR_MIN_STAKE 佔位=下注最低額＝形同虛設且改動會溯及既往（tech）；cron 沒綁時區＝賭 prod 容器 UTC（tech）；backfill 要可重跑可核對（Codex）；冷啟動 day1 別讓榜是死的、戰績卡要進貼文、加新手小榮耀階梯（growth）。</div></div>
+</div>
+
+<div class="sec"><div class="sh"><span class="n">✎</span><h2>Ayden 的裁決</h2><span class="lock lk-you">已拍板</span></div>
+<div class="dec"><b>D1 · 獲利王要正值才加冕？</b> <span class="a">要</span><p>負獲利月「獲利王從缺」，不把最不虧的輸家封王。</p></div>
+<div class="dec"><b>D2 · 擋分身刷帶單？</b> <span class="a">不擋</span><p>沒跟真錢掛勾、開分身也得一直完成任務，維持現狀。</p></div>
+<div class="dec"><b>D3 · 下注最低門檻？</b> <span class="a">不設限</span><p>隨個人意願。門檻鎖定＝下注最低額，上線後不得調高（避免溯及既往卸章）。</p></div>
+<div class="dec"><b>D4 · 命中類防刷？</b> <span class="a">b · 只認公開曬單</span><p>現況所有注皆公開故天然滿足；日後要硬摩擦再加次數上限。</p></div>
+<div class="dec"><b>事實 · 目前還沒人開始競猜</b> <span class="a">從零開站</span><p>無歷史資料可 backfill → 冷啟動走軟門檻＋週榜撐動態，不做 backfill。</p></div>
+</div>
+
+<div class="sec"><div class="sh"><span class="n">✓</span><h2>已完成工程</h2><span class="lock lk-done">已進 code</span></div>
+<table>
+<tr><th>項目</th><th>檔案</th><th>內容</th></tr>
+<tr><td><b>D1 賽季加冕</b></td><td><code>season.service.ts</code></td><td>PROFIT 榜首淨利 ≤ 0 → 該榜略過不加冕</td></tr>
+<tr><td><b>D1 週冠軍</b></td><td><code>champion.service.ts</code></td><td>本週獲利王榜首 ≤ 0 → 從缺</td></tr>
+<tr><td><b>D1 前端</b></td><td><code>honor/page.tsx</code></td><td>獲利王榜榜首淨利 ≤ 0 時不掛「冠軍」字樣</td></tr>
+<tr><td><b>cron 時區</b></td><td><code>honor.cron</code>／<code>champion.cron</code></td><td>顯式綁 <code>Asia/Taipei</code>，不賭容器時區</td></tr>
+<tr><td><b>D3 門檻鎖定</b></td><td><code>honor.service.ts</code></td><td>註記定案不設額外門檻＋上線後不得調高警語</td></tr>
+<tr><td><b>D4 命中口徑</b></td><td><code>honor.service.ts</code></td><td>註記只認公開曬單，現況天然滿足</td></tr>
+</table>
+</div>
+
+<div class="sec"><div class="sh"><span class="n">☐</span><h2>上線前還要做／注意</h2><span class="lock lk-todo">待辦</span></div>
+<ul>
+<li><b>冷啟動策略</b>：從零開站 → 首季門檻放軟（如 ≥10 注）＋先靠週榜撐動態＋里程碑種子，別讓 /honor day1 空蕩蕩。<i>（需求已定，尚未實作；不急，等競猜本身先上線）</i></li>
+<li><b>戰績身份卡進貼文/留言</b>：目前只在個人頁，發文 feed 看不到 → 榮譽會變孤島（growth 建議）。新手卡別掛 0 勝 0 負、我的榮耀別攤一面 0/5。</li>
+<li><b>中間層小榮耀階梯</b>：排行榜 30 注高門檻保值別動，另加新手參與型成就當留存鉤子，讓多數人也摸得到。</li>
+<li><b>db push（prod）</b>：6 張新表走 <code>db push</code> 不走 migration（同 PR#16 慣例）→ 上線 checklist 要列。</li>
+<li><b>backfill</b>：<b>本次不需要</b>（沒歷史競猜資料）；未來若有存量再做「可重跑可核對」的影子計算腳本。</li>
+<li><b>reconciliation.cron</b>（對帳，非榮譽）仍是 <code>0 21 * * *</code> 無時區——同款潛在賭注，日後有空一起補綁台北時區。</li>
+</ul>
+</div>
+
+<div class="sec"><div class="sh"><span class="n">✦</span><h2>已驗證很穩（不用擔心）</h2><span class="lock lk-done">red-team＋tech 都攻不下</span></div>
+<div class="card2 ok"><div class="p">
+<b style="color:var(--green)">結算冪等／帳一致性</b>：樂觀鎖＋ledger 冪等鍵＋同 tx，重放/補結算/並發都 skip；honor 走 best-effort 不入結算 tx。<br>
+<b style="color:var(--green)">稱號自動卸冕</b>：序列化層 <code>expiresAt &gt; now</code> 過濾，不依賴 cron。<br>
+<b style="color:var(--green)">連勝 5/10/20</b>：依 settledAt 全量重算、對沖單會斷連勝，20 連真的要 20 連中。<br>
+<b style="color:var(--green)">結算 hook 失敗隔離</b>：honor 壞掉不影響派彩。<br>
+<b style="color:var(--green)">月賽季首跑空狀態</b>：無人達門檻則各榜略過，不會炸。
+</div></div>
+</div>
+
+</div>

@@ -77,7 +77,7 @@ export class RepliesService {
         quotedReplyId: dto.quotedReplyId ?? null,
       },
       include: {
-        author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+        author: { select: { id: true, nickname: true, avatar: true, level: true, role: true, ...AUTHOR_COSMETIC_SELECT } },
         quotedReply: {
           select: {
             id: true,
@@ -111,7 +111,9 @@ export class RepliesService {
       });
     }
 
-    return reply;
+    // 序列化裝飾，與回覆列表回應同形（剛送出的回覆也帶框/稱號/徽章）
+    const { cosmetics, ...a } = reply.author;
+    return { ...reply, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } };
   }
 
   /** 編輯回覆 */
@@ -123,13 +125,15 @@ export class RepliesService {
       throw new ForbiddenException('無權編輯此回覆');
     }
 
-    return this.prisma.reply.update({
+    const updated = await this.prisma.reply.update({
       where: { id: replyId },
       data: { content },
       include: {
-        author: { select: { id: true, nickname: true, avatar: true, level: true, role: true } },
+        author: { select: { id: true, nickname: true, avatar: true, level: true, role: true, ...AUTHOR_COSMETIC_SELECT } },
       },
     });
+    const { cosmetics, ...a } = updated.author;
+    return { ...updated, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } };
   }
 
   /** 刪除回覆 */

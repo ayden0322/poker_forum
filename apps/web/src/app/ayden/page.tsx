@@ -16,6 +16,13 @@ interface Doc {
 
 const DOCS: Doc[] = [
   {
+    href: '/ayden/honor-prelaunch.html',
+    title: '上線前圓桌 · 裁決與檢查清單',
+    desc: '四席圓桌(tech/growth/red-team/Codex)炸出的地雷＋Ayden 對 D1–D4 的拍板＋已完成工程(獲利王正值下限/cron 綁時區)＋上線前待辦＋已驗證很穩清單。',
+    tag: '裁決·checklist',
+    tagColor: 'bg-teal-100 text-teal-700',
+  },
+  {
     href: '/ayden/honor-rules.html',
     title: '榮譽系統 · 規則定案 v1',
     desc: '賽季三層／三榜口徑／月末加冕次月在位／防刷紅線／門檻表／買不到 vs 可買。六項規則討論定案。',

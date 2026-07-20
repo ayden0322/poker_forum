@@ -8,6 +8,7 @@ import { useAuth } from '@/context/auth';
 import { levelName } from '@/lib/member';
 import AvatarWithFrame from '@/components/member/AvatarWithFrame';
 import MainBadge from '@/components/member/MainBadge';
+import CompetitionRecord from '@/components/predictions/CompetitionRecord';
 import { TITLE_TOKEN, type AuthorCosmetics, type Rarity } from '@/lib/cosmetics';
 
 const BOARD_LABEL: Record<string, string> = { ACCURACY: '神算王', PROFIT: '獲利王', INFLUENCE: '人氣王' };
@@ -64,7 +65,7 @@ interface FollowUser {
 export function UserProfileClient({ nickname }: { nickname: string }) {
   const { user: currentUser, accessToken } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'posts' | 'replies' | 'following'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'replies' | 'following' | 'competition'>('posts');
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['user', nickname],
@@ -265,7 +266,15 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
       {/* Tab */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex border-b border-gray-100">
-          {([['posts', '發文紀錄'], ['replies', '回覆紀錄'], ['following', '追蹤中']] as const).map(([key, label]) => (
+          {(
+            [
+              ['posts', '發文紀錄'],
+              ['replies', '回覆紀錄'],
+              // 競猜紀錄：僅在競猜功能開啟（有戰績資料）時出現
+              ...(rec ? [['competition', '競猜紀錄'] as const] : []),
+              ['following', '追蹤中'],
+            ] as const
+          ).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
@@ -322,6 +331,11 @@ export function UserProfileClient({ nickname }: { nickname: string }) {
                 </div>
               ))}
             </div>
+          )}
+
+          {/* 競猜紀錄（共用元件；隱私分流本人/訪客自動一致） */}
+          {activeTab === 'competition' && rec && (
+            <CompetitionRecord nickname={nickname} embedded />
           )}
 
           {/* 追蹤中 */}

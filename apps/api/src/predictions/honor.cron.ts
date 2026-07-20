@@ -1,5 +1,6 @@
 // 榮譽系統 — 月賽季結算排程
-// 台北每月 1 日 09:00（= UTC 1 日 01:00）結算上個月、加冕冠軍。
+// 台北每月 1 日 09:00 結算上個月、加冕冠軍。
+// 顯式綁 Asia/Taipei：不賭 prod 容器時區（Tencent 東京容器不保證 UTC），避免月界算錯／加冕給錯人。
 // 冪等：同月重跑會 upsert 同一賽季/冠軍（延長在位到期、徽章已擁有跳過），無害。
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,7 +18,7 @@ export class HonorCron {
     private season: SeasonService,
   ) {}
 
-  @Cron('0 1 1 * *')
+  @Cron('0 9 1 * *', { timeZone: 'Asia/Taipei' })
   async tick() {
     if (!isPredictionEnabled()) return;
     if (this.config.get<string>('MEMBER_ECONOMY_ENABLED') !== 'true') return; // 冠軍稱號/徽章依賴裝飾系統

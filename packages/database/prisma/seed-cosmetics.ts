@@ -33,7 +33,10 @@ const ITEMS: Item[] = [
   { id: 'seed_badge_login',   type: 'BADGE', name: '連續登入', rarity: 'RARE',      priceG: 150, iconKey: 'flame',          sortOrder: 7 },
   { id: 'seed_badge_predict', type: 'BADGE', name: '神準預測', rarity: 'RARE',      priceG: 150, iconKey: 'target',         sortOrder: 8 },
   { id: 'seed_badge_popular', type: 'BADGE', name: '人氣作者', rarity: 'LEGENDARY', priceG: 300, iconKey: 'crown',          sortOrder: 9 },
-  { id: 'seed_badge_elder',   type: 'BADGE', name: '開站元老', rarity: 'LEGENDARY', priceG: 300, iconKey: 'gem',            sortOrder: 10 },
+  // ⚠️「開站元老」已移交榮譽系統（唯一來源：seed-honor-cosmetics.ts）。
+  //   它是資歷憑證（開站首月加入）＝ 買不到，不能出現在商店鋪貨清單。
+  //   實體 row 仍是 seed_badge_elder（既有持有者不受影響），只是改由 honor seed 維護。
+  //   別在這裡復活：本檔 update 會蓋掉 rarity/assetUrl，榮譽版的徽章圖會直接消失。
   // 稱號（有色文字）
   { id: 'seed_title_predictor', type: 'TITLE', name: '本週預測王', rarity: 'LEGENDARY', priceG: 300, description: '本週預測排行第一', sortOrder: 11 },
   // 頭像特效（獨立槽；assetUrl=video:<name> → public/cosmetics/<name>.webm）

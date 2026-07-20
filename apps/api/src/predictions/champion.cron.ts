@@ -1,5 +1,6 @@
 // P幣競猜 — 週冠軍發放排程
-// 台北時間週一 05:00（= UTC 週日 21:00），接在對帳後、避開賽事高峰。
+// 台北時間週一 05:00，接在對帳後、避開賽事高峰。
+// 顯式綁 Asia/Taipei：不賭 prod 容器時區，週界算錯會發錯冠軍。
 // 冪等：同週重跑會 upsert 同一冠軍（延長稱號到期、勳章已擁有跳過），無害。
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -17,7 +18,7 @@ export class ChampionCron {
     private champion: ChampionService,
   ) {}
 
-  @Cron('0 21 * * 0')
+  @Cron('0 5 * * 1', { timeZone: 'Asia/Taipei' })
   async tick() {
     if (!isPredictionEnabled()) return;
     if (this.config.get<string>('MEMBER_ECONOMY_ENABLED') !== 'true') return; // 稱號/勳章依賴裝飾系統

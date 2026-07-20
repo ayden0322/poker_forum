@@ -48,6 +48,11 @@ export class ChampionService {
         this.logger.log(`${weekLabel} ${type} 榜無人達 30 場門檻，不發冠軍`);
         continue;
       }
+      // D1：獲利榜榜首淨利 ≤ 0 → 本週獲利王從缺（不把「最不虧的輸家」封王）
+      if (type === 'profit' && champ.profit <= 0) {
+        this.logger.log(`${weekLabel} 獲利榜榜首淨利 ${champ.profit} ≤ 0，本週獲利王從缺`);
+        continue;
+      }
       try {
         await this.grantTo(type, champ.nickname, weekLabel, new Date(now.getTime() + TITLE_DURATION_MS));
         granted.push({ type, nickname: champ.nickname, weekLabel });

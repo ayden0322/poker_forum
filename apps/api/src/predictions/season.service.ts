@@ -58,6 +58,11 @@ export class SeasonService {
         this.logger.log(`賽季 ${key} ${board} 榜無人達 ${MIN_SETTLED} 場門檻，略過`);
         continue;
       }
+      // D1：獲利榜榜首淨利 ≤ 0 → 獲利王從缺（博彩負和，不把「最不虧的輸家」封王）
+      if (board === 'PROFIT' && rows[0].profit <= 0) {
+        this.logger.log(`賽季 ${key} 獲利榜榜首淨利 ${rows[0].profit} ≤ 0，獲利王從缺（不加冕）`);
+        continue;
+      }
       const idByNick = await this.userIdsByNickname(rows.map((r) => r.nickname));
 
       for (const row of rows) {

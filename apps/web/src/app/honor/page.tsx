@@ -81,7 +81,19 @@ function hofValue(t: string, v: number): string {
   return `${v}`;
 }
 
-function Board({ title, sub, rows, metric }: { title: string; sub: string; rows: Row[]; metric: (r: Row) => string }) {
+function Board({
+  title,
+  sub,
+  rows,
+  metric,
+  crownOk = () => true,
+}: {
+  title: string;
+  sub: string;
+  rows: Row[];
+  metric: (r: Row) => string;
+  crownOk?: (r: Row) => boolean; // D1：獲利榜榜首淨利 ≤ 0 時不掛「冠軍」
+}) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-baseline justify-between">
@@ -103,7 +115,7 @@ function Board({ title, sub, rows, metric }: { title: string; sub: string; rows:
             </span>
             <span className="flex-1 truncate text-sm font-bold text-gray-800">
               {r.nickname}
-              {r.rank === 1 && (
+              {r.rank === 1 && crownOk(r) && (
                 <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">冠軍</span>
               )}
               <span className="ml-1.5 text-xs font-normal text-gray-400">{r.n} 場</span>
@@ -240,7 +252,7 @@ export default function HonorPage() {
           {/* 三榜 */}
           <div className="grid gap-4 sm:grid-cols-2">
             <Board title="神算王榜" sub="本季準度" rows={data.accuracy} metric={(r) => `${r.winRate}%`} />
-            <Board title="獲利王榜" sub="本季 P 幣淨利" rows={data.profit} metric={(r) => `${r.profit > 0 ? '+' : ''}${r.profit.toLocaleString()}`} />
+            <Board title="獲利王榜" sub="本季 P 幣淨利" rows={data.profit} metric={(r) => `${r.profit > 0 ? '+' : ''}${r.profit.toLocaleString()}`} crownOk={(r) => r.profit > 0} />
           </div>
           {/* 人氣王榜（被跟單） */}
           <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">

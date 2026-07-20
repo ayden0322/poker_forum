@@ -8,7 +8,10 @@ import { Prisma } from '@betting-forum/database';
 import { PrismaService } from '../common/prisma.service';
 import { WINRATE_MIN_ODDS } from './leaderboard.service';
 
-/** 榮耀計入的最低注額門檻（防 1 幣刷）。上線後依 P 幣經濟規模校準。 */
+// 榮耀計入的最低注額門檻。
+// 決策（2026-07-19 圓桌）：Ayden 定案「不設額外門檻、隨個人意願」——純虛擬 P 幣、無真錢掛勾，不擋刷。
+// 故鎖定 = 下注最低額（BET_MIN_STAKE=100），等同不額外過濾。★ 上線後不得調高：
+//   會 retroactive 重算全站成就、卸掉已發徽章 → 觀感炸。要改門檻＝先做「不溯及既往」的版本切分。
 export const HONOR_MIN_STAKE = Number(process.env.HONOR_MIN_STAKE ?? 100);
 
 /** 連勝成就：bestStreak 跨過門檻即永久擁有 */
@@ -18,7 +21,10 @@ const STREAK_ACHIEVEMENTS = [
   { code: 'STREAK_20', badge: '二十連勝', n: 20 },
 ] as const;
 
-/** 命中成就：任一 WON 注（注額達門檻）的鎖定賠率跨過門檻即永久擁有 */
+// 命中成就：任一 WON 注（注額達門檻）的鎖定賠率跨過門檻即永久擁有。
+// 決策（2026-07-19 圓桌，D4=b）：只認「公開曬單」的命中。現況所有注皆公開在戰績頁
+// （無私密注），故天然滿足——命中一律出自公開戰績。★ 若日後要真正防刷賠率，
+//   改為「每月命中次數上限」或「綁公開發文宣告」，屆時再於此加過濾。
 const UPSET_ACHIEVEMENTS = [
   { code: 'UPSET_HUNTER', badge: '冷門獵人', minOdds: 5 },
   { code: 'LEGEND_STRIKE', badge: '一戰封神', minOdds: 15 },
