@@ -5,6 +5,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { Role, PostStatus } from '@betting-forum/database';
 import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
+import { authorRecords } from '../common/author-record';
 
 // 新聞 Agent 自動發文預設置頂時長
 export const AUTO_POST_PIN_HOURS = 24;
@@ -92,10 +93,15 @@ export class PostsService {
     });
 
     const { cosmetics, ...author } = post.author;
+    const recs = await authorRecords(this.prisma, [author.id]);
     return {
       ...post,
       viewCount: post.viewCount + 1,
-      author: { ...author, cosmetics: serializeAuthorCosmetics({ cosmetics }) },
+      author: {
+        ...author,
+        cosmetics: serializeAuthorCosmetics({ cosmetics }),
+        record: recs.get(author.id) ?? null, // 精簡戰績章（未達場數門檻回 null）
+      },
     };
   }
 

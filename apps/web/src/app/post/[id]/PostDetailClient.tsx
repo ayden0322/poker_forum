@@ -13,6 +13,7 @@ import { levelName } from '@/lib/member';
 import { TITLE_TOKEN, type AuthorCosmetics } from '@/lib/cosmetics';
 import AvatarWithFrame from '@/components/member/AvatarWithFrame';
 import MainBadge from '@/components/member/MainBadge';
+import RecordChip, { type AuthorRecord } from '@/components/predictions/RecordChip';
 import { fbTrack } from '@/lib/fbpixel';
 
 const RichTextEditor = dynamic(() => import('@/components/editor/RichTextEditor'), { ssr: false });
@@ -29,7 +30,7 @@ interface PostData {
   pushCount: number;
   createdAt: string;
   updatedAt: string;
-  author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null };
+  author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null; record?: AuthorRecord | null };
   board: { id: string; name: string; slug: string; category: { id: string; name: string } };
   tags: { tag: { id: string; name: string; slug: string } }[];
   _count: { replies: number; pushes: number; bookmarks: number };
@@ -41,7 +42,7 @@ interface ReplyItem {
   content: string;
   pushCount: number;
   createdAt: string;
-  author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null };
+  author: { id: string; nickname: string; avatar: string | null; level: number; role: string; cosmetics?: AuthorCosmetics | null; record?: AuthorRecord | null };
   quotedReply: { id: string; floorNumber: number; content: string; author: { nickname: string } } | null;
   _count: { pushes: number };
   pushed: boolean; // 當前登入者是否已推（匿名恆 false）
@@ -308,6 +309,12 @@ export default function PostDetailClient({ post }: { post: PostData }) {
             <div className="text-xs text-gray-400 mt-1">
               Lv.{post.author.level} {levelName(post.author.level)}
             </div>
+            {/* 戰績章：有足夠場數才出現，讓「這個人講的話有沒有戰績支撐」在貼文現場就看得到 */}
+            {post.author.record && (
+              <div className="mt-1.5 flex justify-center">
+                <RecordChip record={post.author.record} />
+              </div>
+            )}
           </div>
 
           {/* 內容 */}
@@ -323,6 +330,7 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                 {post.author.nickname}
               </Link>
               <span className="text-xs text-gray-400">Lv.{post.author.level}</span>
+              <RecordChip record={post.author.record} />
             </div>
 
             <div className="text-gray-800 min-h-[100px]">
@@ -460,6 +468,11 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                       <div className="text-xs" style={TITLE_TOKEN[reply.author.cosmetics.title.rarity]}>{reply.author.cosmetics.title.name}</div>
                     )}
                     <div className="text-xs text-gray-400">Lv.{reply.author.level}</div>
+                    {reply.author.record && (
+                      <div className="mt-1 flex justify-center">
+                        <RecordChip record={reply.author.record} />
+                      </div>
+                    )}
                   </div>
 
                   {/* 回覆內容 */}
@@ -471,6 +484,7 @@ export default function PostDetailClient({ post }: { post: PostData }) {
                         <Link href={`/user/${reply.author.nickname}`} className="text-xs font-medium hover:text-blue-600 md:hidden">
                           {reply.author.nickname}
                         </Link>
+                        <span className="md:hidden"><RecordChip record={reply.author.record} /></span>
                         <span className="text-xs text-gray-400">{formatDate(reply.createdAt)}</span>
                       </div>
                       <div className="flex items-center gap-2">

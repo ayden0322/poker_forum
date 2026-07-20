@@ -3,6 +3,7 @@ import { PrismaService } from '../common/prisma.service';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import { Role, PostStatus } from '@betting-forum/database';
 import { AUTHOR_COSMETIC_SELECT, serializeAuthorCosmetics } from '../common/author-cosmetics';
+import { authorRecords } from '../common/author-record';
 
 @Injectable()
 export class RepliesService {
@@ -41,11 +42,18 @@ export class RepliesService {
       this.prisma.reply.count({ where: { postId } }),
     ]);
 
+    // 一次撈齊本頁所有留言作者的精簡戰績（批次，不做 N+1）
+    const recs = await authorRecords(this.prisma, items.map((i) => i.author.id));
+
     const serialized = items.map((item) => {
       const { author, ...r } = item;
       const { cosmetics, ...a } = author;
       const pushed = (((item as { pushes?: unknown[] }).pushes?.length) ?? 0) > 0;
-      const out = { ...r, pushed, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } } as Record<string, unknown>;
+      const out = {
+        ...r,
+        pushed,
+        author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }), record: recs.get(a.id) ?? null },
+      } as Record<string, unknown>;
       delete out.pushes; // 不外洩當前用戶的 push 列
       return out;
     });
@@ -111,9 +119,13 @@ export class RepliesService {
       });
     }
 
-    // 序列化裝飾，與回覆列表回應同形（剛送出的回覆也帶框/稱號/徽章）
+    // 序列化裝飾＋戰績章，與回覆列表回應同形（剛送出的回覆也帶框/稱號/徽章/戰績）
     const { cosmetics, ...a } = reply.author;
-    return { ...reply, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } };
+    const recs = await authorRecords(this.prisma, [a.id]);
+    return {
+      ...reply,
+      author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }), record: recs.get(a.id) ?? null },
+    };
   }
 
   /** 編輯回覆 */
@@ -133,7 +145,11 @@ export class RepliesService {
       },
     });
     const { cosmetics, ...a } = updated.author;
-    return { ...updated, author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }) } };
+    const recs = await authorRecords(this.prisma, [a.id]);
+    return {
+      ...updated,
+      author: { ...a, cosmetics: serializeAuthorCosmetics({ cosmetics }), record: recs.get(a.id) ?? null },
+    };
   }
 
   /** 刪除回覆 */
