@@ -20,6 +20,7 @@ import { ReconciliationService } from './reconciliation.service';
 import { ReconciliationCron } from './reconciliation.cron';
 import { PredictionsAdminService } from './predictions-admin.service';
 import { PredictionsAdminController } from './predictions.admin.controller';
+import { PredictionBoardsService } from './prediction-boards.service';
 
 // P幣競猜（二期）：賠率管線 + 下注收單 + 結算 + 對帳 + admin 沖正。
 // 依《P幣競猜系統-詳細設計規格.md》§10 開工順序。
@@ -27,12 +28,13 @@ import { PredictionsAdminController } from './predictions.admin.controller';
   imports: [EconomyModule],
   controllers: [PredictionsController, PredictionsAdminController, HonorController],
   providers: [
+    PredictionBoardsService,
     OddsPipelineService, PredictionsCron, BetsService, MarketsService, LeaderboardService, MatchLinkService,
     ChampionService, ChampionCron,
     HonorService, SeasonService, HonorCron, HonorReadService,
     SettlementService, SettlementCron,
     ReconciliationService, ReconciliationCron, PredictionsAdminService,
   ],
-  exports: [OddsPipelineService],
+  exports: [OddsPipelineService, PredictionBoardsService],
 })
 export class PredictionsModule {}

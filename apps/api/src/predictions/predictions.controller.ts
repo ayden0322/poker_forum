@@ -36,9 +36,9 @@ export class PredictionsController {
 
   /** 公開：板塊清單（未登入可看，「看得到玩不到」是註冊鉤，圓桌 growth 定案） */
   @Get('boards')
-  boards() {
+  async boards() {
     if (!isPredictionEnabled()) return { data: { enabled: false, boards: [] } };
-    return { data: { enabled: true, boards: this.markets.boards() } };
+    return { data: { enabled: true, boards: await this.markets.boards() } };
   }
 
   /** 公開：單板塊開盤中賽事 + 賠率（含 quoteId） */

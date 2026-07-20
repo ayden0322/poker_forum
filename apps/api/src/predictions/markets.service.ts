@@ -6,7 +6,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { RedisService } from '../common/redis.service';
 import { MatchLinkService } from './match-link.service';
-import { enabledBoards, LOCK_BUFFER_MS, PREDICTION_BOARDS } from './prediction.config';
+import { LOCK_BUFFER_MS } from './prediction.config';
+import { PredictionBoardsService } from './prediction-boards.service';
 import { isPredictionEnabled } from './prediction.flags';
 
 export interface MarketQuoteView {
@@ -37,17 +38,19 @@ export class MarketsService {
     private prisma: PrismaService,
     private redis: RedisService,
     private matchLink: MatchLinkService,
+    private boardsCfg: PredictionBoardsService,
   ) {}
 
-  /** 板塊清單（前端導覽用） */
-  boards() {
-    return enabledBoards().map((b) => ({ board: b.boardSlug, sportType: b.sportType, markets: b.markets }));
+  /** 板塊清單（前端導覽用）。改讀後台設定，管理者開關即時生效。 */
+  async boards() {
+    const bs = await this.boardsCfg.enabled();
+    return bs.map((b) => ({ board: b.boardSlug, sportType: b.sportType, markets: b.markets }));
   }
 
   /** 單板塊開盤中賽事 + 賠率 */
   async openMatches(boardSlug: string): Promise<{ enabled: boolean; matches: MatchMarketsView[] }> {
     if (!isPredictionEnabled()) return { enabled: false, matches: [] };
-    const board = PREDICTION_BOARDS[boardSlug];
+    const board = await this.boardsCfg.bySlug(boardSlug);
     if (!board?.enabled) return { enabled: false, matches: [] };
 
     const cached = await this.redis.get<MatchMarketsView[]>(cacheKey(boardSlug));

@@ -25,6 +25,7 @@ import {
   QUOTE_MAX_AGE_MS,
 } from './prediction.config';
 import { isPredictionEnabled } from './prediction.flags';
+import { PredictionBoardsService } from './prediction-boards.service';
 
 export interface PlaceBetInput {
   matchId: string;
@@ -64,6 +65,7 @@ export class BetsService {
     private pipeline: OddsPipelineService,
     private matchLink: MatchLinkService,
     private honor: HonorService,
+    private boardsCfg: PredictionBoardsService,
   ) {}
 
   /**
@@ -96,7 +98,7 @@ export class BetsService {
 
     const match = await this.prisma.predictionMatch.findUnique({ where: { id: pick!.matchId } });
     if (!match) reject('MARKET_LOCKED', '賽事不存在', HttpStatus.NOT_FOUND);
-    const board = PREDICTION_BOARDS[match!.boardSlug];
+    const board = await this.boardsCfg.bySlug(match!.boardSlug);
     const quote = await this.prisma.oddsQuote.findFirst({
       where: {
         matchId: pick!.matchId,
@@ -171,7 +173,7 @@ export class BetsService {
     // ── 檢查 1+2：賽事存在、板塊/玩法有開、未開賽、未進封盤 buffer（交易外先擋，交易內鎖後重查）
     const match = await this.prisma.predictionMatch.findUnique({ where: { id: input.matchId } });
     if (!match) reject('MARKET_LOCKED', '賽事不存在', HttpStatus.NOT_FOUND);
-    const board = PREDICTION_BOARDS[match.boardSlug];
+    const board = await this.boardsCfg.bySlug(match.boardSlug);
     if (!board?.enabled || !board.markets.includes(input.market)) {
       reject('MARKET_LOCKED', '此賽事/玩法未開放競猜', HttpStatus.BAD_REQUEST);
     }

@@ -9,7 +9,8 @@ export interface PredictionBoardConfig {
   sportType: 'football' | 'baseball';
   apiHost: string;
   leagueId: number;
-  season: number;
+  /** 字串型別：籃球用 "2025-2026" 格式，且 API 是當 query param 傳，數字/字串皆可。 */
+  season: number | string;
   /** 此聯盟使用的 bookmaker（William Hill：football=7、baseball=22） */
   bookmakerId: number;
   /** 開放的玩法（MLB 大小分 WH 沒開線 → 只開勝負，見規格 §2.4 實測） */

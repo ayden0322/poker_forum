@@ -12,6 +12,7 @@ import { PrismaService } from '../common/prisma.service';
 import { OddsPipelineService } from './odds-pipeline.service';
 import { enabledBoards, FAR_INTERVAL_MS, NEAR_WINDOW_MS } from './prediction.config';
 import { isPredictionEnabled } from './prediction.flags';
+import { PredictionBoardsService } from './prediction-boards.service';
 
 @Injectable()
 export class PredictionsCron {
@@ -24,6 +25,7 @@ export class PredictionsCron {
     private prisma: PrismaService,
     private config: ConfigService,
     private pipeline: OddsPipelineService,
+    private boardsCfg: PredictionBoardsService,
   ) {
     this.apiKey = this.config.get<string>('API_SPORTS_KEY', '');
   }
@@ -32,7 +34,7 @@ export class PredictionsCron {
   async tick() {
     if (!isPredictionEnabled()) return; // fail-closed：功能未開就不燒 API 額度
     if (!this.apiKey) return;
-    for (const board of enabledBoards()) {
+    for (const board of await this.boardsCfg.enabled()) {
       try {
         const now = Date.now();
         const last = this.lastRunAt.get(board.boardSlug) ?? 0;

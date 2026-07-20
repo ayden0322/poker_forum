@@ -722,7 +722,21 @@ model SportsConfig {
   updatedAt   DateTime @updatedAt @map("updated_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
+  // ===== P幣競猜（2026-07-20 由寫死的 prediction.config.ts 搬進後台）=====
+  // 預設全關：新增聯賽不會意外開放下注，也不會意外開始燒 API 額度（fail-closed）。
+  predictionEnabled Boolean  @default(false) @map("prediction_enabled")
+  // 開放玩法，如 ["WINLOSE"] / ["WINLOSE","OVER_UNDER"]。實測：足球 William Hill 無全場大小分。
+  predictionMarkets String[] @default([]) @map("prediction_markets")
+  // bookmaker id 各運動不同：足球 William Hill=7、棒球=22、籃球=26。未設則用該運動預設值。
+  bookmakerId       Int?     @map("bookmaker_id")
+  // 盤口可用性掃描結果（後台按一下更新）：開之前先知道這聯賽現在到底有沒有盤口。
+  oddsAvailable     Boolean? @map("odds_available")
+  oddsFutureCount   Int?     @map("odds_future_count") // 掃描當下「未來有盤口的場次數」
+  oddsCheckedAt     DateTime? @map("odds_checked_at")
+  oddsNote          String?  @map("odds_note") // 掃描結論，如「休賽期（2026-08-21 開季）」
+
   @@index([sportType])
+  @@index([predictionEnabled])
   @@map("sports_configs")
 }
 

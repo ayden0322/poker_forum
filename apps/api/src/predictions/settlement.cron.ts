@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { SettlementService } from './settlement.service';
 import { enabledBoards } from './prediction.config';
 import { isPredictionEnabled } from './prediction.flags';
+import { PredictionBoardsService } from './prediction-boards.service';
 
 @Injectable()
 export class SettlementCron {
@@ -16,6 +17,7 @@ export class SettlementCron {
   constructor(
     private config: ConfigService,
     private settlement: SettlementService,
+    private boardsCfg: PredictionBoardsService,
   ) {
     this.apiKey = this.config.get<string>('API_SPORTS_KEY', '');
   }
@@ -24,7 +26,7 @@ export class SettlementCron {
   async tick() {
     if (!isPredictionEnabled()) return; // fail-closed
     if (!this.apiKey) return;
-    for (const board of enabledBoards()) {
+    for (const board of await this.boardsCfg.enabled()) {
       try {
         await this.settlement.runRound(board);
       } catch (err) {
