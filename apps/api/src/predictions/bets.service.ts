@@ -99,10 +99,17 @@ export class BetsService {
     const match = await this.prisma.predictionMatch.findUnique({ where: { id: pick!.matchId } });
     if (!match) reject('MARKET_LOCKED', '賽事不存在', HttpStatus.NOT_FOUND);
     const board = await this.boardsCfg.bySlug(match!.boardSlug);
+    // ★ 必須擋 null：板塊設定改由 DB 查詢後，board 可能是 null（設定被刪/板塊不存在）。
+    //   若放行，下面 where 的 bookmakerId 會是 undefined —— Prisma 把 undefined 當「不篩此欄位」，
+    //   於是跟單會鎖到「任何 bookmaker」的報價，等於拿到錯盤的賠率。
+    //   （下注流程 placeBet 有 `!board?.enabled` 守衛，跟單這條原本漏了，兩邊行為要一致）
+    if (!board?.enabled || !board.markets.includes(pick!.market)) {
+      reject('MARKET_LOCKED', '此賽事/玩法未開放競猜', HttpStatus.BAD_REQUEST);
+    }
     const quote = await this.prisma.oddsQuote.findFirst({
       where: {
         matchId: pick!.matchId,
-        bookmakerId: board?.bookmakerId,
+        bookmakerId: board!.bookmakerId,
         market: pick!.market,
         selection: pick!.selection,
         line: pick!.line,

@@ -9,9 +9,11 @@
 //  2. /odds 分頁且按日期升冪 —— 只看第一頁會全是過去場次，導致誤判「無未來場次」。
 //     歐冠就是這樣被誤判成休賽期（實際未來 5 天有 13 場）。故必須看最後一頁。
 
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma.service';
+import { RedisService } from '../common/redis.service';
+import { QUOTA_KEY_PREFIX } from './prediction.config';
 
 export interface ScanRow {
   boardSlug: string;
@@ -27,6 +29,10 @@ export interface ScanRow {
 
 /** 各運動「勝負」「大小分」的玩法名稱不同 */
 const WINLOSE_NAMES = new Set(['Match Winner', 'Home/Away', '3Way Result']);
+/** 與 PredictionBoardsService 同一份預設值：足球 William Hill=7、棒球=22、籃球=26 */
+const DEFAULT_BOOKMAKER: Record<string, number> = { football: 7, baseball: 22, basketball: 26 };
+/** 單次掃描的外部呼叫逾時：40 個聯賽序列跑，任一個吊住就會撞 gateway timeout */
+const CALL_TIMEOUT_MS = 8000;
 const OU_NAMES = new Set(['Goals Over/Under', 'Over/Under']);
 
 @Injectable()
@@ -34,8 +40,12 @@ export class OddsScanService {
   private readonly logger = new Logger(OddsScanService.name);
   private readonly apiKey: string;
 
+  /** 併發鎖：兩個管理員同時點、或同一人連點，會變成併發全掃（沿用 settlement/pipeline 的 in-flight 模式）*/
+  private scanning = false;
+
   constructor(
     private prisma: PrismaService,
+    private redis: RedisService,
     config: ConfigService,
   ) {
     this.apiKey = config.get<string>('API_SPORTS_KEY', '');
@@ -43,6 +53,18 @@ export class OddsScanService {
 
   /** 掃描全部（或指定）聯賽，寫回 sports_configs 並回傳結果。 */
   async scanAll(boardSlugs?: string[]): Promise<ScanRow[]> {
+    if (this.scanning) {
+      throw new ConflictException('盤口掃描進行中，請稍候再試');
+    }
+    this.scanning = true;
+    try {
+      return await this.runScan(boardSlugs);
+    } finally {
+      this.scanning = false;
+    }
+  }
+
+  private async runScan(boardSlugs?: string[]): Promise<ScanRow[]> {
     const rows = await this.prisma.sportsConfig.findMany({
       where: boardSlugs?.length ? { boardSlug: { in: boardSlugs } } : {},
       orderBy: [{ sportType: 'asc' }, { boardSlug: 'asc' }],
@@ -68,6 +90,7 @@ export class OddsScanService {
 
   private async scanOne(cfg: {
     boardSlug: string; displayName: string; sportType: string; apiHost: string; leagueId: number; season: string;
+    bookmakerId: number | null;
   }): Promise<ScanRow> {
     const base: ScanRow = {
       boardSlug: cfg.boardSlug, displayName: cfg.displayName, sportType: cfg.sportType,
@@ -78,7 +101,13 @@ export class OddsScanService {
     const meta = await this.currentSeason(cfg.apiHost, cfg.leagueId, cfg.sportType);
     const season = meta.season ?? cfg.season;
 
-    const first = await this.call(cfg.apiHost, 'odds', { league: cfg.leagueId, season });
+    // ★ 必須帶 bookmaker（2026-07-22 圓桌 Codex 指出）：
+    //   實際賠率管線只認單一莊家（odds-pipeline 的 bookmaker: board.bookmakerId）。
+    //   掃描若不帶 bookmaker，會聚合「所有莊家」的盤口 → 別家有盤、我們用的那家沒有時，
+    //   後台顯示綠色「盤口 N 場」，開下去卻是空板塊。
+    //   掃描的存在意義就是防止這種空開，自己給假訊號等於白做。
+    const bookmaker = cfg.bookmakerId ?? DEFAULT_BOOKMAKER[cfg.sportType];
+    const first = await this.call(cfg.apiHost, 'odds', { league: cfg.leagueId, season, bookmaker });
     if (!first) return { ...base, season, note: '查詢失敗' };
     if (!first.results) {
       // 分辨「賽季中但沒盤口」與「休賽期」——兩者的處置完全不同
@@ -92,7 +121,7 @@ export class OddsScanService {
     // 分頁按日期升冪 → 未來場次在最後一頁
     const totalPages: number = first.paging?.total ?? 1;
     const page = totalPages > 1
-      ? await this.call(cfg.apiHost, 'odds', { league: cfg.leagueId, season, page: totalPages })
+      ? await this.call(cfg.apiHost, 'odds', { league: cfg.leagueId, season, bookmaker, page: totalPages })
       : first;
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -141,14 +170,37 @@ export class OddsScanService {
     };
   }
 
+  /** 與 odds-pipeline 共用同一把 quota key，否則掃描的用量對 isOverSoftCap() 是隱形的 */
+  private async bumpQuota(host: string, calls: number): Promise<void> {
+    const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    await this.redis.incrWithTtl(`${QUOTA_KEY_PREFIX}:${host}:${day}`, 26 * 60 * 60, calls);
+  }
+
   private async call(host: string, path: string, params: Record<string, unknown>) {
     const qs = new URLSearchParams(
       Object.entries(params).map(([k, v]) => [k, String(v)] as [string, string]),
     ).toString();
     try {
-      const res = await fetch(`https://${host}/${path}?${qs}`, { headers: { 'x-apisports-key': this.apiKey } });
+      const res = await fetch(`https://${host}/${path}?${qs}`, {
+        headers: { 'x-apisports-key': this.apiKey },
+        // 沒有 timeout 的話單一請求可能吊住數分鐘 → 管理者以為失敗又點一次 → 額度加倍燒
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      });
+      // 掃描的每一次外呼都要計進既有額度守門，否則 isOverSoftCap() 會低估用量而說謊
+      await this.bumpQuota(host, 1);
+      if (!res.ok) {
+        this.logger.warn(`掃描呼叫非 2xx ${host}/${path}：HTTP ${res.status}`);
+        return null;
+      }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (await res.json()) as any;
+      const json = (await res.json()) as any;
+      // API-Sports 對配額用盡/參數錯誤仍回 200 + errors 物件，不能當正常結果寫回 DB
+      const err = json?.errors;
+      if (err && (Array.isArray(err) ? err.length : Object.keys(err).length)) {
+        this.logger.warn(`掃描呼叫回報錯誤 ${host}/${path}：${JSON.stringify(err)}`);
+        return null;
+      }
+      return json;
     } catch (e) {
       this.logger.warn(`掃描呼叫失敗 ${host}/${path}：${(e as Error).message}`);
       return null;

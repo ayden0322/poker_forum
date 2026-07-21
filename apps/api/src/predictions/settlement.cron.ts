@@ -26,7 +26,8 @@ export class SettlementCron {
   async tick() {
     if (!isPredictionEnabled()) return; // fail-closed
     if (!this.apiKey) return;
-    for (const board of await this.boardsCfg.enabled()) {
+    // 走 settlementTargets 而非 enabled()：關閉板塊不得停掉既有注單的結算（圓桌 red-team [A]）
+    for (const board of await this.boardsCfg.settlementTargets()) {
       try {
         await this.settlement.runRound(board);
       } catch (err) {
