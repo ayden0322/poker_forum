@@ -40,6 +40,14 @@ interface SportsConfig {
   extraConfig: Record<string, unknown> | null;
   updatedBy: string | null;
   updatedAt: string;
+  // 競猜（2026-07-20 由 prediction.config.ts 搬進後台）
+  predictionEnabled: boolean;
+  predictionMarkets: string[];
+  bookmakerId: number | null;
+  oddsAvailable: boolean | null;
+  oddsFutureCount: number | null;
+  oddsCheckedAt: string | null;
+  oddsNote: string | null;
 }
 
 interface ApiUsageInfo {
@@ -90,6 +98,30 @@ export default function SportsSettingsPage() {
         body: JSON.stringify({ enabled }),
       }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-sports-config'] });
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+
+  // 競猜開關。開啟時若沒設玩法，預設帶 WINLOSE（所有運動都有勝負盤）
+  const predictionToggleMutation = useMutation({
+    mutationFn: ({ boardSlug, on, markets }: { boardSlug: string; on: boolean; markets: string[] }) =>
+      adminApiFetch(`/admin/sports-config/${boardSlug}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          predictionEnabled: on,
+          ...(on && !markets.length ? { predictionMarkets: ['WINLOSE'] } : {}),
+        }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-sports-config'] }),
+    onError: (e: Error) => message.error(e.message),
+  });
+
+  // 盤口可用性掃描：開競猜前先確認這聯賽現在真的有賠率
+  const scanMutation = useMutation({
+    mutationFn: () => adminApiFetch('/admin/sports-config/scan-odds', { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: () => {
+      message.success('盤口掃描完成');
       qc.invalidateQueries({ queryKey: ['admin-sports-config'] });
     },
     onError: (e: Error) => message.error(e.message),
@@ -170,6 +202,50 @@ export default function SportsSettingsPage() {
       ),
     },
     {
+      // 競猜開關：與上面的「狀態」（賽事資料）分開 —— 一個聯賽可以只顯示資料、不開放下注
+      title: '競猜',
+      key: 'prediction',
+      width: 190,
+      render: (_: unknown, record: SportsConfig) => {
+        const scanned = record.oddsCheckedAt != null;
+        // 盤口狀態標籤：沒掃過就別假裝知道，顯示「未掃描」
+        const tag = !scanned ? (
+          <Tag>未掃描</Tag>
+        ) : record.oddsAvailable ? (
+          <Tag color="green">盤口 {record.oddsFutureCount} 場</Tag>
+        ) : (
+          <Tag color="default" title={record.oddsNote ?? ''}>無盤口</Tag>
+        );
+        return (
+          <Space direction="vertical" size={2}>
+            <Space size={6}>
+              <Switch
+                size="small"
+                checked={record.predictionEnabled}
+                onChange={(on) =>
+                  predictionToggleMutation.mutate({
+                    boardSlug: record.boardSlug,
+                    on,
+                    markets: record.predictionMarkets ?? [],
+                  })
+                }
+                loading={predictionToggleMutation.isPending}
+              />
+              {tag}
+            </Space>
+            {record.predictionEnabled && (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {(record.predictionMarkets ?? []).join(' / ') || '未設玩法'}
+              </Text>
+            )}
+            {scanned && !record.oddsAvailable && record.oddsNote && (
+              <Text type="secondary" style={{ fontSize: 11 }}>{record.oddsNote}</Text>
+            )}
+          </Space>
+        );
+      },
+    },
+    {
       title: 'API Host',
       dataIndex: 'apiHost',
       key: 'apiHost',
@@ -234,6 +310,17 @@ export default function SportsSettingsPage() {
             >
               刷新用量
             </Button>
+            <Popconfirm
+              title="要掃描所有聯賽的盤口嗎？"
+              description="會實際呼叫 API-Sports（每個聯賽約 2 次），用掉一些今日額度"
+              onConfirm={() => scanMutation.mutate()}
+              okText="開始掃描"
+              cancelText="取消"
+            >
+              <Button type="primary" ghost loading={scanMutation.isPending}>
+                掃描盤口
+              </Button>
+            </Popconfirm>
             <Popconfirm
               title="確定要重置所有設定？"
               description="將還原為預設值（不影響 API Key）"

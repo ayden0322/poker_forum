@@ -9,7 +9,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, IsNumber, IsObject } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsNumber, IsObject, IsArray, IsIn } from 'class-validator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { PageGuard } from '../common/guards/page.guard';
@@ -19,6 +19,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../common/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { LEAGUE_CONFIG } from '../sports/sports.config';
+import { OddsScanService } from '../predictions/odds-scan.service';
+import { PredictionBoardsService } from '../predictions/prediction-boards.service';
 
 class UpdateSportsConfigDto {
   @IsOptional() @IsString() displayName?: string;
@@ -28,6 +30,10 @@ class UpdateSportsConfigDto {
   @IsOptional() @IsString() season?: string;
   @IsOptional() @IsObject() cacheTtl?: Record<string, number>;
   @IsOptional() @IsObject() extraConfig?: Record<string, any>;
+  // 競猜設定
+  @IsOptional() @IsBoolean() predictionEnabled?: boolean;
+  @IsOptional() @IsArray() @IsIn(['WINLOSE', 'OVER_UNDER'], { each: true }) predictionMarkets?: string[];
+  @IsOptional() @IsNumber() bookmakerId?: number;
 }
 
 /** 從 LEAGUE_CONFIG 產生預設設定 */
@@ -54,6 +60,8 @@ export class AdminSportsConfigController {
   constructor(
     private prisma: PrismaService,
     private config: ConfigService,
+    private oddsScan: OddsScanService,
+    private boards: PredictionBoardsService,
   ) {}
 
   @Get()
@@ -139,12 +147,29 @@ export class AdminSportsConfigController {
         ...(dto.season && { season: dto.season }),
         ...(dto.cacheTtl && { cacheTtl: dto.cacheTtl }),
         ...(dto.extraConfig !== undefined && { extraConfig: dto.extraConfig }),
+        // 競猜設定（2026-07-20 由 prediction.config.ts 搬進後台）
+        ...(dto.predictionEnabled !== undefined && { predictionEnabled: dto.predictionEnabled }),
+        ...(dto.predictionMarkets !== undefined && { predictionMarkets: dto.predictionMarkets }),
+        ...(dto.bookmakerId !== undefined && { bookmakerId: dto.bookmakerId }),
         updatedBy: user.id,
       },
     });
 
+    // 讓板塊快取立刻失效，管理者存檔後不必等 60 秒
+    this.boards.invalidate();
+    if (dto.predictionEnabled !== undefined) {
+      this.logger.warn(`管理員 ${user.id} 將 ${boardSlug} 競猜設為 ${dto.predictionEnabled ? '開啟' : '關閉'}`);
+    }
     this.logger.log(`管理員 ${user.id} 更新了 ${boardSlug} 的設定`);
     return { data: updated };
+  }
+
+  @Post('scan-odds')
+  @ApiOperation({ summary: '盤口可用性掃描：實測各聯賽現在有沒有賠率（開競猜前先看這個）' })
+  async scanOdds(@Body() dto: { boardSlugs?: string[] }, @CurrentUser() user: { id: string }) {
+    this.logger.log(`管理員 ${user.id} 觸發盤口掃描${dto?.boardSlugs?.length ? `（${dto.boardSlugs.join(',')}）` : '（全部）'}`);
+    const rows = await this.oddsScan.scanAll(dto?.boardSlugs);
+    return { data: rows };
   }
 
   @Post('seed')

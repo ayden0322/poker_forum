@@ -7,9 +7,10 @@ import { AdminCosmeticsController } from './cosmetics.controller';
 import { PermissionController } from './permission.controller';
 import { VerificationModule } from '../verification/verification.module';
 import { AuthModule } from '../auth/auth.module';
+import { PredictionsModule } from '../predictions/predictions.module';
 
 @Module({
-  imports: [VerificationModule, AuthModule],
+  imports: [VerificationModule, AuthModule, PredictionsModule],
   controllers: [
     AdminController,
     AdminSmsProviderController,
