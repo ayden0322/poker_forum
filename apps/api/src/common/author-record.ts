@@ -31,8 +31,10 @@ export async function authorRecords(
 
   const rows = await prisma.$queryRaw<Array<{ user_id: string; settled: number; wins: number }>>`
     SELECT user_id,
-           COUNT(*)::int AS settled,
-           COUNT(*) FILTER (WHERE status = 'WON')::int AS wins
+           -- ★ 場數＝不重複賽事（COUNT DISTINCT match_id），與排行榜同口徑（圓桌 Codex 刷榜漏洞，定案 a）：
+           --   同一場下 N 注只算 1 場，戰績章顯示的「N 場」不能被同場刷單灌水。
+           COUNT(DISTINCT match_id)::int AS settled,
+           COUNT(DISTINCT match_id) FILTER (WHERE status = 'WON')::int AS wins
     FROM bets
     WHERE user_id = ANY(${ids}::text[]) AND status IN ('WON', 'LOST')
     GROUP BY user_id

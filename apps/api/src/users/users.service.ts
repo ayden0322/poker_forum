@@ -59,9 +59,14 @@ export class UsersService {
 
     // 戰績身份卡：勝率 / 連勝 / 在位冠軍（純戰績、公開；競猜關閉則回 null）
     const now = new Date();
-    const [settled, wins, stat, reign, followRows] = await Promise.all([
-      this.prisma.bet.count({ where: { userId: user.id, status: { in: ['WON', 'LOST'] } } }),
-      this.prisma.bet.count({ where: { userId: user.id, status: 'WON' } }),
+    const [tally, stat, reign, followRows] = await Promise.all([
+      // ★ 場數＝不重複賽事（COUNT DISTINCT match_id），與排行榜/戰績章同口徑（圓桌 Codex 刷榜漏洞，定案 a）：
+      //   個人頁「N 場」也不能被同場刷單灌水。用 raw SQL 是因為 bet.count 無 distinct 能力。
+      this.prisma.$queryRaw<Array<{ settled: number; wins: number }>>`
+        SELECT COUNT(DISTINCT match_id)::int AS settled,
+               COUNT(DISTINCT match_id) FILTER (WHERE status = 'WON')::int AS wins
+        FROM bets WHERE user_id = ${user.id} AND status IN ('WON', 'LOST')
+      `,
       this.prisma.userBettingStat.findUnique({ where: { userId: user.id } }),
       this.prisma.championReign.findFirst({
         where: { userId: user.id, reignFrom: { lte: now }, reignTo: { gt: now } },
@@ -69,6 +74,8 @@ export class UsersService {
       }),
       this.prisma.$queryRaw<Array<{ c: number }>>`SELECT COUNT(*)::int AS c FROM pick_follows pf JOIN bets b ON b.id = pf.pick_bet_id WHERE b.user_id = ${user.id}`,
     ]);
+    const settled = tally[0]?.settled ?? 0;
+    const wins = tally[0]?.wins ?? 0;
     const record = {
       settled,
       winRate: settled > 0 ? Math.round((wins / settled) * 1000) / 10 : 0,

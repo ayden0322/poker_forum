@@ -126,11 +126,14 @@ export class LeaderboardService {
       Array<{ nickname: string; n: number; profit: number; qn: number; qwins: number; q_avg_odds: number }>
     >(Prisma.sql`
       SELECT u.nickname,
-             COUNT(*) FILTER (WHERE b.status IN ('WON','LOST'))::int AS n,
+             -- ★ 場數口徑一律「不重複賽事」COUNT(DISTINCT match_id)（2026-07-22 圓桌 Codex 揪出的刷榜漏洞，Ayden 定案 a）：
+             --   同一場下 N 注只算 1 場，杜絕「同場刷單湊滿門檻/冠軍」。
+             --   但 profit 維持 SUM 全算 —— 獲利是真實 P 幣損益，下幾注就賺賠幾注，去重會失真。
+             COUNT(DISTINCT b.match_id) FILTER (WHERE b.status IN ('WON','LOST'))::int AS n,
              COALESCE(SUM(CASE WHEN b.status = 'WON' THEN b.potential_payout - b.stake
                                WHEN b.status = 'LOST' THEN -b.stake ELSE 0 END), 0)::int AS profit,
-             COUNT(*) FILTER (WHERE b.status IN ('WON','LOST') AND b.locked_odds >= ${WINRATE_MIN_ODDS})::int AS qn,
-             COUNT(*) FILTER (WHERE b.status = 'WON' AND b.locked_odds >= ${WINRATE_MIN_ODDS})::int AS qwins,
+             COUNT(DISTINCT b.match_id) FILTER (WHERE b.status IN ('WON','LOST') AND b.locked_odds >= ${WINRATE_MIN_ODDS})::int AS qn,
+             COUNT(DISTINCT b.match_id) FILTER (WHERE b.status = 'WON' AND b.locked_odds >= ${WINRATE_MIN_ODDS})::int AS qwins,
              COALESCE(AVG(b.locked_odds) FILTER (WHERE b.status IN ('WON','LOST') AND b.locked_odds >= ${WINRATE_MIN_ODDS}), 0)::float AS q_avg_odds
       FROM bets b
       JOIN users u ON u.id = b.user_id
@@ -169,10 +172,12 @@ export class LeaderboardService {
     const [agg] = await this.prisma.$queryRaw<
       Array<{ n: number; wins: number; avg_odds: number; pushes: number }>
     >(Prisma.sql`
-      SELECT COUNT(*) FILTER (WHERE status IN ('WON','LOST'))::int AS n,
-             COUNT(*) FILTER (WHERE status = 'WON')::int AS wins,
+      -- 場數＝不重複賽事（COUNT DISTINCT match_id），與排行榜/戰績章/個人頁同口徑（圓桌 Codex 刷榜漏洞，定案 a）。
+      -- avg_odds 維持注單層級 AVG：那是「你平均押的賠率」，注單口徑才誠實，不是防刷目標。
+      SELECT COUNT(DISTINCT match_id) FILTER (WHERE status IN ('WON','LOST'))::int AS n,
+             COUNT(DISTINCT match_id) FILTER (WHERE status = 'WON')::int AS wins,
              COALESCE(AVG(locked_odds) FILTER (WHERE status IN ('WON','LOST')), 0)::float AS avg_odds,
-             COUNT(*) FILTER (WHERE status = 'PUSH')::int AS pushes
+             COUNT(DISTINCT match_id) FILTER (WHERE status = 'PUSH')::int AS pushes
       FROM bets WHERE user_id = ${user.id}
     `);
 
