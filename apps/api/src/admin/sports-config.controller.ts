@@ -73,7 +73,19 @@ export class AdminSportsConfigController {
       orderBy: [{ sportType: 'asc' }, { boardSlug: 'asc' }],
     });
 
-    return { data: configs };
+    // 各板塊「未結算注單」筆數：讓管理者關閉板塊前知道還有多少單沒結完。
+    // 結構上已解耦（關板塊仍會續跑結算），這裡純粹是知情用，避免誤以為關了就沒事。
+    // 一次 groupBy 聚合，不做 N+1。
+    const pendingRows = await this.prisma.$queryRaw<Array<{ board_slug: string; n: bigint }>>`
+      SELECT m.board_slug, COUNT(*)::bigint AS n
+      FROM bets b
+      JOIN prediction_matches m ON m.id = b.match_id
+      WHERE b.status = 'PENDING'
+      GROUP BY m.board_slug
+    `;
+    const pendingMap = new Map(pendingRows.map((r) => [r.board_slug, Number(r.n)]));
+
+    return { data: configs.map((c) => ({ ...c, pendingBets: pendingMap.get(c.boardSlug) ?? 0 })) };
   }
 
   @Get('usage')

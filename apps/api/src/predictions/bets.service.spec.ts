@@ -10,8 +10,8 @@ function makeMocks(oddsNum = 1.85) {
   const future = new Date(Date.now() + 60 * 60 * 1000); // 1 小時後開賽
   const match = {
     id: 'm1',
-    boardSlug: 'world-cup',
-    sportType: 'football',
+    boardSlug: 'mlb', // 與 boardsCfgMock 的 DEFAULT_BOARD 一致（原本寫 world-cup，與 mock 對不上）
+    sportType: 'baseball',
     apiFixtureId: 1562344,
     apiStatus: 'NS',
     startTime: future,
@@ -75,13 +75,17 @@ async function expectReject(p: Promise<unknown>, code: string) {
 
 // 建構子相依的最小 mock（HonorService 於榮譽系統加入、PredictionBoardsService 於板塊搬進後台時加入）
 const honorMock = () => ({ onFollowed: jest.fn() }) as never;
-// 板塊設定改由後台讀取；測試固定回 MLB 那組，bookmakerId 要與 makeMocks 的報價一致
-const boardsCfgMock = () => ({
-  bySlug: jest.fn().mockResolvedValue({
-    boardSlug: 'mlb', sportType: 'baseball', apiHost: 'v1.baseball.api-sports.io',
-    leagueId: 1, season: '2026', bookmakerId: 22, markets: ['WINLOSE'], enabled: true,
-  }),
+// 預設板塊：開放中的 MLB 板塊。boardSlug/bookmakerId 要與 makeMocks 的 match/quote 一致。
+const DEFAULT_BOARD = {
+  boardSlug: 'mlb', sportType: 'baseball', apiHost: 'v1.baseball.api-sports.io',
+  leagueId: 1, season: '2026', bookmakerId: 22, markets: ['WINLOSE'], enabled: true,
+};
+// board 可注入：傳 null 模擬「查無此板塊」，傳 {enabled:false} 模擬「板塊已下線」等情境，
+// 讓 placeBet/跟單的守衛真的被測到（原本寫死永遠放行，那個 if 的擋單分支從沒被進入過）。
+const boardsCfgMock = (board: unknown = DEFAULT_BOARD) => ({
+  bySlug: jest.fn().mockResolvedValue(board),
   enabled: jest.fn().mockResolvedValue([]),
+  settlementTargets: jest.fn().mockResolvedValue([]),
   invalidate: jest.fn(),
 }) as never;
 
@@ -162,6 +166,31 @@ describe('BetsService.placeBet', () => {
     prisma.predictionMatch.findUnique.mockResolvedValue({ ...match, settledAt: new Date() });
     const svc = new BetsService(prisma, economy, pipeline, matchLink, honorMock(), boardsCfgMock());
     await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
+  });
+
+  // ===== 圓桌（2026-07-22）補：板塊開關守衛。原本 mock 寫死永遠放行，這些擋單分支從沒被測過 =====
+
+  it('板塊已下線（enabled=false）→ MARKET_LOCKED，且不得扣款', async () => {
+    const { prisma, economy, pipeline, matchLink } = makeMocks();
+    const board = { boardSlug: 'mlb', sportType: 'baseball', apiHost: 'v1.baseball.api-sports.io', leagueId: 1, season: '2026', bookmakerId: 22, markets: ['WINLOSE'], enabled: false };
+    const svc = new BetsService(prisma, economy, pipeline, matchLink, honorMock(), boardsCfgMock(board));
+    await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
+    expect(economy.debitInTx).not.toHaveBeenCalled(); // 擋單不能扣 P 幣
+  });
+
+  it('板塊沒開這個玩法（markets 不含此 market）→ MARKET_LOCKED，不扣款', async () => {
+    const { prisma, economy, pipeline, matchLink } = makeMocks();
+    const board = { boardSlug: 'mlb', sportType: 'baseball', apiHost: 'v1.baseball.api-sports.io', leagueId: 1, season: '2026', bookmakerId: 22, markets: ['OVER_UNDER'], enabled: true };
+    const svc = new BetsService(prisma, economy, pipeline, matchLink, honorMock(), boardsCfgMock(board));
+    await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED'); // validInput 是 WINLOSE
+    expect(economy.debitInTx).not.toHaveBeenCalled();
+  });
+
+  it('sports_configs 查無此板塊（bySlug 回 null）→ MARKET_LOCKED，不得放行', async () => {
+    const { prisma, economy, pipeline, matchLink } = makeMocks();
+    const svc = new BetsService(prisma, economy, pipeline, matchLink, honorMock(), boardsCfgMock(null));
+    await expectReject(svc.placeBet('u1', validInput), 'MARKET_LOCKED');
+    expect(economy.debitInTx).not.toHaveBeenCalled();
   });
 
   it('quote 與下注組合不符 → STALE_ODDS', async () => {

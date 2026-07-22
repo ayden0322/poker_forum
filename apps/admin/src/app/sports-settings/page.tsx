@@ -48,6 +48,7 @@ interface SportsConfig {
   oddsFutureCount: number | null;
   oddsCheckedAt: string | null;
   oddsNote: string | null;
+  pendingBets?: number; // 未結算注單筆數（後端 getAll 附帶）
 }
 
 interface ApiUsageInfo {
@@ -216,26 +217,46 @@ export default function SportsSettingsPage() {
         ) : (
           <Tag color="default" title={record.oddsNote ?? ''}>無盤口</Tag>
         );
+        const pending = record.pendingBets ?? 0;
+        const doToggle = (on: boolean) =>
+          predictionToggleMutation.mutate({
+            boardSlug: record.boardSlug,
+            on,
+            markets: record.predictionMarkets ?? [],
+          });
+        // 關閉且尚有未結算注單 → 攔一下並告知筆數。結構上已解耦（關了照樣續跑結算把債還完），
+        // 這個確認框不是防止資料出錯，是防止管理者誤以為「關了 = 這板塊就沒事了」。
+        const needConfirm = record.predictionEnabled && pending > 0;
+        const sw = (
+          <Switch
+            size="small"
+            checked={record.predictionEnabled}
+            onChange={needConfirm ? undefined : (on) => doToggle(on)}
+            loading={predictionToggleMutation.isPending}
+          />
+        );
         return (
           <Space direction="vertical" size={2}>
             <Space size={6}>
-              <Switch
-                size="small"
-                checked={record.predictionEnabled}
-                onChange={(on) =>
-                  predictionToggleMutation.mutate({
-                    boardSlug: record.boardSlug,
-                    on,
-                    markets: record.predictionMarkets ?? [],
-                  })
-                }
-                loading={predictionToggleMutation.isPending}
-              />
+              {needConfirm ? (
+                <Popconfirm
+                  title={`此板塊尚有 ${pending} 筆未結算注單`}
+                  description="關閉後系統仍會自動把這些注單結算完（不會卡住），只是前台停止收新單。確定關閉？"
+                  okText="確定關閉"
+                  cancelText="取消"
+                  onConfirm={() => doToggle(false)}
+                >
+                  {sw}
+                </Popconfirm>
+              ) : (
+                sw
+              )}
               {tag}
             </Space>
             {record.predictionEnabled && (
               <Text type="secondary" style={{ fontSize: 11 }}>
                 {(record.predictionMarkets ?? []).join(' / ') || '未設玩法'}
+                {pending > 0 && <Text type="warning" style={{ fontSize: 11 }}>　· 未結算 {pending}</Text>}
               </Text>
             )}
             {scanned && !record.oddsAvailable && record.oddsNote && (
