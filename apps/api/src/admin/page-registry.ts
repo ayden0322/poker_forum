@@ -61,6 +61,8 @@ export const ADMIN_CAPS: CapDef[] = [
   { key: 'member:pii', label: '查看會員完整個資（手機 / Email / 帳號 / 登入 IP）', group: '會員與帳號', defaults: { moderator: F, admin: T } },
   { key: 'member:impersonate', label: '代登入會員', group: '會員與帳號', defaults: { moderator: F, admin: T } },
   { key: 'member:reset_password', label: '重設會員密碼', group: '會員與帳號', defaults: { moderator: F, admin: T } },
+  // 調整會員 P/G 幣：動到虛擬資產，預設連 admin 都關（最敏感），需個別授權；SUPER_ADMIN 一律 bypass
+  { key: 'member:wallet_adjust', label: '調整會員 P/G 幣餘額', group: '會員與帳號', defaults: { moderator: F, admin: F } },
   { key: 'post:batch_delete', label: '一鍵批次刪文', group: '內容營運', defaults: { moderator: F, admin: F } },
 ];
 

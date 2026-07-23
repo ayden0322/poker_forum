@@ -103,6 +103,18 @@ export class AdminController {
     return { data };
   }
 
+  /** 調整會員 P/G 幣（走帳本、稽核；預設僅 SUPER_ADMIN，可個別授權 member:wallet_adjust） */
+  @Post('members/:id/wallet-adjust')
+  @RequireCap('member:wallet_adjust')
+  async adjustMemberWallet(
+    @Param('id') id: string,
+    @CurrentUser() actor: { id: string; nickname: string },
+    @Body() body: { currency: 'P' | 'G'; mode: 'delta' | 'set'; amount: number; reason: string },
+  ) {
+    const data = await this.adminService.adjustMemberWallet(id, body, actor);
+    return { data };
+  }
+
   /**
    * 管理員代登入會員（Impersonation）
    * - 需 ADMIN 角色

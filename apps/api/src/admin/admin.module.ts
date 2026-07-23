@@ -8,9 +8,10 @@ import { PermissionController } from './permission.controller';
 import { VerificationModule } from '../verification/verification.module';
 import { AuthModule } from '../auth/auth.module';
 import { PredictionsModule } from '../predictions/predictions.module';
+import { EconomyModule } from '../economy/economy.module';
 
 @Module({
-  imports: [VerificationModule, AuthModule, PredictionsModule],
+  imports: [VerificationModule, AuthModule, PredictionsModule, EconomyModule],
   controllers: [
     AdminController,
     AdminSmsProviderController,

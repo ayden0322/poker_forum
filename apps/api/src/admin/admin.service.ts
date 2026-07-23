@@ -6,9 +6,10 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../common/prisma.service';
-import { Role, UserStatus, FeedbackType, FeedbackStatus, PostStatus, TagScope, CategoryType } from '@betting-forum/database';
+import { Role, UserStatus, FeedbackType, FeedbackStatus, PostStatus, TagScope, CategoryType, Currency, LedgerReason } from '@betting-forum/database';
 import { rankOf, ROLE_RANK } from '../common/role-hierarchy';
 import { PagePermissionService } from './page-permission.service';
+import { EconomyService } from '../economy/economy.service';
 
 /** PII 遮罩工具：保留少量頭尾、中間打碼，供無 cap:member:pii 的管理員顯示用。 */
 function maskTail(v: string | null): string | null {
@@ -47,7 +48,66 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private permService: PagePermissionService,
+    private economy: EconomyService,
   ) {}
+
+  /**
+   * 超級管理員/授權者調整會員 P/G 幣。
+   * 鐵律（與人工腳本同一套）：不直接 UPDATE balance，走 EconomyService 記 ADMIN_ADJUST 帳本，
+   * 維持「餘額＝帳本總和」不變量；refType='admin' 使其落在對帳不變量之外，不會害對帳誤報。
+   * 只允許 P/G（EXP 設計上只增不減，往下調會破壞不變量）。
+   */
+  async adjustMemberWallet(
+    userId: string,
+    body: { currency: 'P' | 'G'; mode: 'delta' | 'set'; amount: number; reason: string },
+    actor: { id: string; nickname: string },
+  ) {
+    const { currency, mode } = body;
+    if (currency !== 'P' && currency !== 'G') {
+      throw new BadRequestException('只能調整 P 或 G 幣');
+    }
+    if (!Number.isInteger(body.amount)) {
+      throw new BadRequestException('金額必須是整數');
+    }
+    if (!body.reason?.trim()) {
+      throw new BadRequestException('請填寫調整原因（稽核用）');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true, nickname: true } });
+    if (!user) throw new NotFoundException('找不到此會員');
+
+    const before = await this.economy.getBalance(userId, currency as Currency);
+    // 兩種模式都換算成「delta」再走 credit/debit：set → 目標減現值；delta → 直接用
+    const delta = mode === 'set' ? body.amount - before : body.amount;
+    if (mode === 'set' && body.amount < 0) throw new BadRequestException('目標餘額不能為負');
+    if (mode === 'delta' && body.amount === 0) throw new BadRequestException('增減金額不能為 0');
+    if (delta !== 0) {
+      // 每次後台調整都是獨立動作 → 冪等鍵帶時間戳，不做去重（不同於任務/商店的業務冪等）
+      const key = `admin_adjust:${currency}:${userId}:${Date.now()}:${actor.id}`;
+      const params = {
+        userId,
+        currency: currency as Currency,
+        amount: Math.abs(delta),
+        reason: LedgerReason.ADMIN_ADJUST,
+        refType: 'admin',
+        refId: actor.id,
+        idempotencyKey: key,
+      };
+      if (delta > 0) await this.economy.credit(params);
+      else await this.economy.debit(params); // 餘額不足會由 economy 擋（拋 InsufficientBalanceError）
+    }
+
+    const after = await this.economy.getBalance(userId, currency as Currency);
+    await this.writeAuditLog({
+      actorAdminId: actor.id,
+      actorNickname: actor.nickname,
+      action: 'member.wallet_adjust',
+      targetUserId: userId,
+      targetNickname: user.nickname,
+      metadata: { currency, mode, amount: body.amount, before, after, delta, reason: body.reason.trim() },
+    });
+    return { currency, before, after, delta };
+  }
 
   async getMembers(params: {
     page: number;
@@ -111,6 +171,7 @@ export class AdminService {
           passwordHash: true,
           createdAt: true,
           oauthProviders: { select: { provider: true } },
+          walletAccounts: { select: { currency: true, balance: true } }, // P/G/EXP 餘額
           _count: { select: { posts: true, replies: true, followers: true, following: true } },
         },
       }),
@@ -118,8 +179,11 @@ export class AdminService {
     ]);
 
     return {
-      items: items.map(({ _count, passwordHash, oauthProviders, ...u }) => {
+      items: items.map(({ _count, passwordHash, oauthProviders, walletAccounts, ...u }) => {
         const loginMethods: string[] = [];
+        // 錢包餘額：帳戶不存在視為 0（使用者可能還沒有任何 P/G 異動）
+        const wallet = { P: 0, G: 0, EXP: 0 };
+        for (const w of walletAccounts) wallet[w.currency] = w.balance;
         if (passwordHash) loginMethods.push('ACCOUNT');
         for (const p of oauthProviders) {
           loginMethods.push(p.provider.toUpperCase());
@@ -138,6 +202,8 @@ export class AdminService {
           ...pii,
           piiMasked: !canSeePii,
           loginMethods,
+          pBalance: wallet.P,
+          gBalance: wallet.G,
           postCount: _count.posts,
           replyCount: _count.replies,
           followerCount: _count.followers,

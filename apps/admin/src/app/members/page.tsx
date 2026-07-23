@@ -4,6 +4,8 @@ import React, { useState } from 'react';
 import {
   Table,
   Input,
+  InputNumber,
+  Radio,
   Select,
   Button,
   Tag,
@@ -24,6 +26,7 @@ import {
   EyeOutlined,
   StopFilled,
   KeyOutlined,
+  DollarOutlined,
   LoginOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -55,6 +58,8 @@ interface Member {
   replyCount: number;
   followerCount: number;
   followingCount: number;
+  pBalance: number; // P 幣餘額
+  gBalance: number; // G 幣餘額
   createdAt: string;
 }
 
@@ -103,6 +108,8 @@ export default function MembersPage() {
   const [passwordTarget, setPasswordTarget] = useState<Member | null>(null);
   const [impersonateTarget, setImpersonateTarget] = useState<Member | null>(null);
   const [impersonateReason, setImpersonateReason] = useState('');
+  const [walletTarget, setWalletTarget] = useState<Member | null>(null);
+  const [walletForm] = Form.useForm();
   const [form] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
@@ -139,6 +146,22 @@ export default function MembersPage() {
     onSuccess: () => {
       message.success('更新成功');
       setEditingMember(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-members'] });
+    },
+    onError: (err: Error) => message.error(err.message),
+  });
+
+  const walletAdjustMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: { currency: 'P' | 'G'; mode: 'delta' | 'set'; amount: number; reason: string } }) =>
+      adminApiFetch<{ data: { currency: string; before: number; after: number; delta: number } }>(
+        `/admin/members/${id}/wallet-adjust`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
+    onSuccess: (res) => {
+      const d = res.data;
+      message.success(`${d.currency} 幣：${d.before} → ${d.after}（${d.delta >= 0 ? '+' : ''}${d.delta}）`);
+      setWalletTarget(null);
+      walletForm.resetFields();
       queryClient.invalidateQueries({ queryKey: ['admin-members'] });
     },
     onError: (err: Error) => message.error(err.message),
@@ -291,6 +314,17 @@ export default function MembersPage() {
       width: 80,
     },
     {
+      title: 'P / G 幣',
+      key: 'wallet',
+      width: 130,
+      render: (_, record) => (
+        <Space size={4} style={{ fontVariantNumeric: 'tabular-nums' }}>
+          <Tag color="gold" style={{ margin: 0 }}>P {record.pBalance.toLocaleString()}</Tag>
+          <Tag color="green" style={{ margin: 0 }}>G {record.gBalance.toLocaleString()}</Tag>
+        </Space>
+      ),
+    },
+    {
       title: '角色',
       dataIndex: 'role',
       key: 'role',
@@ -365,6 +399,17 @@ export default function MembersPage() {
             }}
           >
             重設密碼
+          </Button>
+          <Button
+            size="small"
+            icon={<DollarOutlined />}
+            style={{ background: '#f6ffed', borderColor: '#52c41a', color: '#389e0d' }}
+            onClick={() => {
+              setWalletTarget(record);
+              walletForm.setFieldsValue({ currency: 'P', mode: 'delta', amount: undefined, reason: '' });
+            }}
+          >
+            調幣
           </Button>
           {record.role !== 'ADMIN' && record.role !== 'SUPER_ADMIN' && record.status !== 'BANNED' && (
             <Button
@@ -582,6 +627,83 @@ export default function MembersPage() {
           </div>
         )}
       </Drawer>
+
+      {/* 調整 P/G 幣 Modal */}
+      <Modal
+        title={`調整 P / G 幣：${walletTarget?.nickname}`}
+        open={!!walletTarget}
+        onOk={() => {
+          walletForm.validateFields().then((v: { currency: 'P' | 'G'; mode: 'delta' | 'set'; amount: number; reason: string }) => {
+            if (!walletTarget) return;
+            walletAdjustMutation.mutate({ id: walletTarget.id, body: v });
+          });
+        }}
+        onCancel={() => {
+          setWalletTarget(null);
+          walletForm.resetFields();
+        }}
+        confirmLoading={walletAdjustMutation.isPending}
+        okText="確認調整"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <p style={{ marginTop: 0, color: '#8c8c8c' }}>
+          目前餘額
+          <Tag color="gold">P {walletTarget?.pBalance.toLocaleString()}</Tag>
+          <Tag color="green">G {walletTarget?.gBalance.toLocaleString()}</Tag>
+        </p>
+        <Form form={walletForm} layout="vertical" preserve={false} initialValues={{ currency: 'P', mode: 'delta' }}>
+          <Form.Item label="幣別" name="currency" rules={[{ required: true }]}>
+            <Radio.Group optionType="button" buttonStyle="solid">
+              <Radio.Button value="P">P 幣（籌碼）</Radio.Button>
+              <Radio.Button value="G">G 幣（積分）</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item label="方式" name="mode" rules={[{ required: true }]}>
+            <Radio.Group optionType="button">
+              <Radio.Button value="delta">增減 (+/-)</Radio.Button>
+              <Radio.Button value="set">設為指定值</Radio.Button>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.mode !== c.mode}>
+            {({ getFieldValue }) => {
+              const isSet = getFieldValue('mode') === 'set';
+              return (
+                <Form.Item
+                  label={isSet ? '目標餘額' : '增減金額（正數加、負數扣）'}
+                  name="amount"
+                  rules={[
+                    { required: true, message: '請輸入金額' },
+                    {
+                      validator: (_, val) => {
+                        if (val === undefined || val === null) return Promise.resolve();
+                        if (!Number.isInteger(val)) return Promise.reject('必須是整數');
+                        if (isSet && val < 0) return Promise.reject('目標餘額不能為負');
+                        if (!isSet && val === 0) return Promise.reject('增減金額不能為 0');
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                >
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    precision={0}
+                    min={isSet ? 0 : undefined}
+                    placeholder={isSet ? '例如 5000' : '例如 100 或 -50'}
+                  />
+                </Form.Item>
+              );
+            }}
+          </Form.Item>
+          <Form.Item
+            label="調整原因（稽核用，必填）"
+            name="reason"
+            rules={[{ required: true, message: '請填寫調整原因' }, { max: 200, message: '不超過 200 字' }]}
+          >
+            <Input.TextArea rows={2} placeholder="例如：活動發獎 / 客訴補償 / 誤扣矯正" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 重設密碼 Modal */}
       <Modal
