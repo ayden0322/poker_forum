@@ -28,10 +28,9 @@ import BetSlip, { SlipSelection } from '@/components/predictions/BetSlip';
 import TeamLabel from '@/components/predictions/TeamLabel';
 import Leaderboard from '@/components/predictions/Leaderboard';
 
-const BOARD_LABEL: Record<string, string> = {
-  'world-cup': '世界盃',
-  mlb: 'MLB',
-};
+// 板塊中文名一律吃後端的 displayName（來源 sports_configs.display_name）。
+// ⚠️ 不要在這裡重建一份寫死的對照表 —— 後台每開一個新聯盟就會漏一個，
+//    kbo / npb 上線後前台顯示成小寫 slug 就是這樣來的（2026-08-02 修）。
 
 // ===== 賠率格（P1-G affordance + P2-I 變盤 flash） =====
 
@@ -84,10 +83,12 @@ function MatchCard({
   m,
   slip,
   onPick,
+  boardLabel,
 }: {
   m: MatchMarketsView;
   slip: SlipSelection | null;
   onPick: (s: SlipSelection) => void;
+  boardLabel: string;
 }) {
   const mainOu = m.overUnder.length ? m.overUnder[Math.floor(m.overUnder.length / 2)] : null;
   const isSel = (market: string, selection: string, line: number | null) =>
@@ -104,7 +105,7 @@ function MatchCard({
       {/* meta 行（板塊名 → 賽事資訊連結：詳情頁優先，fallback 討論板） */}
       <div className="flex items-center justify-between text-[11px] text-gray-400">
         <Link href={matchInfoUrl(m)} className="hover:text-[#2a8d92] hover:underline">
-          {BOARD_LABEL[m.board] ?? m.board} · 賽事資訊 →
+          {boardLabel} · 賽事資訊 →
         </Link>
         {lockSoon ? (
           <span className="text-accent-600 font-medium">1 小時內封盤</span>
@@ -306,6 +307,12 @@ export default function PredictionsClient() {
   const { data: marketsData, isLoading } = usePredictionMarkets(board);
   const matches = marketsData?.data.matches ?? [];
 
+  // slug → 中文名（後端 displayName）。查不到才 fallback slug，不再前端寫死。
+  const boardLabel = useMemo(() => {
+    const map = new Map(boards.map((b) => [b.board, b.displayName || b.board]));
+    return (slug: string) => map.get(slug) ?? slug;
+  }, [boards]);
+
   // 日期分組（P2-C）
   const grouped = useMemo(() => {
     const map = new Map<string, { label: string; items: MatchMarketsView[] }>();
@@ -341,7 +348,7 @@ export default function PredictionsClient() {
                 : 'bg-white border border-gray-200 text-gray-600 hover:border-[#39B8BE]/60'
             }`}
           >
-            {BOARD_LABEL[b.board] ?? b.board}
+            {b.displayName || b.board}
           </button>
         ))}
       </div>
@@ -361,7 +368,9 @@ export default function PredictionsClient() {
                 <span className="font-mono-stadium tabular-nums">{g.label}</span>
               </div>
               <div className="space-y-3">
-                {g.items.map((m) => <MatchCard key={m.matchId} m={m} slip={slip} onPick={pick} />)}
+                {g.items.map((m) => (
+                  <MatchCard key={m.matchId} m={m} slip={slip} onPick={pick} boardLabel={boardLabel(m.board)} />
+                ))}
               </div>
             </div>
           ))

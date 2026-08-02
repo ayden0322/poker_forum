@@ -44,6 +44,71 @@
 - [ ] 待 Ayden 拍板：刪 20 條已 merge 分支 + 2 條殘骸分支
 - [ ] 待 Ayden 拍板：`design-assets/`、`three-ball-*.png` 進不進版控
 
+## ✅ 已實測定案：大小分／讓分盤的資料源（2026-08-02）
+
+**業主原話**：「我覺得競猜畫面，顯示有點單薄，希望看能不能多加一點資訊，還有競猜的選項」
+→ 「多加競猜的選項」是真需求，不是 GPT 填充。幸運輪盤／快速加碼／「立即投注」語彙業主一個字都沒提。
+
+**根因**：正式站只開 kbo/mlb/npb 三個棒球聯盟，且 `prediction_markets` 全部只有 `["WINLOSE"]`、
+實測 `overUnder: []`。**每場比賽只有「主勝／客勝」兩顆按鈕**——這就是「單薄」的真相。
+
+**根因的根因**：我們挑的莊家 WilliamHill(22) 是唯一只開勝負盤的那家。實測 API-Sports 同一支
+endpoint 底下 13 家莊家：
+
+| 莊家 | 勝負 | 大小分 | 讓分(Asian Handicap) |
+|---|---|---|---|
+| ★22 WilliamHill（現用） | ✅ | ❌ | ❌ |
+| 4 Pinnacle（建議換這家） | ✅ | ✅ | ✅ |
+| 2 Bet365 / 1 1xbet / 5 SBO / 10 Marathon / 11 Unibet / 13 Betfair / 28 Betano / 29 Superbet / 30 BetVictor | ✅ | ✅ | ✅ |
+
+MLB／KBO／NPB **三個聯盟都成立**。→ **不必換賠率供應商、不必多花錢**（The Odds API $29~$99/月、
+SportsGameOdds $99~$499/月、OpticOdds $5000+/月 全部不需要）。
+
+**驗證證據**（`apps/api/src/predictions/pinnacle-verify.spec.ts`，含反向證明）：
+- Pinnacle(4)：MLB/KBO/NPB 全綠，KBO 解出 444 筆、NPB 284 筆大小分報價
+- WilliamHill(22)：三聯盟大小分全部 0 筆，測試全紅 ← 反向證明，測試確實有效
+- **現有 `odds-parsers.ts` 零改動即可解析** Pinnacle 的 `Over 8` / `Under 8.5` 格式
+
+**讓分盤工期修正：原估 1~2 週 → 3~5 天**。因為實測讓分線只有整數與 .5
+（`-3,-2.5,-2,-1.5,-1,+1,+1.5,+2,+2.5,+3`），**無 0.25/0.75 半球盤**，不必處理「贏一半輸一半」
+的拆單結算。整數盤走水退本金 = 照抄現有大小分的 PUSH 邏輯。
+
+**執行方式**：Ayden 選 B —— 先在本機 Docker 驗證再上正式站。
+
+### 踩坑備忘
+- 專案路徑含中文（`SEO專案/博弈論壇`）會讓 Docker BuildKit 掛掉：
+  `header key "x-docker-expose-session-sharedkey" contains value with non-printable ASCII characters`。
+  繞法：`DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0`。但接著會撞 Alpine apk TLS 失敗，
+  故改為「DB/Redis/MinIO 跑 Docker、API 跑本機」的混合模式驗證。
+- `apps/api` 沒有 tsx／ts-node，只有 jest（`jest.config.js` rootDir=src、testMatch `**/*.spec.ts`）。
+  一次性驗證要寫成 spec 跑，不能寫成 .ts 腳本。
+
+## ✅ 已實作（2026-08-02，Ayden 選 A：字典與換莊家一起上）
+
+**1. 板塊中文名改由後端供應**（治本，不是補字典）
+- `sports_configs.display_name` 本來就存著中文名，前端卻自己寫死一份 `BOARD_LABEL`，
+  只有 `world-cup`／`mlb` 兩筆 → 後台每開一個聯盟就漏一個，kbo/npb 因此裸吐 slug。
+- 改：`PredictionBoardConfig` 加 `displayName` → `/predictions/boards` 回傳 → 前端刪掉寫死表。
+- **以後後台開新聯盟，前台自動有中文名，不用再改前端。**
+
+**2. KBO 10 隊 + NPB 12 隊中文名與隊徽**
+- 前端 `lib/team-meta.ts`、後端 `team-display.ts`（結算通知用）雙邊都補。
+- key 一律用 API-Sports `/teams` 的原始字串。**NPB 是縮寫格式**（`Fukuoka S. Hawks`、
+  `Rakuten Gold. Eagles`），寫全名會對不上。
+- `TeamLabel` 加 `apiSportsId` → 隊徽走 `media.api-sports.io/baseball/teams/{id}.png`
+  （與 MLB 走 mlbstatic 同慣例）。
+
+**驗證證據**：
+- API/Web tsc 全綠；`npx jest` **116 passed**（3 skipped = 預設關閉的莊家實測）
+- `NEXT_DIST_DIR=.next-verify next build` 成功，29 頁全過（用 distDir 分離，不污染 dev 的 .next）
+- 瀏覽器實測：分類顯示「韓國職棒／MLB／日本職棒」、隊名「KT巫師 vs 韓華鷹」「樂天巨人 vs 三星獅」
+  含隊徽、每場 4 格盤口、console 零錯誤
+
+**過程中的額外發現**：
+- `prediction_matches.api_status` 實際值是 `IN4`／`IN5`／`IN8`（進行中第幾局）與 `POST`（延期）。
+  → **圖二右欄那個「5局下」的即時局數資料已經在 DB 裡了**，不需要另外開發資料源。
+- 封盤邏輯經實測正確：UTC 09:00 開打的 KBO 場次在 10:35 已不出現在盤上。
+
 ## 待拍板（階段 1／2 要處理）
 1. **去賭場化鐵律要不要放棄**（幸運輪盤、快速加碼鍵、「投注」語彙）——決定產品定位
 2. **讓分盤排第幾期**——動結算＝命脈，要走 dual-dev 命脈雙寫

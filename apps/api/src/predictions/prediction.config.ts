@@ -6,6 +6,9 @@ import { PredictionMarket } from '@betting-forum/database';
 
 export interface PredictionBoardConfig {
   boardSlug: string;
+  /** 中文顯示名（來源 sports_configs.display_name）。前端不准再自己寫死一份對照表， */
+  /** 否則後台每開一個新聯盟，前台就會裸吐 slug（kbo / npb 就是這樣漏出去的）。 */
+  displayName: string;
   sportType: 'football' | 'baseball';
   apiHost: string;
   leagueId: number;
@@ -27,6 +30,7 @@ export const PREDICTION_BOARDS: Record<string, PredictionBoardConfig> = {
   //    未結算世界盃賽事 0 場、未結算注單 0 筆，沒有會被卡住的單。下次要開新板塊沿用此檢查。
   'world-cup': {
     boardSlug: 'world-cup',
+    displayName: '世界盃',
     sportType: 'football',
     apiHost: 'v3.football.api-sports.io',
     leagueId: 1,
@@ -37,6 +41,7 @@ export const PREDICTION_BOARDS: Record<string, PredictionBoardConfig> = {
   },
   mlb: {
     boardSlug: 'mlb',
+    displayName: 'MLB',
     sportType: 'baseball',
     apiHost: 'v1.baseball.api-sports.io',
     leagueId: 1,

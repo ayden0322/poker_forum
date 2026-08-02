@@ -44,7 +44,12 @@ export class MarketsService {
   /** 板塊清單（前端導覽用）。改讀後台設定，管理者開關即時生效。 */
   async boards() {
     const bs = await this.boardsCfg.enabled();
-    return bs.map((b) => ({ board: b.boardSlug, sportType: b.sportType, markets: b.markets }));
+    return bs.map((b) => ({
+      board: b.boardSlug,
+      displayName: b.displayName,
+      sportType: b.sportType,
+      markets: b.markets,
+    }));
   }
 
   /** 單板塊開盤中賽事 + 賠率 */

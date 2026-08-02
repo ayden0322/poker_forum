@@ -25,6 +25,9 @@ export interface MatchMarketsView {
 
 export interface PredictionBoard {
   board: string;
+  /** 中文顯示名（後端來自 sports_configs.display_name）。前端不再自建對照表， */
+  /** 否則後台開新聯盟時前台會裸吐 slug（kbo / npb 曾經就是這樣漏出去）。 */
+  displayName: string;
   sportType: 'football' | 'baseball';
   markets: Array<'WINLOSE' | 'OVER_UNDER'>;
 }

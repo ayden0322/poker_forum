@@ -8,6 +8,8 @@ export interface TeamMeta {
   flag?: string;
   /** MLB 隊徽 id：https://www.mlbstatic.com/team-logos/{id}.svg */
   mlbId?: number;
+  /** API-Sports 隊徽 id：https://media.api-sports.io/baseball/teams/{id}.png（KBO / NPB 用） */
+  apiSportsId?: number;
 }
 
 const TEAM_META: Record<string, TeamMeta> = {
@@ -91,6 +93,36 @@ const TEAM_META: Record<string, TeamMeta> = {
   'Toronto Blue Jays': { nameZh: '藍鳥', mlbId: 141 },
   'Washington Nationals': { nameZh: '國民', mlbId: 120 },
   'Athletics': { nameZh: '運動家', mlbId: 133 },
+
+  // ===== KBO 韓國職棒（key 與隊徽 id 來源：API-Sports /teams?league=5）=====
+  'Doosan Bears': { nameZh: '斗山熊', apiSportsId: 88 },
+  'Hanwha Eagles': { nameZh: '韓華鷹', apiSportsId: 89 },
+  'KIA Tigers': { nameZh: '起亞虎', apiSportsId: 90 },
+  'Kiwoom Heroes': { nameZh: '培證英雄', apiSportsId: 92 },
+  'KT Wiz Suwon': { nameZh: 'KT巫師', apiSportsId: 91 },
+  'LG Twins': { nameZh: 'LG雙子', apiSportsId: 93 },
+  'Lotte Giants': { nameZh: '樂天巨人', apiSportsId: 94 },
+  'NC Dinos': { nameZh: 'NC恐龍', apiSportsId: 95 },
+  'Samsung Lions': { nameZh: '三星獅', apiSportsId: 97 },
+  'SSG Landers': { nameZh: 'SSG登陸者', apiSportsId: 647 },
+  'Dream': { nameZh: '夢想隊', apiSportsId: 390 }, // 明星賽分隊
+  'Nanum': { nameZh: '分享隊', apiSportsId: 391 },
+
+  // ===== NPB 日本職棒（key 是 API 的縮寫格式，不要改成全名）=====
+  'Chiba Lotte Marines': { nameZh: '千葉羅德', apiSportsId: 55 },
+  'Chunichi Dragons': { nameZh: '中日龍', apiSportsId: 56 },
+  'Fukuoka S. Hawks': { nameZh: '軟銀鷹', apiSportsId: 57 },
+  'Hanshin Tigers': { nameZh: '阪神虎', apiSportsId: 58 },
+  'Hiroshima Carp': { nameZh: '廣島鯉魚', apiSportsId: 59 },
+  'Nippon Ham Fighters': { nameZh: '日本火腿', apiSportsId: 60 },
+  'Orix Buffaloes': { nameZh: '歐力士猛牛', apiSportsId: 61 },
+  'Rakuten Gold. Eagles': { nameZh: '樂天金鷲', apiSportsId: 62 },
+  'Seibu Lions': { nameZh: '西武獅', apiSportsId: 63 },
+  'Yakult Swallows': { nameZh: '養樂多燕子', apiSportsId: 64 },
+  'Yokohama BayStars': { nameZh: '橫濱DeNA', apiSportsId: 65 },
+  'Yomiuri Giants': { nameZh: '讀賣巨人', apiSportsId: 66 },
+  'Central league': { nameZh: '央聯明星', apiSportsId: 387 }, // 明星賽分隊
+  'Pacific league': { nameZh: '洋聯明星', apiSportsId: 388 },
 };
 
 export function teamMeta(nameEn: string): TeamMeta | null {
