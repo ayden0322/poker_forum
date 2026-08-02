@@ -1,0 +1,8 @@
+# 第三方製作工具(可 npx degit diffusionstudio/lottie 重新取得)；只保留我們的生成器
+/*
+!.gitignore
+!scripts
+/scripts/*
+!/scripts/gen-legendary-frame.mjs
+!/scripts/gen-legendary-fx.mjs
+!/scripts/gen-fx.mjs

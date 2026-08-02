@@ -1,0 +1,284 @@
+<!DOCTYPE html><html><head><meta charset="utf8"><style>html,body{margin:0;background:transparent}</style></head>
+<body><canvas id="c" width="420" height="420"></canvas>
+<script>
+const FRAG=`
+precision highp float; uniform float u_time; uniform vec2 u_res; uniform int u_fx;
+float hash(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float noise(vec2 p){ vec2 i=floor(p),f=fract(p); float a=hash(i),b=hash(i+vec2(1.,0.)),c=hash(i+vec2(0.,1.)),d=hash(i+vec2(1.,1.)); vec2 u=f*f*(3.-2.*f); return mix(a,b,u.x)+(c-a)*u.y*(1.-u.x)+(d-b)*u.x*u.y; }
+float fbm(vec2 p){ float v=0.,a=0.5; for(int i=0;i<5;i++){ v+=a*noise(p); p*=2.02; a*=0.5; } return v; }
+const float PI=3.14159265;
+// 真櫻花瓣 SDF 覆蓋率:倒心水滴 + 尖端 V 凹口 + 羽化軟邊。q local,長軸=y,範圍~[-1,1]
+float petalMask(vec2 q){
+  float u=clamp(q.y*0.5+0.5, 0.0, 1.0);              // 0 基部 1 尖端
+  float w=0.74*pow(u+0.05, 0.5)*pow(1.05-u, 0.42);   // 寬度(基窄、上胖、較圓潤)
+  float m=smoothstep(w, w*0.5, abs(q.x));            // 橫向羽化
+  m*=smoothstep(1.08,0.92,q.y)*smoothstep(-1.10,-0.84,q.y);
+  m*=1.0-smoothstep(0.22,0.02,length(vec2(q.x,(q.y-1.0)))); // 尖端 V 凹口
+  return clamp(m,0.0,1.0);
+}
+// 真 3D 圓軌道:XY圓 → 繞X軸 ax → 繞Y軸 ay,回傳 3D 點(.xy 投影,.z 深度)
+vec3 orbit3(float th, float R, float ax, float ay){
+  vec3 P=vec3(R*cos(th), R*sin(th), 0.0);
+  P=vec3(P.x, P.y*cos(ax)-P.z*sin(ax), P.y*sin(ax)+P.z*cos(ax));
+  P=vec3(P.x*cos(ay)+P.z*sin(ay), P.y, -P.x*sin(ay)+P.z*cos(ay));
+  return P;
+}
+void main(){
+  vec2 uv=gl_FragCoord.xy/u_res; vec2 p=(uv-0.5)*2.0; float t=u_time; float r=length(p), ang=atan(p.y,p.x);
+  vec3 col=vec3(0.0); float alpha=0.0;
+  if(u_fx==0){ // ⚡ 雷霆:鋸齒閃電弧沿球體3D繞行+快閃+前後遮擋+球面劈啪(無縫迴圈)
+    float Rball=0.42; float P=3.0; float tp=t/P;
+    vec3 acc=vec3(0.0); float aMax=0.0; float gStrike=0.0;
+    float headMask=smoothstep(Rball+0.02, Rball-0.03, r);
+    for(int b=0;b<7;b++){                              // 更多道(浮誇)
+      float fb=float(b);
+      float cyc=floor(tp*5.0 + fb*0.19);              // 每迴圈5閃窗(更頻),錯開
+      float seed=hash(vec2(fb, cyc));
+      float local=fract(tp*5.0 + fb*0.19);
+      float env=smoothstep(0.0,0.05,local)*smoothstep(0.55,0.1,local);    // 包絡
+      float strobe=0.2+0.8*step(0.42, fract(local*9.0 + seed*5.0));        // 快速明滅閃爍
+      float flash=env*strobe;
+      if(flash<0.01) continue;
+      gStrike=max(gStrike, env);                       // 全域閃光強度(時間,非像素)
+      float ax=seed*3.1416, ay=hash(vec2(fb,cyc+1.0))*3.1416;
+      float arcStart=hash(vec2(fb,cyc+2.0))*6.2832;
+      float span=1.8+seed*2.4;
+      for(int m=0;m<=40;m++){
+        float s=float(m)/40.0;
+        float th=arcStart + s*span;
+        vec3 P3=orbit3(th, Rball+0.07, ax, ay);
+        // 角折鋸齒:大彎(尖)+細抖
+        float jg=(fbm(vec2(s*4.5, seed*20.0))-0.5)*0.30*sin(s*3.1416)
+                +(fbm(vec2(s*26.0, seed*9.0))-0.5)*0.06;
+        vec2 perp=vec2(cos(th+1.57), sin(th+1.57));
+        P3.xy += jg*perp;
+        float z=P3.z; float d=length(p-P3.xy);
+        // 雷痕有粗有細:K 越小越粗;沿 s noise 變化 + 兩端收細
+        float wn=fbm(vec2(s*5.0+seed*7.0, 4.0));
+        float K=mix(360.0, 2800.0, wn)*mix(2.4,0.75,sin(s*3.1416));
+        float core=exp(-d*d*K); float glow=exp(-d*72.0)*0.4;
+        float occ=(z>0.0)?1.0:(1.0-headMask);
+        acc += mix(vec3(0.4,0.75,1.0), vec3(1.0,1.0,1.0), core) * (core*2.2+glow*1.1) * flash * occ;
+        aMax=max(aMax, (core+glow*0.45)*flash*occ);
+        // 分岔:在中段偶發短支線(更細,往側分出)
+        float fork=step(0.82, fbm(vec2(s*9.0, seed*3.0)))*smoothstep(0.15,0.45,s)*smoothstep(0.85,0.6,s);
+        if(fork>0.5){
+          vec2 bp=P3.xy + perp*0.12*sign(wn-0.5) + vec2(0.0,0.04);
+          float bd=length(p-bp);
+          float bc=exp(-bd*bd*2600.0);          // 分岔較細
+          acc += vec3(0.7,0.9,1.0)*bc*2.0*flash*occ;
+          aMax=max(aMax, bc*flash*occ);
+        }
+      }
+    }
+    // 全域閃光:雷擊瞬間球體周圍亮一下(頻閃)
+    float gStrobe=0.3+0.7*step(0.45, fract(tp*42.0));
+    float sphereGlow=smoothstep(1.05,0.32,r);
+    acc += vec3(0.32,0.62,1.0)*gStrike*gStrobe*sphereGlow*0.55;
+    aMax=max(aMax, gStrike*gStrobe*sphereGlow*0.4);
+    // 球面電場劈啪(貼球邊一圈高頻閃爍)
+    float rim=smoothstep(0.08,0.0,abs(r-Rball-0.03));
+    float cr=pow(fbm(vec2(ang*6.0+tp*10.0, tp*4.0)),2.5);
+    float crackle=rim*cr*(0.5+0.5*abs(sin(tp*6.2832*7.0)));
+    acc += vec3(0.4,0.75,1.0)*crackle*1.0;
+    aMax=max(aMax, crackle*0.7);
+    col=acc; alpha=clamp(max(aMax, length(acc)*0.5)*1.25, 0.0, 1.0);
+  } else if(u_fx==1){ // ✨ 冠軍光輝：旋轉聖光光芒(僅外圈，中心透空不擋臉)
+    float rays=pow(0.5+0.5*sin(ang*16.0 + t*0.9), 5.0);
+    float rays2=pow(0.5+0.5*sin(ang*7.0 - t*0.5), 4.0);
+    float band=smoothstep(0.52,0.82,r)*smoothstep(1.3,0.86,r); // 外環，中心完全透明
+    float shimmer=0.6+0.4*sin(t*5.0+ang*16.0);
+    float v=(rays*0.8+rays2*0.5)*band*shimmer;
+    float halo=smoothstep(1.25,0.7,r)*smoothstep(0.6,0.82,r)*0.45; // 外圈柔金暈
+    v=clamp(v+halo,0.0,1.0);
+    col=mix(vec3(1.0,0.82,0.32), vec3(1.0,0.99,0.85), v);
+    alpha=clamp(v*1.3,0.0,1.0);
+  } else if(u_fx==2){ // 💫 星環環繞:發光星辰 3D 繞球(雙傾斜軌道,前大亮/後被擋,閃爍,無縫迴圈)
+    float Rball=0.42; float P=3.0; float tp=t/P;
+    vec3 acc=vec3(0.0); float aMax=0.0;
+    float headMask=smoothstep(Rball+0.02, Rball-0.03, r); // 1=頭像內
+    for(int i=0;i<12;i++){
+      float fi=float(i);
+      float ring=step(6.0, fi);                    // 0外環 1內環
+      float idx=mod(fi,6.0);
+      float dir=(ring>0.5)?-1.0:1.0;               // 內外反向
+      float th=idx/6.0*6.2832 + tp*6.2832*dir + ring*0.7; // 每迴圈繞一圈(週期無縫)
+      float Rr=mix(0.60,0.52,ring);
+      float ax=(ring>0.5)?1.25:0.45, ay=(ring>0.5)?0.45:1.25; // 兩圈軌道面近垂直交叉,真Z軸環繞
+      vec3 P3=orbit3(th, Rr, ax, ay);
+      float z=P3.z/Rr; float front=(z>0.0)?1.0:0.0;
+      vec2 ctr=P3.xy*(1.0+0.10*z);                  // 透視:前(z>0)略外放
+      float sz=mix(0.12,0.19, 0.5+0.5*z);           // 星星再放大,前大後小
+      float tw=0.65+0.35*sin(tp*6.2832*3.0 + fi*2.2); // 閃爍
+      vec2 q=(p-ctr)/sz;
+      // 4 芒星 + 核心輝光
+      float d=length(q);
+      float sx=exp(-abs(q.y)*13.0)*exp(-abs(q.x)*2.2);
+      float sy=exp(-abs(q.x)*13.0)*exp(-abs(q.y)*2.2);
+      float star=clamp(sx+sy+exp(-d*5.5)*1.3, 0.0, 1.6)*tw;
+      float occ=(front>0.5)?1.0:(1.0-headMask);    // 後方被頭像擋
+      float bri=(0.6+0.4*z);                        // 前亮後暗
+      vec3 sc=mix(vec3(1.0,0.82,0.32), vec3(1.0,0.99,0.85), clamp(star,0.0,1.0)); // 金→白核
+      acc += sc*star*occ*bri*0.5;
+      aMax=max(aMax, clamp(star,0.0,1.0)*occ);
+      // 彗星拖尾:沿軌道身後取樣、漸淡縮小
+      for(int k=1;k<=6;k++){
+        float fk=float(k);
+        float tth=th - dir*fk*0.14;                 // 身後(逆行進方向)
+        vec3 TP=orbit3(tth, Rr, ax, ay);
+        float tz=TP.z/Rr; vec2 tc=TP.xy*(1.0+0.10*tz); float tfr=(tz>0.0)?1.0:0.0;
+        float tsz=sz*(1.0-fk*0.11);                  // 尾巴漸縮
+        float td=length((p-tc)/max(tsz,0.01));
+        float tg=exp(-td*td*1.3)*(1.0-fk/6.5)*tw;    // 軟圓輝、漸淡
+        float tocc=(tfr>0.5)?1.0:(1.0-headMask);
+        acc += mix(vec3(1.0,0.7,0.24), vec3(1.0,0.95,0.78), tg)*tg*tocc*bri*0.42;
+        aMax=max(aMax, tg*tocc*0.5);
+      }
+    }
+    col=acc; alpha=clamp(max(aMax, length(acc)*0.5), 0.0, 1.0);
+  } else if(u_fx==4){ // 🟡 賽亞人氣場(放射爆發):水滴輪廓(中段最寬)+頭頂超長主峰+長短刃+多道藍電
+    float Rball=0.42; float dirUp=sin(ang);
+    // 流向:上行切線 與 +Y 混合(殺掉海膽放射,改成火舌往上流)
+    vec2 tang=vec2(-sin(ang), cos(ang)); tang*=sign(tang.y+0.0001);
+    vec2 flow=normalize(mix(tang, vec2(0.0,1.0), 0.62));
+    // 取樣座標:沿 flow 倒推 + 全域上捲 + x 壓扁(直長火舌) + domain warp(火焰抖動破碎邊)
+    vec2 q=p; q-=flow*(t*0.5); q.y-=t*0.85; q.x*=2.6;
+    q+=0.18*vec2(fbm(q*2.6+t*0.6), fbm(q*2.6+9.0+t*0.6));
+    float flame=pow(fbm(q*3.0), 0.8)*1.35;                // 提升對比/亮度
+    // 篝火概念:底盤(寬亮火床) + 火舌(往上流) 兩分量拆開
+    float up=clamp(dirUp,0.0,1.0);
+    float upw=0.5+0.5*dirUp;            // 1頂 0底
+    float downw=1.0-upw;                // 1底 0頂
+    float side=abs(cos(ang));           // 1側 0頂底
+    float dist=r-Rball;
+    float inball=smoothstep(Rball-0.03, Rball+0.015, r);  // 露出頭像
+    // ① 底盤裙襬:左右下對角最寬、正下方略收、實且亮(光從下=地基)
+    float baseEnv=downw*(0.5+0.55*side);
+    float reachBase=0.34*baseEnv;
+    float aBase=smoothstep(reachBase, reachBase*0.25, dist)*inball*smoothstep(0.06,0.45,baseEnv);
+    // ② 火舌:往上流, body 上下接近, 頂部主峰, 底部也吐短上竄火舌
+    float topPeak=pow(up,16.0)*0.42;
+    float lowLick=downw*max(flame-0.35,0.0)*0.55;
+    float reachFlame=mix(0.20, 0.46, upw) + topPeak + lowLick;
+    float fadeF=smoothstep(reachFlame, 0.0, dist);
+    float densF=flame*fadeF*inball*(0.9+0.35*downw);
+    float aFlame=smoothstep(0.24, 0.5, densF);
+    float a=max(aFlame, aBase);
+    // 黃金光:底亮白金(光從下) → 飽和金 → 琥珀金尖
+    float tn=clamp(dist/max(reachFlame,0.001),0.0,1.0);
+    vec3 cc=mix(vec3(1.0,0.97,0.74), vec3(1.0,0.82,0.24), smoothstep(0.0,0.5,tn));
+    cc=mix(cc, vec3(0.99,0.64,0.06), smoothstep(0.5,1.0,tn));
+    cc=mix(cc, vec3(1.0,0.95,0.64), aBase*0.6);          // 底盤更亮白金
+    // 藍色鋸齒閃電:3 道、收斂、輪流閃(點綴,不搶氣場)
+    float boltA=0.0;
+    for(int i=0;i<3;i++){ float fi=float(i); float s5=floor(t*4.0);
+      float a0=fi*2.1 + s5*1.6 + 0.8;
+      float jag=(fbm(vec2(r*8.0, fi*11.0 + s5))-0.5)*0.7;
+      float da=abs(mod(ang - a0 - jag + 3.14159, 6.2832)-3.14159);
+      float line=smoothstep(0.035,0.0,da);
+      float rad=smoothstep(0.52,0.58,r)*smoothstep(1.25,0.75,r);
+      float fl=step(0.55, fract(sin((s5+fi*4.0)*7.31)*4375.5));
+      boltA=max(boltA, line*rad*fl);
+    }
+    cc=mix(cc, vec3(0.5,0.74,1.0), boltA*0.8);
+    cc=mix(cc, vec3(0.9,0.96,1.0), boltA*boltA);
+    col=cc; alpha=clamp(max(a, boltA*0.85), 0.0, 1.0);
+  } else if(u_fx==5){ // 🔥 火龍捲:火焰絲沿螺旋線從底繞到頂(3D 纏繞,前蓋後遮)
+    // 顧問藥方:沿螺旋路徑取「往上流的火焰湍流場」→ exp軟核+湍流密度啃邊+黑體色+additive
+    float Rball=0.42; float Rsph=0.54;
+    vec3 acc=vec3(0.0); float aMax=0.0;
+    for(int s=0;s<3;s++){
+      float ph=float(s)*2.094;
+      float lat=clamp(p.y/Rsph, -1.0, 1.0);
+      float sr=Rsph*sqrt(max(1.0-lat*lat, 0.0));    // 球體環繞:中段寬兩極收
+      float ang_h=(lat*0.5+0.5)*3.0*6.2832 - t*2.0 + ph;
+      float xc=sr*cos(ang_h);
+      float depth=sin(ang_h);
+      float u=p.x - xc;                              // 跨火絲距離
+      // 火焰湍流:domain-warp fbm,沿絲往上捲(v=lat - t)=往上舔
+      vec2 fp=vec2(u*5.0, lat*5.5 - t*2.4 + ang_h*0.35);
+      fp+=0.7*vec2(fbm(fp*0.6 + t*0.25), fbm(fp*0.6 + 10.0 + float(s)));
+      float turb=fbm(fp*2.4);
+      float coreW=0.05 + 0.026*(sr/Rsph);            // 火絲變細(主體不密)
+      float uf=u + (turb-0.5)*0.085;                  // 用湍流把邊緣抖毛
+      float hot=exp(-(uf/coreW)*(uf/coreW));          // 細亮核
+      float glow=exp(-abs(uf)/(coreW*2.4));           // 軟外暈
+      float prof=hot + glow*0.5;
+      float vfade=smoothstep(1.05, 0.78, abs(lat));
+      float occ=(depth>0.0)?1.0:smoothstep(Rball-0.01, Rball+0.04, r);
+      float bright=0.45+0.55*clamp(depth,0.0,1.0);   // 前亮後暗
+      float density=prof*(0.16+1.3*turb)*vfade*occ*bright; // 更靠湍流→主體被啃破、較稀
+      float aStr=smoothstep(0.2, 0.56, density);       // 門檻高一點→細、毛邊
+      // intensity-driven 黑體色(密度=溫度):暗紅→橙→黃→白熱核
+      float i=clamp(density*1.2, 0.0, 1.0);
+      vec3 fc=mix(vec3(0.5,0.02,0.0), vec3(1.0,0.35,0.0), smoothstep(0.0,0.45,i));
+      fc=mix(fc, vec3(1.0,0.8,0.2), smoothstep(0.45,0.78,i));
+      fc=mix(fc, vec3(1.0,0.98,0.9), smoothstep(0.85,1.0,i)); // 白熱核
+      acc += fc * aStr;                               // additive:重疊處過曝bloom
+      aMax=max(aMax, aStr);
+      // 餘燼:沿火舌「外緣」爆裂的高頻火花、隨火往上捲(綁在邊緣,毛躁)
+      float edgeBand=smoothstep(0.05,0.28,prof)*smoothstep(0.85,0.28,prof); // 更寬的外緣帶
+      float spk=fbm(vec2(uf*34.0, lat*13.0 - t*4.2 + ang_h*2.2));          // 更高頻火花,往上捲
+      float ember=smoothstep(0.5,0.88,spk)*edgeBand*(0.5+0.9*turb)*vfade*occ; // 更多
+      acc += vec3(1.0,0.7,0.22)*ember*2.0;             // 橙黃火花,更亮
+      aMax=max(aMax, ember*1.0);
+    }
+    col=acc; alpha=clamp(max(aMax, length(acc)*0.45)*1.3, 0.0, 1.0);
+  } else { // 🌸 櫻吹雪:真櫻花瓣 SDF + 翻飛 + 隨風飄落 + 3D 繞球 + 景深(顧問+Codex 方向)
+    float Rball=0.42; float P=3.0; float tp=t/P;          // 正規化迴圈時間(動態全鎖週期→無中斷)
+    vec3 C=vec3(0.0); float A=0.0;
+    float gust=(sin(tp*6.2832)*0.6 + sin(tp*12.566+1.0)*0.25)*0.18; // 週期性陣風
+    float headMask=smoothstep(Rball+0.01, Rball-0.04, r); // 1=頭像內
+    for(int i=0;i<28;i++){                                 // 更密
+      float fi=float(i);
+      float h1=hash(vec2(fi,1.3)), h2=hash(vec2(fi,7.7)), h3=hash(vec2(fi,3.1)), h4=hash(vec2(fi,9.2));
+      vec2 ctr; float sz; float baseA; float behind=0.0; float lifeFade=1.0;
+      if(i<8){ // 軌道層:繞球前後(每迴圈繞一圈=週期)
+        float th=h1*6.2832 + tp*6.2832;
+        ctr=vec2(0.56*cos(th), -0.30*sin(th));
+        float z=sin(th); sz=0.085*(0.85+0.3*z); baseA=0.9; behind=(z<0.0)?1.0:0.0;
+      } else { // 飄落層:fract(週期) 跑完整段長軌跡 + 頭尾淡入淡出(無跳)
+        float layer=h3;
+        float life=fract(tp + h1);                         // 0..1 每迴圈落一趟
+        float yy=1.5 - life*3.0;                            // 長軌跡(上外→下外)
+        lifeFade=smoothstep(0.0,0.06,life)*smoothstep(1.0,0.9,life);
+        float swC=floor(1.0+h4*2.0);                       // 整數擺盪(週期)
+        float sway=(0.07+0.11*layer)*sin(tp*6.2832*swC + fi*1.7);
+        ctr=vec2((h2-0.5)*2.35 + sway + gust*(0.4+layer), yy);
+        sz=mix(0.04, 0.10, layer); baseA=mix(0.4,0.92, layer); // 更小
+      }
+      float spinC=floor(1.0+h4*3.0);
+      float ang=tp*6.2832*spinC + fi*2.0;                  // 週期自旋
+      float flipC=floor(1.0+h2*3.0);
+      float flip=cos(tp*6.2832*flipC + fi*3.0);            // 週期翻面
+      float widthScale=max(abs(flip),0.14);
+      vec2 q=p-ctr;
+      q=mat2(cos(ang),-sin(ang),sin(ang),cos(ang))*q;
+      q/=sz; q.x/=(widthScale*1.35); q.y*=1.4;             // 變圓:加寬+壓短
+      float m=petalMask(q);
+      if(m<=0.001) continue;
+      float u=clamp(q.y*0.5+0.5,0.0,1.0);
+      vec3 front=mix(vec3(0.97,0.74,0.83), vec3(1.0,0.96,0.98), smoothstep(0.0,0.65,u));
+      vec3 back=vec3(0.93,0.72,0.81);
+      vec3 pc=mix(front, back, (flip<0.0)?0.5:0.0);
+      pc+=0.06*smoothstep(0.05,0.0,abs(q.x))*step(abs(q.y),0.8);
+      float occ=(behind>0.5)?(1.0-headMask):1.0;
+      float pa=m*baseA*occ*lifeFade*1.08;
+      C=C*(1.0-pa)+pc*pa; A=A*(1.0-pa)+pa;
+    }
+    col=C; alpha=clamp(A,0.0,1.0);
+  }
+  gl_FragColor=vec4(col, alpha);
+}`;
+const VERT=`attribute vec2 p; void main(){ gl_Position=vec4(p,0.,1.); }`;
+const c=document.getElementById('c'); const gl=c.getContext('webgl',{premultipliedAlpha:false,alpha:true,preserveDrawingBuffer:true});
+const sh=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x); if(!gl.getShaderParameter(x,gl.COMPILE_STATUS))document.title="ERR:"+gl.getShaderInfoLog(x); return x;};
+const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,VERT));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FRAG));gl.linkProgram(pr);gl.useProgram(pr);
+const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+const l=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+gl.uniform2f(gl.getUniformLocation(pr,'u_res'),c.width,c.height);
+const uFx=gl.getUniformLocation(pr,'u_fx'), uT=gl.getUniformLocation(pr,'u_time');
+window.drawT=(fx,t)=>{ gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT); gl.uniform1i(uFx,fx); gl.uniform1f(uT,t); gl.drawArrays(gl.TRIANGLES,0,3); gl.finish(); };
+window.drawT(0,0);
+</script></body></html>
