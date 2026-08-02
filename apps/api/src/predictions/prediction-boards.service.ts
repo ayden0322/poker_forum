@@ -64,6 +64,7 @@ export class PredictionBoardsService {
       }
       boards.push({
         boardSlug: r.boardSlug,
+        displayName: r.displayName || r.boardSlug,
         sportType: r.sportType as 'football' | 'baseball',
         apiHost: r.apiHost,
         leagueId: r.leagueId,
@@ -100,6 +101,7 @@ export class PredictionBoardsService {
     );
     return {
       boardSlug: r.boardSlug,
+      displayName: r.displayName || r.boardSlug,
       sportType: r.sportType as 'football' | 'baseball',
       apiHost: r.apiHost,
       leagueId: r.leagueId,

@@ -15,6 +15,14 @@ export default function TeamLabel({ nameEn, size = 'md' }: { nameEn: string; siz
       ) : meta?.mlbId ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={`https://www.mlbstatic.com/team-logos/${meta.mlbId}.svg`} alt="" className={iconCls} />
+      ) : meta?.apiSportsId ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`https://media.api-sports.io/baseball/teams/${meta.apiSportsId}.png`}
+          alt=""
+          loading="lazy"
+          className={`${iconCls} object-contain`}
+        />
       ) : (
         <span className={`${iconCls} rounded-full bg-gray-100 text-[9px] text-gray-500 flex items-center justify-center shrink-0`}>
           {teamAbbr(nameEn)}

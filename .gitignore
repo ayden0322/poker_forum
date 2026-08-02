@@ -51,3 +51,16 @@ packages/database/prisma/*.db
 # claude
 .claude/settings.local.json
 .claude/session_log.md
+
+# 一次性驗證／維運腳本（慣例：底線開頭 = 不進版控）
+# 這裡面有能直接發 P 幣、發勳章的腳本，誤 commit 上公開 repo 就是資安事故
+apps/api/_*.ts
+packages/database/prisma/_*.ts
+/_*.cjs
+
+# 廠商文件與臨時素材（不是產品資產）
+/*.pdf
+/goboka_logo.png
+
+# 生圖中間產物（source/keyed 原始檔，最終素材已在 cosmetics-samples 根層）
+design-assets/cosmetics-samples/tmp/
