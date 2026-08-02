@@ -109,6 +109,18 @@ SportsGameOdds $99~$499/月、OpticOdds $5000+/月 全部不需要）。
   → **圖二右欄那個「5局下」的即時局數資料已經在 DB 裡了**，不需要另外開發資料源。
 - 封盤邏輯經實測正確：UTC 09:00 開打的 KBO 場次在 10:35 已不出現在盤上。
 
+## 上線進度（2026-08-02）
+
+- [x] PR #26 已合併進 main（commit `c21719f`）
+- [x] Zeabur **自動部署完成**（服務類型 PREBUILT_V2，CLI 查不到 deployment 記錄，
+      改用「正式站 API 是否回傳新欄位 displayName」判斷 → 已回傳＝已部署）
+- [x] 正式站分類中文名、KBO/NPB 中文隊名＋隊徽已生效
+- [ ] **剩最後一步**：後台 `/sports-settings` 把 mlb / kbo / npb 三筆改
+      `bookmakerId: 22 → 4`、`predictionMarkets` 加 `OVER_UNDER`
+      → 走後台而不是 SQL，因為 `PUT /:boardSlug` 有 RBAC 與審計 log
+      → 改完 5 分鐘內 cron 會抓進大小分，前台自動變 4 格
+      → 要還原就改回 `22` + `['WINLOSE']`
+
 ## 待拍板（階段 1／2 要處理）
 1. **去賭場化鐵律要不要放棄**（幸運輪盤、快速加碼鍵、「投注」語彙）——決定產品定位
 2. **讓分盤排第幾期**——動結算＝命脈，要走 dual-dev 命脈雙寫
