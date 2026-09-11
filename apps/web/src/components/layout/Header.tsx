@@ -113,11 +113,6 @@ const navItems: NavItem[] = [
     ],
   },
   {
-    label: 'FIFA 2026',
-    href: '/board/world-cup',
-    highlight: { badgeText: 'HOT', iconSrc: '/images/world-cup/trophy.png' },
-  },
-  {
     label: '台灣彩票',
     children: [
       { label: '📊 彩券中心', href: '/lottery' },
@@ -142,8 +137,10 @@ export function Header() {
   const items = useMemo<NavItem[]>(() => {
     if (predData?.data.enabled !== true) return navItems;
     const withPredictions = [...navItems];
-    const fifaIdx = withPredictions.findIndex((n) => n.label === 'FIFA 2026');
-    withPredictions.splice(fifaIdx + 1, 0, { label: '賽事競猜', href: '/predictions' }, { label: '榮譽榜', href: '/honor' });
+    // 插在「台灣彩票」前；找不到錨點就接在最後，不會像 findIndex=-1 那樣插到最前面
+    const lotteryIdx = withPredictions.findIndex((n) => n.label === '台灣彩票');
+    const insertAt = lotteryIdx === -1 ? withPredictions.length : lotteryIdx;
+    withPredictions.splice(insertAt, 0, { label: '賽事競猜', href: '/predictions' }, { label: '榮譽榜', href: '/honor' });
     return withPredictions;
   }, [predData?.data.enabled]);
   // 會員經濟總開關狀態（與 MemberBadges 共用快取）：關閉時連選單入口都不露（fail-closed）

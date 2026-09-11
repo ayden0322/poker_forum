@@ -84,6 +84,9 @@ export class WorldCupCron {
   @Cron('*/5 * * * *')
   async fullSync() {
     if (!this.apiKey) return;
+    // 賽事結束後（所有場次皆 finished）就不再打 API；賽事期間一定還有未完賽場次，行為不變
+    const pending = await this.prisma.worldCupMatch.count({ where: { status: { not: 'finished' } } });
+    if (pending === 0) return;
     try {
       const fixtures = await callFootballApi<ApiFixture[]>(this.apiKey, '/fixtures', {
         league: WC_LEAGUE_ID,
