@@ -230,10 +230,19 @@ export function twClock(iso: string): string {
   });
 }
 
-/** 台北日期 key（分組用）+ 顯示標（7/8（週三）） */
-export function twDateGroup(iso: string): { key: string; label: string } {
+const TW_PARTS = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
+
+/** 台北日曆日 key：YYYY-MM-DD（含年份才不會跨年撞 key；用固定 locale 產生，不拿顯示字串當識別碼） */
+export function twDateKey(date: Date | string): string {
+  const parts = TW_PARTS.formatToParts(new Date(date));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/** 台北日期 key（分組用）+ 顯示標（9/13（週日）） */
+export function twDateGroup(iso: string): { key: string; label: string; short: string } {
   const d = new Date(iso);
-  const key = d.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric' });
+  const short = d.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric' });
   const weekday = d.toLocaleDateString('zh-TW', { timeZone: 'Asia/Taipei', weekday: 'short' });
-  return { key, label: `${key}（${weekday}）` };
+  return { key: twDateKey(d), label: `${short}（${weekday}）`, short };
 }

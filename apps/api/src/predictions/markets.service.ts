@@ -88,6 +88,8 @@ export class MarketsService {
         settledAt: null,
         frozenAt: null,
         startTime: { gt: new Date(Date.now() + LOCK_BUFFER_MS) }, // 已進封盤 buffer 的不再列出
+        // 「有盤」條件放在 take 之前：否則最早 30 場都還沒開盤時，第 31 場有盤也會被截掉、整板回零場
+        quotes: { some: { active: true, bookmakerId: board.bookmakerId } },
       },
       orderBy: { startTime: 'asc' },
       take: 30,

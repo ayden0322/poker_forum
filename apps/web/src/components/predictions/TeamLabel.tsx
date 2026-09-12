@@ -1,8 +1,9 @@
 'use client';
 
-// 隊伍標示（共用）：隊徽/國旗 + 中文名；查不到映射 fallback 縮寫圓徽。
+// 隊伍標示（共用）：隊徽 + 中文名；查不到映射 fallback 縮寫圓徽。
 // 所有顯示隊名的地方（盤口卡/戰績頁/bet slip/進行中注單）一律用這個，不准裸吐英文。
-// 隊徽來源優先序：MLB 官方 SVG → 手工對照表的 API-Sports id（KBO/NPB）→ 後端帶來的 logoUrl（足球等新板塊）→ 國旗 → 縮寫。
+// 隊徽來源優先序：MLB 官方 SVG → 手工對照表的 API-Sports id（KBO/NPB）→ 後端帶來的 logoUrl（足球等新板塊）→ 縮寫。
+// 國家隊的國旗 emoji 不再當 fallback（全站去 emoji）；國家隊隊徽同樣由後端 logoUrl 供應。
 
 import { useState, type ReactNode } from 'react';
 import { teamAbbr, teamMeta } from '@/lib/team-meta';
@@ -33,7 +34,8 @@ export default function TeamLabel({
   className?: string;
 }) {
   const meta = teamMeta(nameEn);
-  const [broken, setBroken] = useState(false);
+  // 失敗狀態綁「哪個 src 失敗」，同一個元件換到新來源時會重新嘗試，不會黏住
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
   const iconCls = `${ICON_CLS[size]} shrink-0`;
 
   const src = meta?.mlbId
@@ -48,13 +50,11 @@ export default function TeamLabel({
       : 'truncate';
 
   let icon: ReactNode;
-  if (src && !broken) {
+  if (src && brokenSrc !== src) {
     icon = (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} className={`${iconCls} object-contain`} />
+      <img src={src} alt="" loading="lazy" onError={() => setBrokenSrc(src)} className={`${iconCls} object-contain`} />
     );
-  } else if (meta?.flag) {
-    icon = <span className={`leading-none ${size === 'sm' ? 'text-sm' : 'text-base'}`}>{meta.flag}</span>;
   } else {
     icon = (
       <span

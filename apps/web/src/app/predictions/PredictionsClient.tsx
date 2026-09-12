@@ -17,6 +17,7 @@ import {
   selectionText,
   twClock,
   twDateGroup,
+  twDateKey,
   useMyBets,
   usePredictionBoards,
   usePredictionLeaderboard,
@@ -104,7 +105,7 @@ function MatchCard({ m, slip, onPick }: { m: MatchMarketsView; slip: SlipSelecti
         <TeamLabel nameEn={m.away} logoUrl={m.awayLogoUrl} size="lg" className="sm:flex-1" />
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-[3fr_2fr]">
+      <div className={`mt-3 grid grid-cols-1 gap-3 ${Object.keys(m.winlose).length > 0 && mainOu ? 'xl:grid-cols-[3fr_2fr]' : ''}`}>
         {Object.keys(m.winlose).length > 0 && (
           <MarketGroup legend="勝負" cols={hasDraw ? 3 : 2}>
             {winloseSels.map((sel) => (
@@ -232,7 +233,7 @@ function TopFiveCard({ onViewFull }: { onViewFull: () => void }) {
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-gray-900">本週獲利榜</h2>
-        <button type="button" onClick={onViewFull} className="text-sm text-primary-700 hover:underline underline-offset-4">
+        <button type="button" onClick={onViewFull} className="inline-flex min-h-11 items-center text-sm text-primary-700 hover:underline underline-offset-4">
           看完整排行
         </button>
       </div>
@@ -323,12 +324,12 @@ export default function PredictionsClient() {
   const { data: memberData } = useMemberSummary();
   const { data: boardsData } = usePredictionBoards();
   const enabled = boardsData?.data.enabled;
-  const { data: allData, isLoading } = usePredictionMarketsAll();
+  const { data: allData, isLoading, isError, refetch } = usePredictionMarketsAll();
   const matches = useMemo(() => allData?.data.matches ?? [], [allData]);
   const boards = useMemo(() => allData?.data.boards ?? [], [allData]);
-  const unavailable = allData?.data.unavailableBoards ?? [];
+  const unavailable = useMemo(() => new Set(allData?.data.unavailableBoards ?? []), [allData]);
 
-  const [dateKey, setDateKey] = useState<string | null>(null);
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
   const [league, setLeague] = useState<string | null>(null); // null = 全部聯盟
   const [slip, setSlip] = useState<SlipSelection | null>(null);
   const [view, setView] = useState<'markets' | 'leaderboard'>('markets');
@@ -337,23 +338,21 @@ export default function PredictionsClient() {
     if (enabled === false) router.replace('/'); // fail-closed（比照 member-center）
   }, [enabled, router]);
 
-  // 有賽事的台灣日期（依時間序）；標籤「今天 / 明天」看台灣日曆日
+  // 有賽事的台灣日曆日（依時間序）。「今天 / 明天」每次 render 重算，跨午夜不會卡在昨天
   const dates = useMemo(() => {
-    const todayKey = twDateGroup(new Date().toISOString()).key;
-    const tomorrowKey = twDateGroup(new Date(Date.now() + 86_400_000).toISOString()).key;
-    const seen = new Map<string, string>();
+    const seen = new Map<string, { label: string; short: string }>();
     for (const m of matches) {
-      const { key, label } = twDateGroup(m.startTime);
-      if (!seen.has(key)) {
-        seen.set(key, key === todayKey ? `今天 ${key}` : key === tomorrowKey ? `明天 ${key}` : label);
-      }
+      const { key, label, short } = twDateGroup(m.startTime);
+      if (!seen.has(key)) seen.set(key, { label, short });
     }
-    return [...seen.entries()].map(([key, label]) => ({ key, label }));
+    return [...seen.entries()].map(([key, v]) => ({ key, ...v }));
   }, [matches]);
-
-  useEffect(() => {
-    if (dates.length && (!dateKey || !dates.some((d) => d.key === dateKey))) setDateKey(dates[0].key);
-  }, [dates, dateKey]);
+  const todayKey = twDateKey(new Date());
+  const tomorrowKey = twDateKey(new Date(Date.now() + 86_400_000));
+  const dateChipLabel = (d: { key: string; label: string; short: string }) =>
+    d.key === todayKey ? `今天 ${d.short}` : d.key === tomorrowKey ? `明天 ${d.short}` : d.label;
+  // 衍生而非 effect 補救：使用者選的日期還在就用它，否則退到最近有賽事的一天，不會閃一輪空狀態
+  const dateKey = pickedDate && dates.some((d) => d.key === pickedDate) ? pickedDate : (dates[0]?.key ?? null);
 
   const onDate = useMemo(() => matches.filter((m) => twDateGroup(m.startTime).key === dateKey), [matches, dateKey]);
   const countByBoard = useMemo(() => {
@@ -362,7 +361,10 @@ export default function PredictionsClient() {
     return c;
   }, [onDate]);
   const visible = useMemo(() => (league ? onDate.filter((m) => m.board === league) : onDate), [onDate, league]);
-  const dateLabel = dates.find((d) => d.key === dateKey)?.label ?? '';
+  const dateLabel = (() => {
+    const d = dates.find((x) => x.key === dateKey);
+    return d ? dateChipLabel(d) : '';
+  })();
   const leagueLabel = boards.find((b) => b.board === league)?.displayName ?? '';
 
   if (enabled === false) return null;
@@ -381,8 +383,8 @@ export default function PredictionsClient() {
       {dates.length > 0 && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {dates.map((d) => (
-            <Chip key={d.key} active={d.key === dateKey} onClick={() => { setDateKey(d.key); setView('markets'); }}>
-              {d.label}
+            <Chip key={d.key} active={d.key === dateKey} onClick={() => { setPickedDate(d.key); setView('markets'); }}>
+              {dateChipLabel(d)}
             </Chip>
           ))}
         </div>
@@ -396,19 +398,26 @@ export default function PredictionsClient() {
           </Chip>
           {boards.map((b) => {
             const n = countByBoard.get(b.board) ?? 0;
+            const broken = unavailable.has(b.board);
             return (
-              <Chip key={b.board} active={league === b.board} disabled={n === 0 && league !== b.board} onClick={() => setLeague(league === b.board ? null : b.board)}>
+              <Chip
+                key={b.board}
+                active={league === b.board}
+                disabled={(n === 0 || broken) && league !== b.board}
+                onClick={() => setLeague(league === b.board ? null : b.board)}
+              >
                 {b.displayName}
-                <span className="font-mono-stadium tabular-nums text-xs opacity-80">{n}</span>
+                {/* 失敗的聯盟不能顯示 0：0 是「今天沒比賽」，這裡是「不知道」 */}
+                <span className="font-mono-stadium tabular-nums text-xs opacity-80">{broken ? '無法取得' : n}</span>
               </Chip>
             );
           })}
         </div>
       )}
 
-      {unavailable.length > 0 && (
+      {unavailable.size > 0 && (
         <p className="mt-2 text-xs text-gray-500">
-          {unavailable.map((slug) => boards.find((b) => b.board === slug)?.displayName ?? slug).join('、')} 暫時無法取得盤口
+          {[...unavailable].map((slug) => boards.find((b) => b.board === slug)?.displayName ?? slug).join('、')} 暫時無法取得盤口，稍後會自動重試
         </p>
       )}
 
@@ -416,6 +425,13 @@ export default function PredictionsClient() {
         <PendingBets variant="bar" />
         {isLoading ? (
           <div className="py-10 text-center text-sm text-gray-500">載入盤口中</div>
+        ) : isError && matches.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+            盤口暫時無法取得
+            <button type="button" onClick={() => refetch()} className="ml-2 inline-flex min-h-11 items-center text-primary-700 hover:underline underline-offset-4">
+              重新載入
+            </button>
+          </div>
         ) : matches.length === 0 ? (
           <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
             目前沒有可競猜的賽事，開賽前會陸續開盤
@@ -423,7 +439,7 @@ export default function PredictionsClient() {
         ) : visible.length === 0 ? (
           <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
             {leagueLabel} 在 {dateLabel} 沒有可競猜賽事
-            <button type="button" onClick={() => setLeague(null)} className="ml-2 text-primary-700 hover:underline underline-offset-4">
+            <button type="button" onClick={() => setLeague(null)} className="ml-2 inline-flex min-h-11 items-center text-primary-700 hover:underline underline-offset-4">
               看全部聯盟
             </button>
           </div>
@@ -472,7 +488,7 @@ export default function PredictionsClient() {
             key={v}
             type="button"
             onClick={() => setView(v)}
-            className={`min-h-10 px-4 rounded text-sm font-medium transition-colors ${view === v ? 'bg-gray-900 text-white' : 'text-gray-600'}`}
+            className={`min-h-11 px-4 rounded text-sm font-medium transition-colors ${view === v ? 'bg-gray-900 text-white' : 'text-gray-600'}`}
           >
             {v === 'markets' ? '盤口' : '排行榜'}
           </button>
