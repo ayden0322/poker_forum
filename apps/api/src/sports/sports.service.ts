@@ -240,11 +240,11 @@ export class SportsService {
     const date = this.getDateString(offsetDays);
     // 今日 UTC 用較短 TTL；其餘日期較長（10 分鐘）
     const ttl = offsetDays === 0 ? this.getTtl(cfg, 'LIVE') : 600;
-    const cacheKey = `sports:${cfg.sportType}:allgames:${date}`;
+    const cacheKey = this.allGamesCacheKey(cfg, 'allgames', date);
 
     const allGames = await this.cachedCall<any[]>(cacheKey, ttl, async () => {
       if (cfg.sportType === 'football') {
-        return this.callApi<any[]>(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date });
+        return this.callApi<any[]>(cfg.apiHost, '/fixtures', this.footballFixturesParams(cfg, date));
       }
       return this.callApi<any[]>(cfg.apiHost, '/games', { date });
     });
@@ -259,23 +259,34 @@ export class SportsService {
   }
 
   // ============ 即時比分 / 今日賽程 ============
-  // 免費方案策略：只帶 date 查詢（不帶 league/season，避免被拒絕）
-  // 回傳結果再用 leagueId 後端過濾
+  // 籃球 / 棒球：只帶 date 查詢（免費方案不能帶 league+season），回傳結果再用 leagueId 後端過濾，
+  //   所以同 host + date 可以共用一份快取。
+  // 足球：API-Football 的 /fixtures 帶 league 就必須帶 season（否則回 "The Season field is required"、
+  //   結果為空、額度照扣），而且回應已是單一聯賽 → 快取一定要按聯賽分開，否則第一個聯賽的賽程會被其他聯賽板拿去用。
+
+  /** 足球 /fixtures 參數：league 與 season 綁一起帶 */
+  private footballFixturesParams(cfg: LeagueDbConfig, date: string) {
+    return { league: cfg.leagueId, season: cfg.season, date };
+  }
+
+  /** 賽程快取 key：足球按聯賽分、籃棒球按 host 共用 */
+  private allGamesCacheKey(cfg: LeagueDbConfig, kind: 'allgames' | 'allschedule', date: string) {
+    return cfg.sportType === 'football'
+      ? `sports:${cfg.sportType}:${kind}:${cfg.leagueId}:${date}`
+      : `sports:${cfg.sportType}:${kind}:${date}`;
+  }
 
   async getLiveGames(boardSlug: string) {
     const cfg = await this.getConfig(boardSlug);
     if (!cfg) return [];
 
     const today = this.getDateString();
-    // 同一個 API host + date 共用快取，避免每個聯賽板各打一次
-    const cacheKey = `sports:${cfg.sportType}:allgames:${today}`;
+    const cacheKey = this.allGamesCacheKey(cfg, 'allgames', today);
 
     const allGames = await this.cachedCall<any[]>(cacheKey, this.getTtl(cfg, 'LIVE'), async () => {
       if (cfg.sportType === 'football') {
-        // 足球 API 可以帶 league 不帶 season，免費方案可用
-        return this.callApi<any[]>(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
+        return this.callApi<any[]>(cfg.apiHost, '/fixtures', this.footballFixturesParams(cfg, today));
       }
-      // 籃球 / 棒球：免費方案只能帶 date，不能帶 league+season
       return this.callApi<any[]>(cfg.apiHost, '/games', { date: today });
     });
 
@@ -296,11 +307,11 @@ export class SportsService {
     if (!cfg) return [];
 
     const today = this.getDateString();
-    const cacheKey = `sports:${cfg.sportType}:allschedule:${today}`;
+    const cacheKey = this.allGamesCacheKey(cfg, 'allschedule', today);
 
     const allGames = await this.cachedCall<any[]>(cacheKey, this.getTtl(cfg, 'SCHEDULE'), async () => {
       if (cfg.sportType === 'football') {
-        return this.callApi<any[]>(cfg.apiHost, '/fixtures', { league: cfg.leagueId, date: today });
+        return this.callApi<any[]>(cfg.apiHost, '/fixtures', this.footballFixturesParams(cfg, today));
       }
       return this.callApi<any[]>(cfg.apiHost, '/games', { date: today });
     });
