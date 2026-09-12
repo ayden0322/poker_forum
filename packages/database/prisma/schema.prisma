@@ -1058,6 +1058,8 @@ model PredictionMatch {
   apiFixtureId Int       @map("api_fixture_id") // API-Sports fixture/game id
   homeName     String    @map("home_name")
   awayName     String    @map("away_name")
+  homeTeamId   Int?      @map("home_team_id") // API-Sports team id（隊徽 URL 用；不同運動的 id 空間各自獨立，組 URL 要帶 sportType）
+  awayTeamId   Int?      @map("away_team_id")
   startTime    DateTime  @map("start_time") // 封盤依據（UTC）；cron 同步時一併更新
   apiStatus    String    @default("NS") @map("api_status") // API 原始 status；白名單映射見結算 service
   frozenAt     DateTime? @map("frozen_at") // POSTPONED 凍結起點；凍結滿 N 小時仍未恢復才 VOIDED 退款

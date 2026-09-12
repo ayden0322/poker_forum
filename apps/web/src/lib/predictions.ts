@@ -13,14 +13,28 @@ export interface MarketQuoteView {
 export interface MatchMarketsView {
   matchId: string;
   board: string;
+  /** 板塊中文名（後端 sports_configs.display_name） */
+  boardLabel: string;
+  sportType: 'football' | 'baseball';
   home: string;
   away: string;
+  /** API-Sports 隊徽；null 時 TeamLabel 退回縮寫徽章 */
+  homeLogoUrl: string | null;
+  awayLogoUrl: string | null;
   startTime: string;
   lockAt: string;
   /** 站內賽事詳情頁（世界盃有；無法對應為 null → 前端 fallback 討論板） */
   detailUrl: string | null;
   winlose: Partial<Record<'HOME' | 'DRAW' | 'AWAY', MarketQuoteView>>;
   overUnder: Array<{ line: number; over?: MarketQuoteView; under?: MarketQuoteView }>;
+}
+
+export interface BoardSummary {
+  board: string;
+  displayName: string;
+  sportType: 'football' | 'baseball';
+  /** 開盤中場次數（賽程數，不是參與人數） */
+  openCount: number;
 }
 
 export interface PredictionBoard {
@@ -86,6 +100,17 @@ export function usePredictionMarkets(board: string | null) {
     queryKey: ['predictions', 'markets', board],
     queryFn: () => apiFetch(`/predictions/markets/${board}`),
     enabled: !!board,
+    refetchInterval: 60_000,
+  });
+}
+
+/** 全部板塊開盤中賽事（依開賽時間排）+ 各板塊場次數。日期分組與聯盟篩選在前端做。 */
+export function usePredictionMarketsAll() {
+  return useQuery<{
+    data: { enabled: boolean; matches: MatchMarketsView[]; boards: BoardSummary[]; unavailableBoards: string[] };
+  }>({
+    queryKey: ['predictions', 'markets', 'all'],
+    queryFn: () => apiFetch('/predictions/markets'),
     refetchInterval: 60_000,
   });
 }

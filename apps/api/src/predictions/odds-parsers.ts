@@ -18,7 +18,14 @@ export interface ParsedMatchOdds {
   apiStatus: string | null;
   homeName: string | null;
   awayName: string | null;
+  /** API-Sports team id（隊徽用；football odds 回應沒有 teams，由 /fixtures 同步補） */
+  homeTeamId: number | null;
+  awayTeamId: number | null;
   quotes: ParsedQuote[];
+}
+
+function teamId(v: unknown): number | null {
+  return typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : null;
 }
 
 /** API-Sports 玩法名稱 → 內部 market 映射（名稱以外的盤一律忽略） */
@@ -84,6 +91,8 @@ export function parseFootballOddsItem(
     apiStatus: null, // football odds 回應無 status，收單/過濾靠 /fixtures 同步的 DB 值
     homeName: null,
     awayName: null,
+    homeTeamId: null,
+    awayTeamId: null,
     quotes: bm ? parseBets(bm.bets, FOOTBALL_BET_MAP, allowedMarkets) : [],
   };
 }
@@ -95,7 +104,7 @@ export function parseBaseballOddsItem(
       id: number;
       date: string;
       status: { short: string };
-      teams: { home: { name: string }; away: { name: string } };
+      teams: { home: { id?: number; name: string }; away: { id?: number; name: string } };
     };
     bookmakers?: Array<{ id: number; bets: Array<{ name: string; values: Array<{ value: string; odd: string }> }> }>;
   },
@@ -109,20 +118,35 @@ export function parseBaseballOddsItem(
     apiStatus: item.game.status?.short ?? null,
     homeName: item.game.teams?.home?.name ?? null,
     awayName: item.game.teams?.away?.name ?? null,
+    homeTeamId: teamId(item.game.teams?.home?.id),
+    awayTeamId: teamId(item.game.teams?.away?.id),
     quotes: bm ? parseBets(bm.bets, BASEBALL_BET_MAP, allowedMarkets) : [],
   };
+}
+
+/** 賽事同步欄位（football /fixtures、baseball /odds 的 game 都轉成這個） */
+export interface ParsedFixture {
+  apiFixtureId: number;
+  startTime: Date;
+  apiStatus: string;
+  homeName: string;
+  awayName: string;
+  homeTeamId: number | null;
+  awayTeamId: number | null;
 }
 
 /** football /fixtures 回應 item → 賽事同步欄位 */
 export function parseFootballFixture(item: {
   fixture: { id: number; date: string; status: { short: string } };
-  teams: { home: { name: string }; away: { name: string } };
-}): { apiFixtureId: number; startTime: Date; apiStatus: string; homeName: string; awayName: string } {
+  teams: { home: { id?: number; name: string }; away: { id?: number; name: string } };
+}): ParsedFixture {
   return {
     apiFixtureId: item.fixture.id,
     startTime: new Date(item.fixture.date),
     apiStatus: item.fixture.status.short,
     homeName: item.teams.home.name,
     awayName: item.teams.away.name,
+    homeTeamId: teamId(item.teams.home.id),
+    awayTeamId: teamId(item.teams.away.id),
   };
 }

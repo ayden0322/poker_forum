@@ -22,6 +22,7 @@ import {
   oddsDisplayKey,
 } from './prediction.config';
 import {
+  ParsedFixture,
   ParsedMatchOdds,
   parseBaseballOddsItem,
   parseFootballFixture,
@@ -237,6 +238,8 @@ export class OddsPipelineService {
         apiStatus: parsed.apiStatus,
         homeName: parsed.homeName ?? '?',
         awayName: parsed.awayName ?? '?',
+        homeTeamId: parsed.homeTeamId,
+        awayTeamId: parsed.awayTeamId,
       });
       quoteCount += await this.storeMatchOdds(board, parsed, item);
     }
@@ -246,10 +249,12 @@ export class OddsPipelineService {
 
   // ===== DB 寫入 =====
 
-  private async upsertMatch(
-    board: PredictionBoardConfig,
-    f: { apiFixtureId: number; startTime: Date; apiStatus: string; homeName: string; awayName: string },
-  ): Promise<void> {
+  private async upsertMatch(board: PredictionBoardConfig, f: ParsedFixture): Promise<void> {
+    // team id 只在有值時覆寫：某輪回應缺 id 不能把已補好的隊徽洗掉
+    const teamIds = {
+      ...(f.homeTeamId !== null ? { homeTeamId: f.homeTeamId } : {}),
+      ...(f.awayTeamId !== null ? { awayTeamId: f.awayTeamId } : {}),
+    };
     await this.prisma.predictionMatch.upsert({
       where: { boardSlug_apiFixtureId: { boardSlug: board.boardSlug, apiFixtureId: f.apiFixtureId } },
       create: {
@@ -260,6 +265,7 @@ export class OddsPipelineService {
         awayName: f.awayName,
         startTime: f.startTime,
         apiStatus: f.apiStatus,
+        ...teamIds,
       },
       // cron 同步 = startTime/status 的權威更新路徑（封盤判斷只信 DB，規格 §3.2）
       update: {
@@ -267,6 +273,7 @@ export class OddsPipelineService {
         awayName: f.awayName,
         startTime: f.startTime,
         apiStatus: f.apiStatus,
+        ...teamIds,
       },
     });
   }

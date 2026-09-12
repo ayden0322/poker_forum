@@ -41,6 +41,12 @@ export class PredictionsController {
     return { data: { enabled: true, boards: await this.markets.boards() } };
   }
 
+  /** 公開：全部板塊開盤中賽事（依開賽時間排）+ 各板塊場次數 */
+  @Get('markets')
+  async openMatchesAll() {
+    return { data: await this.markets.openMatchesAll() };
+  }
+
   /** 公開：單板塊開盤中賽事 + 賠率（含 quoteId） */
   @Get('markets/:board')
   async openMatches(@Param('board') board: string) {

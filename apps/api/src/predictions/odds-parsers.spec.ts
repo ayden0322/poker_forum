@@ -104,7 +104,7 @@ describe('odds-parsers', () => {
         id: 179402,
         date: '2026-07-08T01:40:00+00:00',
         status: { short: 'NS' },
-        teams: { home: { name: 'San Diego Padres' }, away: { name: 'Arizona Diamondbacks' } },
+        teams: { home: { id: 21, name: 'San Diego Padres' }, away: { id: 2, name: 'Arizona Diamondbacks' } },
       },
       bookmakers: [
         {
@@ -123,6 +123,8 @@ describe('odds-parsers', () => {
       expect(r.apiStatus).toBe('NS');
       expect(r.homeName).toBe('San Diego Padres');
       expect(r.awayName).toBe('Arizona Diamondbacks');
+      expect(r.homeTeamId).toBe(21);
+      expect(r.awayTeamId).toBe(2);
       expect(r.quotes).toEqual([
         { market: 'WINLOSE', selection: 'HOME', line: null, odds: 1.8 },
         { market: 'WINLOSE', selection: 'AWAY', line: null, odds: 2.0 },
@@ -151,7 +153,7 @@ describe('odds-parsers', () => {
     it('解析賽程同步欄位', () => {
       const r = parseFootballFixture({
         fixture: { id: 1562344, date: '2026-07-08T19:00:00+00:00', status: { short: 'NS' } },
-        teams: { home: { name: 'France' }, away: { name: 'Brazil' } },
+        teams: { home: { id: 2, name: 'France' }, away: { id: 6, name: 'Brazil' } },
       });
       expect(r).toEqual({
         apiFixtureId: 1562344,
@@ -159,7 +161,18 @@ describe('odds-parsers', () => {
         apiStatus: 'NS',
         homeName: 'France',
         awayName: 'Brazil',
+        homeTeamId: 2,
+        awayTeamId: 6,
       });
+    });
+
+    it('回應缺 team id 時為 null，不會丟 0 或 undefined 進 DB', () => {
+      const r = parseFootballFixture({
+        fixture: { id: 1, date: '2026-07-08T19:00:00+00:00', status: { short: 'NS' } },
+        teams: { home: { name: 'A' }, away: { id: 0, name: 'B' } },
+      });
+      expect(r.homeTeamId).toBeNull();
+      expect(r.awayTeamId).toBeNull();
     });
   });
 });

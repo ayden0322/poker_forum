@@ -208,7 +208,7 @@ export default function BetSlip({
               <div className="mt-6 text-center">
                 <div className="mx-auto w-12 h-12 rounded-full bg-[#39B8BE] text-white flex items-center justify-center text-2xl">✓</div>
                 <div className="mt-3 text-gray-900 font-bold">
-                  已投入 <span className="font-mono-stadium tabular-nums">{phase.result.stake}</span> P
+                  已使用 <span className="font-mono-stadium tabular-nums">{phase.result.stake}</span> P
                 </div>
                 <div className="mt-1 text-sm text-gray-500">
                   命中可拿回 <span className="font-mono-stadium tabular-nums text-[#2a8d92] font-bold">{phase.result.potentialPayout}</span> P（鎖定 @{phase.result.lockedOdds}）
@@ -221,7 +221,7 @@ export default function BetSlip({
               <>
                 {/* 金額（餘額可見；超額 chip 直接不可點——與 ExchangePanel 同行為） */}
                 <div className="mt-4 flex items-center justify-between">
-                  <span className="text-xs text-gray-500">投入金額</span>
+                  <span className="text-xs text-gray-500">競猜點數</span>
                   {pBalance !== undefined && (
                     <span className="text-xs text-gray-400">
                       餘額 <span className="font-mono-stadium tabular-nums">{pBalance}</span> P
@@ -274,7 +274,7 @@ export default function BetSlip({
                 )}
 
                 {/* 提示列（拒單是狀態，選擇永遠保留） */}
-                {phase.kind === 'notice' && <div className="mt-3 text-sm text-amber-700 bg-amber-50 rounded-lg px-3 py-2">{phase.message}</div>}
+                {phase.kind === 'notice' && <div className="mt-3 text-sm text-gray-700 bg-gray-100 rounded-lg px-3 py-2">{phase.message}</div>}
                 {phase.kind === 'feedDown' && (
                   <div className="mt-3 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">賠率來源暫時中斷，競猜暫停受理，你的選擇會保留</div>
                 )}
