@@ -24,12 +24,15 @@ const ICON_CLS: Record<Size, string> = {
 export default function TeamLabel({
   nameEn,
   logoUrl,
+  href,
   size = 'md',
   className = '',
 }: {
   nameEn: string;
   /** API-Sports 隊徽 URL（後端組好）；沒有就走對照表或縮寫 */
   logoUrl?: string | null;
+  /** 站內隊伍頁；有才變連結（新分頁開，競猜中途跳走不會把選到一半的單清掉） */
+  href?: string | null;
   size?: Size;
   className?: string;
 }) {
@@ -67,10 +70,24 @@ export default function TeamLabel({
     );
   }
 
-  return (
-    <span className={`inline-flex items-center gap-2 min-w-0 align-middle ${className}`}>
+  const body = (
+    <>
       {icon}
       <span className={nameCls}>{meta?.nameZh ?? nameEn}</span>
-    </span>
+    </>
   );
+  const cls = `inline-flex items-center gap-2 min-w-0 align-middle ${className}`;
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${cls} rounded-sm hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-800`}
+      >
+        {body}
+      </a>
+    );
+  }
+  return <span className={cls}>{body}</span>;
 }

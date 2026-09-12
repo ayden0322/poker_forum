@@ -3,6 +3,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './api';
+import { teamMeta } from './team-meta';
 import { useAuth } from '@/context/auth';
 
 export interface MarketQuoteView {
@@ -18,6 +19,9 @@ export interface MatchMarketsView {
   sportType: 'football' | 'baseball';
   home: string;
   away: string;
+  /** API-Sports team id（組隊伍頁連結用） */
+  homeTeamId: number | null;
+  awayTeamId: number | null;
   /** API-Sports 隊徽；null 時 TeamLabel 退回縮寫徽章 */
   homeLogoUrl: string | null;
   awayLogoUrl: string | null;
@@ -197,6 +201,26 @@ export const SELECTION_LABEL: Record<string, string> = {
 /** 賽事資訊連結：詳情頁優先，對不上就去該板討論區 */
 export function matchInfoUrl(b: { detailUrl: string | null; board: string }): string {
   return b.detailUrl ?? `/board/${b.board}`;
+}
+
+/**
+ * 站內隊伍頁連結；沒有對應頁面就 null（前端只在有 URL 時才把隊名變連結）。
+ * - MLB：隊伍頁吃 MLB 官方 id，從對照表的 mlbId 轉
+ * - 其他棒球（KBO/NPB…）：隊伍頁吃 API-Sports id，直接用同步存下的 teamId
+ * - 足球：站上還沒有足球隊伍頁
+ */
+export function teamPageUrl(
+  m: Pick<MatchMarketsView, 'sportType' | 'board' | 'home' | 'away' | 'homeTeamId' | 'awayTeamId'>,
+  side: 'home' | 'away',
+): string | null {
+  if (m.sportType !== 'baseball') return null;
+  const nameEn = side === 'home' ? m.home : m.away;
+  if (m.board === 'mlb') {
+    const mlbId = teamMeta(nameEn)?.mlbId;
+    return mlbId ? `/team/mlb/${mlbId}` : null;
+  }
+  const teamId = side === 'home' ? m.homeTeamId : m.awayTeamId;
+  return teamId ? `/team/baseball/${m.board}/${teamId}` : null;
 }
 
 export const BET_STATUS_VIEW: Record<MyBet['status'], { label: string; className: string }> = {

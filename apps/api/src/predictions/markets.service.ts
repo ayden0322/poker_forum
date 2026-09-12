@@ -23,6 +23,9 @@ export interface MatchMarketsView {
   sportType: 'football' | 'baseball';
   home: string;
   away: string;
+  /** API-Sports team id（前端組隊伍頁連結用；MLB 隊伍頁走 MLB 官方 id，由前端對照表轉） */
+  homeTeamId: number | null;
+  awayTeamId: number | null;
   /** API-Sports 隊徽；沒有 team id 就 null，前端退回縮寫徽章 */
   homeLogoUrl: string | null;
   awayLogoUrl: string | null;
@@ -128,6 +131,8 @@ export class MarketsService {
           detailUrl,
           home: m.homeName,
           away: m.awayName,
+          homeTeamId: m.homeTeamId,
+          awayTeamId: m.awayTeamId,
           homeLogoUrl: teamLogoUrl(board.sportType, m.homeTeamId),
           awayLogoUrl: teamLogoUrl(board.sportType, m.awayTeamId),
           startTime: m.startTime.toISOString(),

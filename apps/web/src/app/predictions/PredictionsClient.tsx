@@ -23,6 +23,7 @@ import {
   usePredictionLeaderboard,
   usePredictionMarketsAll,
   matchInfoUrl,
+  teamPageUrl,
 } from '@/lib/predictions';
 import BetSlip, { SlipSelection } from '@/components/predictions/BetSlip';
 import TeamLabel from '@/components/predictions/TeamLabel';
@@ -100,9 +101,9 @@ function MatchCard({ m, slip, onPick }: { m: MatchMarketsView; slip: SlipSelecti
       </div>
 
       <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-        <TeamLabel nameEn={m.home} logoUrl={m.homeLogoUrl} size="lg" className="sm:flex-1" />
+        <TeamLabel nameEn={m.home} logoUrl={m.homeLogoUrl} href={teamPageUrl(m, 'home')} size="lg" className="sm:flex-1" />
         <span aria-hidden="true" className="hidden shrink-0 text-xs text-gray-400 sm:block">vs</span>
-        <TeamLabel nameEn={m.away} logoUrl={m.awayLogoUrl} size="lg" className="sm:flex-1" />
+        <TeamLabel nameEn={m.away} logoUrl={m.awayLogoUrl} href={teamPageUrl(m, 'away')} size="lg" className="sm:flex-1" />
       </div>
 
       <div className={`mt-3 grid grid-cols-1 gap-3 ${Object.keys(m.winlose).length > 0 && mainOu ? 'xl:grid-cols-[3fr_2fr]' : ''}`}>
