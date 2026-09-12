@@ -70,6 +70,32 @@ describe('odds-parsers', () => {
       };
       expect(parseFootballOddsItem(dirty, 7, ['WINLOSE']).quotes).toHaveLength(0);
     });
+
+    it('四分之一線（2.25 / 2.75）是拆單盤，不入庫；整數與 .5 線保留', () => {
+      const quarter = {
+        fixture: { id: 2, date: '2026-09-12T14:00:00+00:00' },
+        bookmakers: [
+          {
+            id: 4,
+            bets: [
+              {
+                name: 'Goals Over/Under',
+                values: [
+                  { value: 'Over 1.75', odd: '1.23' },
+                  { value: 'Over 2', odd: '1.27' },
+                  { value: 'Under 2.25', odd: '2.86' },
+                  { value: 'Over 2.5', odd: '1.62' },
+                  { value: 'Under 2.75', odd: '1.60' },
+                  { value: 'Over 3', odd: '2.10' },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const lines = parseFootballOddsItem(quarter, 4, ['OVER_UNDER']).quotes.map((q) => q.line);
+      expect(lines).toEqual([2, 2.5, 3]);
+    });
   });
 
   describe('parseBaseballOddsItem', () => {

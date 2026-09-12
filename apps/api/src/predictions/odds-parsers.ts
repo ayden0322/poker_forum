@@ -39,7 +39,11 @@ function parseValue(value: string): { selection: ParsedQuote['selection']; line:
   if (v === 'Away') return { selection: 'AWAY', line: null };
   const ou = v.match(/^(Over|Under)\s+(\d+(?:\.\d+)?)$/);
   if (ou) {
-    return { selection: ou[1] === 'Over' ? 'OVER' : 'UNDER', line: Number(ou[2]) };
+    const line = Number(ou[2]);
+    // 四分之一線（2.25 / 2.75）是「一半押 2、一半押 2.5」的拆單盤，結算規則只有整數走盤與 .5 全贏全輸兩種，
+    // 收進來會用錯的規則結算，所以只留整數與 .5 的線
+    if (!Number.isInteger(line * 2)) return null;
+    return { selection: ou[1] === 'Over' ? 'OVER' : 'UNDER', line };
   }
   return null; // 其他型態（Odd/Even、隊名讓分…）不在二期玩法內
 }
