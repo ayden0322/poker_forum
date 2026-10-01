@@ -372,7 +372,8 @@ export class SportsService {
       const out: any = {};
       for (const [k, v] of Object.entries(node)) out[k] = apply(v);
       const t = typeof node.team?.id === 'number' ? translations.get(node.team.id) : undefined;
-      if (t) out.team = { ...out.team, name: t.shortName ?? t.nameZhTw };
+      // 排名表有空間放全名；簡稱是給比分卡用的（AI 簡稱常被硬截成兩字，如「阿森」）
+      if (t) out.team = { ...out.team, name: t.nameZhTw };
       return out;
     };
     return apply(standings);

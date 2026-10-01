@@ -18,7 +18,7 @@ describe('cacheTtlFor', () => {
   });
 });
 
-function makeSvc(opts: { cached?: unknown; apiResponse?: unknown; translations?: Array<{ apiId: number; nameZhTw: string }> }) {
+function makeSvc(opts: { cached?: unknown; apiResponse?: unknown; translations?: Array<{ apiId: number; nameZhTw: string; shortName?: string | null }> }) {
   const redis = {
     get: jest.fn().mockResolvedValue(opts.cached ?? null),
     set: jest.fn().mockResolvedValue(undefined),
@@ -27,7 +27,7 @@ function makeSvc(opts: { cached?: unknown; apiResponse?: unknown; translations?:
     sportsConfig: { findUnique: jest.fn().mockResolvedValue(null) },
     translation: {
       findMany: jest.fn().mockResolvedValue(
-        (opts.translations ?? []).map((t) => ({ ...t, entityType: 'country', shortName: null })),
+        (opts.translations ?? []).map((t) => ({ shortName: null, ...t, entityType: 'country' })),
       ),
     },
   };
@@ -56,6 +56,12 @@ describe('SportsService.getStandings', () => {
     expect(rows[0].team.name).toBe('日本');
     expect(rows[0].team.logo).toBe('x');
     expect(rows[1].team.name).toBe('Qatar');
+  });
+
+  it('排名用全名，不用簡稱', async () => {
+    const { svc } = makeSvc({ apiResponse: FOOTBALL_STANDINGS, translations: [{ apiId: 12, nameZhTw: '日本', shortName: '日' }] });
+    const out = (await svc.getStandings('asian-cup')) as typeof FOOTBALL_STANDINGS;
+    expect(out[0].league.standings[0][0].team.name).toBe('日本');
   });
 
   it('快取命中時也會翻譯（新譯名不必等快取過期）', async () => {
