@@ -17,6 +17,10 @@ import { LEAGUE_CONFIG, API_HOSTS } from '../sports/sports.config';
 export class TranslationCron {
   private readonly logger = new Logger(TranslationCron.name);
   private readonly apiKey: string;
+  /** 各聯賽上次掃球員名單的時間（記憶體即可，重啟後各掃一次） */
+  private readonly lastPlayerSweep = new Map<string, number>();
+  /** 球員名單一天掃一次：每隊一次 API 呼叫，每小時掃會把籃球額度（7,500/日）燒光 */
+  static readonly PLAYER_SWEEP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
   constructor(
     private prisma: PrismaService,
@@ -88,8 +92,11 @@ export class TranslationCron {
       });
     }
 
-    // 2. 球員（只針對球隊球員清單）
-    for (const team of teams.slice(0, 30)) {
+    // 2. 球員（只針對球隊球員清單）；一天一次，球隊名單仍每小時（每聯賽 1 次呼叫）
+    const lastSweep = this.lastPlayerSweep.get(league.boardSlug) ?? 0;
+    const sweepPlayers = teams.length > 0 && Date.now() - lastSweep >= TranslationCron.PLAYER_SWEEP_INTERVAL_MS;
+    if (sweepPlayers) this.lastPlayerSweep.set(league.boardSlug, Date.now());
+    for (const team of sweepPlayers ? teams.slice(0, 30) : []) {
       // 最多只處理 30 支隊伍的球員，避免一次呼叫太多
       const players = await this.fetchPlayers(league, team.id);
       for (const player of players) {
