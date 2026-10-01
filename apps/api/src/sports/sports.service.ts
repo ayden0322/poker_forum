@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../common/redis.service';
 import { PrismaService } from '../common/prisma.service';
 import { LEAGUE_CONFIG, SportType, CACHE_TTL } from './sports.config';
+import { cacheTtlFor } from '../common/cache-ttl.util';
 
 interface LeagueDbConfig {
   boardSlug: string;
@@ -115,7 +116,7 @@ export class SportsService {
 
     const data = await fetcher();
     if (data) {
-      await this.redis.set(cacheKey, data, ttl);
+      await this.redis.set(cacheKey, data, cacheTtlFor(data, ttl));
     }
     return data;
   }
@@ -338,12 +339,43 @@ export class SportsService {
 
     const cacheKey = `sports:${boardSlug}:standings:${cfg.season}`;
 
-    return this.cachedCall(cacheKey, this.getTtl(cfg, 'STANDINGS'), async () => {
+    const standings = await this.cachedCall<any[]>(cacheKey, this.getTtl(cfg, 'STANDINGS'), async () => {
       return this.callApi(cfg.apiHost, '/standings', {
         league: cfg.leagueId,
         season: cfg.season,
       });
     });
+    // 翻譯放在快取之後：新翻好的隊名不必等排名快取過期
+    return standings ? this.translateStandingTeams(standings, cfg.sportType) : standings;
+  }
+
+  /**
+   * 排名內的隊名換中文。各運動結構不同（足球 league.standings[][]、籃棒球 [][]），
+   * 統一遞迴找「有 team.id 的列」替換，不依賴固定層級。
+   */
+  private async translateStandingTeams(standings: any[], sportType: SportType): Promise<any[]> {
+    const ids = new Set<number>();
+    const collect = (node: any): void => {
+      if (Array.isArray(node)) return node.forEach(collect);
+      if (!node || typeof node !== 'object') return;
+      if (typeof node.team?.id === 'number') ids.add(node.team.id);
+      Object.values(node).forEach(collect);
+    };
+    collect(standings);
+
+    const translations = await this.getTeamTranslations(Array.from(ids), sportType);
+    if (translations.size === 0) return standings;
+
+    const apply = (node: any): any => {
+      if (Array.isArray(node)) return node.map(apply);
+      if (!node || typeof node !== 'object') return node;
+      const out: any = {};
+      for (const [k, v] of Object.entries(node)) out[k] = apply(v);
+      const t = typeof node.team?.id === 'number' ? translations.get(node.team.id) : undefined;
+      if (t) out.team = { ...out.team, name: t.shortName ?? t.nameZhTw };
+      return out;
+    };
+    return apply(standings);
   }
 
   // ============ 球員數據 ============

@@ -11,6 +11,7 @@ import {
   ApiSportsBaseballGame,
 } from './baseball-common.types';
 import { STATIC_BASEBALL_TEAM_NAMES } from './baseball-team-names';
+import { cacheTtlFor } from '../../common/cache-ttl.util';
 
 /**
  * 通用棒球服務（CPBL / NPB / KBO）
@@ -75,7 +76,7 @@ export class BaseballCommonService {
     const hit = await this.redis.get<T>(cacheKey);
     if (hit) return hit;
     const data = await fetcher();
-    if (data) await this.redis.set(cacheKey, data, ttl);
+    if (data) await this.redis.set(cacheKey, data, cacheTtlFor(data, ttl));
     return data;
   }
 

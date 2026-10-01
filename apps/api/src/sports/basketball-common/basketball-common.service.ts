@@ -17,6 +17,7 @@ import {
   OddsMarket,
 } from './basketball-common.types';
 import { TpblStatsService } from '../tpbl-stats/tpbl-stats.service';
+import { cacheTtlFor } from '../../common/cache-ttl.util';
 
 /**
  * 通用籃球服務（API-Sports 籃球聯賽：CBA / B.League / KBL / P.League+ / 各歐洲聯賽…）
@@ -97,7 +98,7 @@ export class BasketballCommonService {
     const hit = await this.redis.get<T>(cacheKey);
     if (hit) return hit;
     const data = await fetcher();
-    if (data) await this.redis.set(cacheKey, data, ttl);
+    if (data) await this.redis.set(cacheKey, data, cacheTtlFor(data, ttl));
     return data;
   }
 
