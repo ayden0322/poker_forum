@@ -33,6 +33,8 @@ export class WorldCupCron {
   private liveTick = 0;
   /** 進行中場次細節在 Redis 的保留期（秒）；完賽後最後一次寫入會續存這麼久，供賽後回顧 */
   private static readonly DETAILS_TTL = 6 * 60 * 60;
+  /** 最後一場開賽後多久停止全量同步（留時間給比分定版） */
+  private static readonly SEASON_OVER_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
   constructor(
     private prisma: PrismaService,
@@ -84,9 +86,14 @@ export class WorldCupCron {
   @Cron('*/5 * * * *')
   async fullSync() {
     if (!this.apiKey) return;
-    // 賽事結束後（所有場次皆 finished）就不再打 API；賽事期間一定還有未完賽場次，行為不變
+    // 賽事結束後就不再打 API；賽事期間一定還有未完賽場次，行為不變
     const pending = await this.prisma.worldCupMatch.count({ where: { status: { not: 'finished' } } });
     if (pending === 0) return;
+    // DB status 不可靠（未配對場次永遠停在 scheduled，前台已改用開賽時間推算）。
+    // 最後一場開賽超過寬限期 → 視為賽季結束，避免賽後每 5 分鐘空燒額度
+    const last = await this.prisma.worldCupMatch.aggregate({ _max: { kickoffAt: true } });
+    const lastKickoff = last._max.kickoffAt;
+    if (lastKickoff && Date.now() - lastKickoff.getTime() > WorldCupCron.SEASON_OVER_GRACE_MS) return;
     try {
       const fixtures = await callFootballApi<ApiFixture[]>(this.apiKey, '/fixtures', {
         league: WC_LEAGUE_ID,
