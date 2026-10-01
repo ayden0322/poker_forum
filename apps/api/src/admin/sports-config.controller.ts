@@ -204,14 +204,19 @@ export class AdminSportsConfigController {
   }
 
   /** 確保資料庫中有預設設定 */
+  /**
+   * 補上程式碼有、DB 還沒有的聯賽（如新加的亞洲盃）。只新增不覆蓋：
+   * 已存在的列（後台改過的賽季、TTL、競猜開關）一律不動；新列競猜預設關（schema default false）。
+   * 有了 DB 列，translation.cron 才會替該聯賽自動翻譯隊名。
+   */
   private async ensureDefaults() {
-    const count = await this.prisma.sportsConfig.count();
-    if (count > 0) return;
+    const existing = new Set(
+      (await this.prisma.sportsConfig.findMany({ select: { boardSlug: true } })).map((c) => c.boardSlug),
+    );
+    const missing = buildDefaultConfigs().filter((cfg) => !existing.has(cfg.boardSlug));
+    if (missing.length === 0) return;
 
-    this.logger.log('首次載入，寫入預設運動 API 設定');
-    const defaults = buildDefaultConfigs();
-    for (const cfg of defaults) {
-      await this.prisma.sportsConfig.create({ data: cfg });
-    }
+    await this.prisma.sportsConfig.createMany({ data: missing, skipDuplicates: true });
+    this.logger.log(`補上缺少的運動 API 設定：${missing.map((c) => c.boardSlug).join('、')}`);
   }
 }

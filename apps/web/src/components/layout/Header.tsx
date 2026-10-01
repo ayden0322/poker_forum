@@ -17,6 +17,8 @@ import MainBadge from '@/components/member/MainBadge';
 interface NavChild {
   label: string;
   href: string;
+  /** 預排上架：到這天（台灣時間 00:00）才顯示，免得賽事開打前入口點進去是空板 */
+  visibleFrom?: string;
 }
 
 interface NavItem {
@@ -77,6 +79,7 @@ const navItems: NavItem[] = [
         items: [
           { label: '世界盃 2026', href: '/board/world-cup' },
           { label: '國際友誼賽', href: '/board/friendlies' },
+          { label: '亞洲盃 2027', href: '/board/asian-cup', visibleFrom: '2026-12-15' },
           { label: '英超', href: '/board/epl' },
           { label: '西甲', href: '/board/la-liga' },
           { label: '義甲', href: '/board/serie-a' },
@@ -130,13 +133,29 @@ const navItems: NavItem[] = [
   // { label: '閒聊灌水', href: '/board/chat' },
 ];
 
+/** 濾掉還沒到上架日的選單項（只處理 megaMenu，目前預排項都在這裡） */
+function withScheduledItems(items: NavItem[], now: Date): NavItem[] {
+  return items.map((item) =>
+    item.megaMenu
+      ? {
+          ...item,
+          megaMenu: item.megaMenu.map((col) => ({
+            ...col,
+            items: col.items.filter((c) => !c.visibleFrom || now >= new Date(`${c.visibleFrom}T00:00:00+08:00`)),
+          })),
+        }
+      : item,
+  );
+}
+
 export function Header() {
   const { user, accessToken, logout, showLoginModal, closeLoginModal, showPhoneVerifyModal, closePhoneVerifyModal } = useAuth();
   // 競猜入口跟著 PREDICTION_ENABLED 走（fail-closed：功能沒開連結不露）
   const { data: predData } = usePredictionBoards();
   const items = useMemo<NavItem[]>(() => {
-    if (predData?.data.enabled !== true) return navItems;
-    const withPredictions = [...navItems];
+    const base = withScheduledItems(navItems, new Date());
+    if (predData?.data.enabled !== true) return base;
+    const withPredictions = [...base];
     // 插在「台灣彩票」前；找不到錨點就接在最後，不會像 findIndex=-1 那樣插到最前面
     const lotteryIdx = withPredictions.findIndex((n) => n.label === '台灣彩票');
     const insertAt = lotteryIdx === -1 ? withPredictions.length : lotteryIdx;

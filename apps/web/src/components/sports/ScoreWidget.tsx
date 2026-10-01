@@ -27,6 +27,7 @@ const BOARD_SPORT_MAP: Record<string, { sportType: string; label: string; icon: 
   'j-league':         { sportType: 'football',   label: 'J 聯賽', icon: '⚽' },
   csl:                { sportType: 'football',   label: '中超',  icon: '⚽' },
   'world-cup':        { sportType: 'football',   label: '世界盃', icon: '⚽' },
+  'asian-cup':        { sportType: 'football',   label: '亞洲盃', icon: '⚽' },
   // 棒球
   mlb:                { sportType: 'baseball',   label: 'MLB',      icon: '⚾' },
   cpbl:               { sportType: 'baseball',   label: '中華職棒',  icon: '⚾' },

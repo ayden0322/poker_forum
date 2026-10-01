@@ -129,6 +129,8 @@ export const LEAGUE_CONFIG: Record<string, LeagueConfig> = {
   csl:              { sportType: 'football', displayName: '中超',  apiHost: API_HOSTS.football, leagueId: 169, season: 2025 },
   'world-cup':      { sportType: 'football', displayName: '世界盃', apiHost: API_HOSTS.football, leagueId: 1,   season: 2026 },
   friendlies:       { sportType: 'football', displayName: '國際友誼賽', apiHost: API_HOSTS.football, leagueId: 10, season: 2026 },
+  // 亞洲盃 2027（沙烏地，2027-01-07 開打；API-Sports league 7 以開賽年 2027 為 season）
+  'asian-cup':      { sportType: 'football', displayName: '亞洲盃', apiHost: API_HOSTS.football, leagueId: 7,   season: 2027 },
 
   // 棒球（league ID 來自 v1.baseball.api-sports.io/leagues）
   mlb:              { sportType: 'baseball', displayName: 'MLB',      apiHost: API_HOSTS.baseball, leagueId: 1,  season: 2026 },

@@ -98,7 +98,8 @@ async function main() {
     { name: '中超', slug: 'csl', icon: '🇨🇳', description: '中國足球超級聯賽', sortOrder: 8 },
     { name: '世界盃', slug: 'world-cup', icon: '🌍', description: 'FIFA 世界盃', sortOrder: 9 },
     { name: '國際友誼賽', slug: 'friendlies', icon: '🤝', description: '國際足球友誼賽（國家隊熱身賽）', sortOrder: 10 },
-    { name: '其他足球', slug: 'other-soccer', icon: '⚽', description: 'K 聯賽、東南亞足球等討論', sortOrder: 11 },
+    { name: '亞洲盃', slug: 'asian-cup', icon: '🌏', description: 'AFC 亞洲盃 2027（國家隊）', sortOrder: 11 },
+    { name: '其他足球', slug: 'other-soccer', icon: '⚽', description: 'K 聯賽、東南亞足球等討論', sortOrder: 12 },
   ];
 
   for (const board of soccerBoards) {

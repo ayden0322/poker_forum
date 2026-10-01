@@ -124,16 +124,23 @@ export class SportsService {
   private async getTeamTranslations(teamIds: number[], sport: string): Promise<Map<number, { nameZhTw: string; shortName: string | null }>> {
     if (teamIds.length === 0) return new Map();
 
+    // 國家隊（友誼賽/亞洲盃等）的譯名存在 entityType='country'（同一套 API-Sports team id），
+    // 一起查；同 id 兩種都有時以 'team' 為準
     const translations = await this.prisma.translation.findMany({
       where: {
-        entityType: 'team',
+        entityType: { in: ['team', 'country'] },
         sport,
         apiId: { in: teamIds },
       },
-      select: { apiId: true, nameZhTw: true, shortName: true },
+      select: { apiId: true, entityType: true, nameZhTw: true, shortName: true },
     });
 
-    return new Map(translations.map((t: { apiId: number; nameZhTw: string; shortName: string | null }) => [t.apiId, { nameZhTw: t.nameZhTw, shortName: t.shortName }]));
+    const map = new Map<number, { nameZhTw: string; shortName: string | null }>();
+    for (const t of translations) {
+      if (t.entityType === 'country' && map.has(t.apiId)) continue;
+      map.set(t.apiId, { nameZhTw: t.nameZhTw, shortName: t.shortName });
+    }
+    return map;
   }
 
   /** 替換 API 回傳的隊伍名稱為中文 */
