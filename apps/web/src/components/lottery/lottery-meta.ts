@@ -24,22 +24,32 @@ export interface LotteryMeta {
   oddsTopPrize: string;
 }
 
-/** 計算下次開獎時間（台灣時區） */
+/** 台灣時區固定 UTC+8（無日光節約） */
+const TW_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** 計算下次開獎時間（以台灣時間判斷星期與時刻，不受使用者電腦時區影響） */
 export function nextDrawTime(meta: LotteryMeta, refDate?: Date): Date {
   const now = refDate ?? new Date();
   const [hh, mm] = meta.drawTime.split(':').map(Number);
+  // 把「現在」平移成台灣牆上時間，再用 UTC getter 讀年月日、星期
+  const tw = new Date(now.getTime() + TW_OFFSET_MS);
   // 找未來 14 天內第一個符合 scheduleDays 且時間未過的日期
   for (let i = 0; i < 14; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() + i);
-    if (!meta.scheduleDays.includes(d.getDay())) continue;
-    d.setHours(hh, mm, 0, 0);
-    if (d.getTime() > now.getTime()) return d;
+    const day = new Date(Date.UTC(tw.getUTCFullYear(), tw.getUTCMonth(), tw.getUTCDate() + i, hh, mm));
+    if (!meta.scheduleDays.includes(day.getUTCDay())) continue;
+    const target = new Date(day.getTime() - TW_OFFSET_MS);
+    if (target.getTime() > now.getTime()) return target;
   }
   // fallback：14 天後
-  const fallback = new Date(now);
-  fallback.setDate(now.getDate() + 14);
-  return fallback;
+  return new Date(now.getTime() + 14 * 86_400_000);
+}
+
+const WEEKDAY_ZH = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** 開獎日期顯示：10/2（五）。drawDate 為後端 ISO 字串，以台灣時間判讀 */
+export function formatDrawDate(iso: string): string {
+  const tw = new Date(new Date(iso).getTime() + TW_OFFSET_MS);
+  return `${tw.getUTCMonth() + 1}/${tw.getUTCDate()}（${WEEKDAY_ZH[tw.getUTCDay()]}）`;
 }
 
 /**
@@ -82,7 +92,7 @@ export const LOTTERY_META: LotteryMeta[] = [
     emoji: '💵',
     icon: '/lottery-icons/daily-cash.png',
     href: '/board/daily-cash',
-    schedule: '每日 20:30（週日除外）',
+    schedule: '每週一至六 20:30',
     scheduleDays: [1, 2, 3, 4, 5, 6],
     drawTime: '20:30',
     ballRange: { main: [1, 39], mainCount: 5 },
@@ -110,7 +120,7 @@ export const LOTTERY_META: LotteryMeta[] = [
     emoji: '3️⃣',
     icon: '/lottery-icons/star-lotto.png',
     href: '/board/star-lotto',
-    schedule: '每日 20:30',
+    schedule: '每週一至六 20:30',
     scheduleDays: [1, 2, 3, 4, 5, 6],
     drawTime: '20:30',
     ballRange: { main: [0, 9], mainCount: 3 },
@@ -124,7 +134,7 @@ export const LOTTERY_META: LotteryMeta[] = [
     emoji: '4️⃣',
     icon: '/lottery-icons/lotto4d.png',
     href: '/board/star-lotto',
-    schedule: '每日 20:30',
+    schedule: '每週一至六 20:30',
     scheduleDays: [1, 2, 3, 4, 5, 6],
     drawTime: '20:30',
     ballRange: { main: [0, 9], mainCount: 4 },

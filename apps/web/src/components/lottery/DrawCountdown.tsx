@@ -18,13 +18,15 @@ interface Props {
   targetIso: string;
   label?: string;
   size?: 'sm' | 'md' | 'lg';
+  /** 對齊方式：預設置中，放在左對齊面板時用 start */
+  align?: 'center' | 'start';
 }
 
 /**
  * 開獎倒數顯示
  * 在 stadium night 深底色面板上的金色 tabular 數字
  */
-export function DrawCountdown({ targetIso, label = '距離下次開獎', size = 'md' }: Props) {
+export function DrawCountdown({ targetIso, label = '距離下次開獎', size = 'md', align = 'center' }: Props) {
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
     setNow(new Date());
@@ -42,20 +44,20 @@ export function DrawCountdown({ targetIso, label = '距離下次開獎', size = 
   );
   const Sep = () => <span className={`text-amber-200/40 leading-none mb-3 ${numCls}`}>:</span>;
   return (
-    <div className="inline-flex flex-col items-center">
+    <div className={`inline-flex flex-col ${align === 'start' ? 'items-start' : 'items-center'}`}>
       {label && <div className={`text-amber-100/70 tracking-widest mb-1.5 ${labelCls}`}>{label}</div>}
       <div className="flex items-end gap-2 md:gap-3">
         {cd.d > 0 && (
           <>
-            <Unit v={cd.d} l="DAYS" />
+            <Unit v={cd.d} l="天" />
             <Sep />
           </>
         )}
-        <Unit v={cd.h} l="HOURS" />
+        <Unit v={cd.h} l="時" />
         <Sep />
-        <Unit v={cd.m} l="MINS" />
+        <Unit v={cd.m} l="分" />
         <Sep />
-        <Unit v={cd.s} l="SECS" />
+        <Unit v={cd.s} l="秒" />
       </div>
     </div>
   );

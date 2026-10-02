@@ -33,7 +33,7 @@ const GAME_CONFIG = {
     maxNumber: 39,
     hasSpecial: false,
     numberField: 'drawNumberSize',
-    drawSchedule: '每日 21:00',
+    drawSchedule: '每週一至六 20:30',
   },
   LOTTO1224: {
     name: '雙贏彩',
@@ -54,7 +54,7 @@ const GAME_CONFIG = {
     maxNumber: 9,
     hasSpecial: false,
     numberField: 'drawNumberAppear',
-    drawSchedule: '每日 21:00',
+    drawSchedule: '每週一至六 20:30',
   },
   LOTTO4D: {
     name: '4星彩',
@@ -64,7 +64,7 @@ const GAME_CONFIG = {
     maxNumber: 9,
     hasSpecial: false,
     numberField: 'drawNumberAppear',
-    drawSchedule: '每日 21:00',
+    drawSchedule: '每週一至六 20:30',
   },
 } as const;
 

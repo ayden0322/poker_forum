@@ -16,7 +16,11 @@ import Link from 'next/link';
 import { LotteryBall } from './LotteryBall';
 import { GameIcon } from './GameIcon';
 import { DrawCountdown } from './DrawCountdown';
-import { getMetaByType, nextDrawTime } from './lottery-meta';
+import { LotteryNumberBoard } from './LotteryNumberBoard';
+import { formatDrawDate, getMetaByType, nextDrawTime } from './lottery-meta';
+
+/** 改用號碼走勢盤的彩種（頭獎固定、沒有累積金額可秀） */
+const NUMBER_BOARD_GAMES = ['DAILY539'];
 
 interface LotteryLatestItem {
   gameType: string;
@@ -67,6 +71,14 @@ export function LotteryBanner({ gameTypes }: LotteryBannerProps) {
 
   // 單一彩券 → 顯示完整大卡（含倒數 + 累積金額放大）
   if (isSingle) {
+    const meta = getMetaByType(items[0].gameType);
+    if (meta && NUMBER_BOARD_GAMES.includes(items[0].gameType)) {
+      return (
+        <div className="mb-4">
+          <LotteryNumberBoard item={items[0]} meta={meta} />
+        </div>
+      );
+    }
     return (
       <div className="mb-4">
         <LotteryHeroCard item={items[0]} />
@@ -141,7 +153,7 @@ function LotteryHeroCard({ item }: { item: LotteryLatestItem }) {
             {jackpot && <div className="text-[10px] text-amber-50/80 mb-2">NT$ {jackpot.toLocaleString()}</div>}
             {/* 上期號碼球 */}
             <div className="mt-3 pt-3 border-t border-white/20">
-              <div className="text-[10px] text-amber-100/80 mb-1.5">第 {item.period.slice(-4)} 期 · {item.drawDate}</div>
+              <div className="text-xs text-amber-100/90 mb-1.5">{formatDrawDate(item.drawDate)} 第 {Number(item.period.slice(-4))} 期</div>
               <div className="flex flex-wrap gap-1">
                 {item.numbers.map((n) => (
                   <LotteryBall key={n} number={n} size="sm" />
@@ -161,8 +173,8 @@ function LotteryHeroCard({ item }: { item: LotteryLatestItem }) {
             <div className="text-amber-200 text-xs text-center">{item.drawSchedule}</div>
           )}
           <div className="mt-3 pt-3 border-t border-white/10 text-center">
-            <div className="text-[10px] text-amber-300 tracking-widest">DRAW SCHEDULE</div>
-            <div className="text-xs text-stone-300 mt-0.5">{item.drawSchedule}</div>
+            <div className="text-xs text-amber-300 tracking-widest">開獎時間</div>
+            <div className="text-xs text-stone-300 mt-0.5">{meta?.schedule ?? item.drawSchedule}</div>
           </div>
           <Link
             href="/lottery"
@@ -181,7 +193,7 @@ function LotteryCardCompact({ item }: { item: LotteryLatestItem }) {
   const meta = getMetaByType(item.gameType);
   const jackpot = item.jackpot ? Number(item.jackpot) : null;
   const isHot = item.noWinnerStreak >= 3;
-  const drawDate = new Date(item.drawDate).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
+  const drawDate = formatDrawDate(item.drawDate);
 
   return (
     <div className={`rounded-lg border bg-white p-3 shadow-sm hover:shadow-md transition-shadow ${isHot ? 'border-red-200' : 'border-gray-200'}`}>
@@ -191,7 +203,7 @@ function LotteryCardCompact({ item }: { item: LotteryLatestItem }) {
           {meta && <GameIcon meta={meta} size={20} />}
           <span className="font-bold text-sm text-gray-800">{item.gameName}</span>
         </div>
-        <span className="text-xs text-gray-400">{drawDate} 第{item.period.slice(-4)}期</span>
+        <span className="text-xs text-gray-400">{drawDate} 第 {Number(item.period.slice(-4))} 期</span>
       </div>
       {/* 號碼球 */}
       <div className="flex flex-wrap gap-1 mb-2">
@@ -216,7 +228,7 @@ function LotteryCardCompact({ item }: { item: LotteryLatestItem }) {
           🔥 已連續 {item.noWinnerStreak} 期無人中頭獎
         </div>
       )}
-      <div className="text-xs text-gray-400 mt-1 pt-1 border-t border-gray-100">🕐 {item.drawSchedule}</div>
+      <div className="text-xs text-gray-400 mt-1 pt-1 border-t border-gray-100">🕐 {meta?.schedule ?? item.drawSchedule}</div>
     </div>
   );
 }

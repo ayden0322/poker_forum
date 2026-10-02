@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
@@ -43,6 +43,13 @@ interface StatsResponse {
 export default function LotteryStatsPage() {
   const [gameType, setGameType] = useState('LOTTO649');
   const [range, setRange] = useState(100);
+
+  // 從看板連過來會帶 ?gameType=DAILY539，預先切到該彩種
+  useEffect(() => {
+    const gt = new URLSearchParams(window.location.search).get('gameType');
+    if (gt && GAME_OPTIONS.some((g) => g.value === gt)) setGameType(gt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ['lottery-stats', gameType, range],

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import Link from 'next/link';
@@ -58,6 +58,13 @@ export default function LotteryCheckPage() {
     setSpecialNum('');
     checkMutation.reset();
   };
+  // 從看板連過來會帶 ?gameType=DAILY539，預先切到該彩種
+  useEffect(() => {
+    const gt = new URLSearchParams(window.location.search).get('gameType');
+    if (gt && GAME_OPTIONS.some((g) => g.value === gt)) handleGameChange(gt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
