@@ -248,17 +248,14 @@ export function LotteryNumberBoard({ item, meta }: { item: BoardItem; meta: Lott
             </span>
           )}
           {totalDraws > 0 && (
-            <>
-              <span className="inline-flex items-center gap-1">
-                <i className="w-3 h-3 rounded-sm bg-primary-400" />熱{separateZone ? '' : `（${hotThreshold} 次以上）`}
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <i className="w-3 h-3 rounded-sm bg-primary-100" />溫
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <i className="w-3 h-3 rounded-sm bg-gray-50 border border-gray-200" />冷
-              </span>
-            </>
+            // 色階直接用 HEAT_CLASS 產生，四級都對得到格子顏色
+            <span className="inline-flex items-center gap-1">
+              冷
+              {HEAT_CLASS.map((cls) => (
+                <i key={cls} className={`w-3 h-3 rounded-sm border border-gray-200 ${cls}`} />
+              ))}
+              熱{separateZone ? '' : `（最深 ${hotThreshold} 次以上）`}
+            </span>
           )}
         </div>
       </div>
