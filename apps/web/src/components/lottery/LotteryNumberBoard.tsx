@@ -1,12 +1,12 @@
 'use client';
 
 /**
- * LotteryNumberBoard — 號碼走勢盤（目前用於今彩539 看板）
+ * LotteryNumberBoard — 號碼走勢盤（今彩539、大樂透、威力彩看板）
  *
  * 左：1~N 全部號碼攤開，最新一期開出的標金色，近 30 期出現越多次綠色越深
- * 右：最新一期號碼 + 開獎倒數 + 對獎 / 統計入口
- *
- * 適合沒有累積頭獎、主打選號分析的彩種；大樂透、威力彩仍用 LotteryHeroCard
+ *     大樂透特別號與主號同池 → 直接在盤上標紅球
+ *     威力彩第二區是獨立的 1~8 → 下方另一排小盤
+ * 右：累積頭獎（有才顯示）+ 最新一期號碼 + 開獎倒數 + 對獎 / 統計入口
  */
 
 import Link from 'next/link';
@@ -22,10 +22,18 @@ interface BoardItem {
   period: string;
   drawDate: string;
   numbers: number[];
+  specialNum: number[] | null;
+  jackpot: string | null;
+  noWinnerStreak: number;
+}
+
+interface NumCount {
+  number: number;
+  count: number;
 }
 
 interface StatsResponse {
-  data: { totalDraws: number; frequency: { number: number; count: number }[] };
+  data: { totalDraws: number; frequency: NumCount[]; specialFrequency: NumCount[] };
 }
 
 /** 依「出現次數 ÷ 平均次數」分四級：冷 / 溫 / 熱 / 很熱 */
@@ -47,6 +55,59 @@ const HEAT_CLASS = [
 
 const GOLD_BALL =
   'bg-[radial-gradient(circle_at_32%_28%,#f6d77a,#c8901a_72%)] text-amber-950 shadow-[0_2px_5px_rgba(200,144,26,0.35)]';
+const RED_BALL =
+  'bg-[radial-gradient(circle_at_32%_28%,#f59a8b,#c0392b_72%)] text-white shadow-[0_2px_5px_rgba(192,57,43,0.35)]';
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+function formatJackpot(jackpot: number): { value: string; unit: string } {
+  return jackpot >= 100_000_000
+    ? { value: (jackpot / 100_000_000).toFixed(2), unit: '億' }
+    : { value: (jackpot / 10_000).toFixed(0), unit: '萬' };
+}
+
+/** 一組號碼格（主盤或第二區共用） */
+function NumberGrid({
+  range,
+  countMap,
+  avg,
+  totalDraws,
+  hits,
+  specialHits,
+  className,
+}: {
+  range: [number, number];
+  countMap: Map<number, number>;
+  avg: number;
+  totalDraws: number;
+  hits: Set<number>;
+  specialHits: Set<number>;
+  className: string;
+}) {
+  const [min, max] = range;
+  const nums = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  return (
+    <div className={`grid gap-1.5 ${className}`}>
+      {nums.map((n) => {
+        const count = countMap.get(n) ?? 0;
+        const cls = hits.has(n)
+          ? `rounded-full ${GOLD_BALL}`
+          : specialHits.has(n)
+            ? `rounded-full ${RED_BALL}`
+            : `rounded-lg ${HEAT_CLASS[heatLevel(count, avg)]}`;
+        return (
+          <div
+            key={n}
+            title={totalDraws > 0 ? `${pad(n)}：近 ${totalDraws} 期開出 ${count} 次` : undefined}
+            className={`aspect-square flex items-center justify-center text-sm font-semibold tabular-nums ${cls}`}
+          >
+            {pad(n)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function LotteryNumberBoard({ item, meta }: { item: BoardItem; meta: LotteryMeta }) {
   const { data, isLoading } = useQuery({
@@ -55,30 +116,69 @@ export function LotteryNumberBoard({ item, meta }: { item: BoardItem; meta: Lott
     staleTime: 5 * 60 * 1000,
   });
 
-  const [min, max] = meta.ballRange.main;
+  const { main, mainCount, special, specialCount } = meta.ballRange;
   const totalDraws = data?.data.totalDraws ?? 0;
   const countMap = new Map(data?.data.frequency.map((f) => [f.number, f.count]) ?? []);
+  const specialCountMap = new Map(data?.data.specialFrequency?.map((f) => [f.number, f.count]) ?? []);
   // 平均每個號碼的出現次數 = 期數 × 每期開出幾顆 ÷ 號碼總數
-  const avg = (totalDraws * meta.ballRange.mainCount) / (max - min + 1);
+  const avg = (totalDraws * mainCount) / (main[1] - main[0] + 1);
   const hotThreshold = Math.ceil(avg * 1.5);
+
+  const specials = item.specialNum ?? [];
+  // 特別號和主號同一個號碼池（大樂透）→ 標在主盤；不同池（威力彩第二區）→ 另外一排
+  const separateZone =
+    special && (special[0] !== main[0] || special[1] !== main[1]) ? (special as [number, number]) : null;
+  const specialLabel = separateZone ? '第二區' : '特別號';
+  const specialAvg = separateZone ? (totalDraws * (specialCount ?? 1)) / (separateZone[1] - separateZone[0] + 1) : 0;
+
   const hits = new Set(item.numbers);
-  const nums = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  const mainSpecialHits = separateZone ? new Set<number>() : new Set(specials);
+  const jackpot = item.jackpot ? Number(item.jackpot) : null;
+  const periodNo = Number(item.period.slice(-4));
   const nextDraw = nextDrawTime(meta).toISOString();
-  const pad = (n: number) => String(n).padStart(2, '0');
+  // 大樂透、威力彩一期 7 顆，右欄 300px 放不下 36px 的球 → 縮小一號
+  const ballSize = item.numbers.length + specials.length > 6 ? 'w-8 h-8 text-sm' : 'w-9 h-9';
+  // 49 顆時桌機一排 13 格會變 4 排；手機 8 格一排
+  const mainCols = 'grid-cols-8 sm:grid-cols-[repeat(13,minmax(0,1fr))]';
 
   return (
     <div className="grid md:grid-cols-[1fr_300px] rounded-2xl overflow-hidden border border-primary-100 shadow-sm">
-      {/* 右（手機在上）：最新一期 + 倒數 */}
+      {/* 右（手機在上）：頭獎 + 最新一期 + 倒數 */}
       <div className="md:order-last bg-[#1f2a30] text-white p-4 md:p-5 flex flex-col justify-center gap-4">
-        <div>
-          <div className="text-sm text-white/70">
-            {formatDrawDate(item.drawDate)} 第 {Number(item.period.slice(-4))} 期
+        {jackpot ? (
+          <div>
+            <div className="flex items-center gap-2 text-sm text-white/70">
+              本期累積頭獎
+              {item.noWinnerStreak >= 3 && (
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-300/10 border border-amber-300/30 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-amber-300 rounded-full animate-pulse" />連 {item.noWinnerStreak} 期未中
+                </span>
+              )}
+            </div>
+            <div className="mt-1 font-bold tabular-nums leading-none text-amber-300">
+              <span className="text-4xl">{formatJackpot(jackpot).value}</span>
+              <span className="text-lg ml-1.5">{formatJackpot(jackpot).unit}</span>
+            </div>
           </div>
-          <div className="flex gap-1.5 mt-2">
+        ) : null}
+        <div className={jackpot ? 'border-t border-white/10 pt-4' : ''}>
+          <div className="text-sm text-white/70">
+            {formatDrawDate(item.drawDate)} 第 {periodNo} 期
+          </div>
+          <div className="flex flex-wrap gap-1 mt-2">
             {item.numbers.map((n) => (
               <span
                 key={n}
-                className={`w-9 h-9 rounded-full inline-flex items-center justify-center font-bold tabular-nums ${GOLD_BALL}`}
+                className={`${ballSize} rounded-full inline-flex items-center justify-center font-bold tabular-nums ${GOLD_BALL}`}
+              >
+                {pad(n)}
+              </span>
+            ))}
+            {specials.map((n) => (
+              <span
+                key={`s-${n}`}
+                title={specialLabel}
+                className={`${ballSize} rounded-full inline-flex items-center justify-center font-bold tabular-nums ${RED_BALL}`}
               >
                 {pad(n)}
               </span>
@@ -107,36 +207,50 @@ export function LotteryNumberBoard({ item, meta }: { item: BoardItem; meta: Lott
       {/* 左（手機在下）：號碼走勢盤 */}
       <div className="bg-white p-4 md:p-5">
         <div className="flex items-baseline justify-between gap-2 flex-wrap mb-3">
-          <h2 className="font-bold text-gray-800">號碼走勢盤</h2>
+          <h2 className="font-bold text-gray-800">{separateZone ? '第一區走勢盤' : '號碼走勢盤'}</h2>
           <span className="text-sm text-gray-500">
             {totalDraws > 0 ? `近 ${totalDraws} 期出現次數` : isLoading ? '統計載入中…' : '尚無統計資料'}
           </span>
         </div>
-        <div className="grid grid-cols-8 sm:grid-cols-[repeat(13,minmax(0,1fr))] gap-1.5">
-          {nums.map((n) => {
-            const count = countMap.get(n) ?? 0;
-            const isHit = hits.has(n);
-            const cls = isHit ? `rounded-full ${GOLD_BALL}` : `rounded-lg ${HEAT_CLASS[heatLevel(count, avg)]}`;
-            return (
-              <div
-                key={n}
-                title={totalDraws > 0 ? `${pad(n)}：近 ${totalDraws} 期開出 ${count} 次` : undefined}
-                className={`aspect-square flex items-center justify-center text-sm font-semibold tabular-nums ${cls}`}
-              >
-                {pad(n)}
-              </div>
-            );
-          })}
-        </div>
+        <NumberGrid
+          range={main}
+          countMap={countMap}
+          avg={avg}
+          totalDraws={totalDraws}
+          hits={hits}
+          specialHits={mainSpecialHits}
+          className={mainCols}
+        />
+
+        {separateZone && (
+          <div className="mt-4 pt-4 border-t border-dashed border-gray-200">
+            <h3 className="font-bold text-gray-800 text-sm mb-2">第二區</h3>
+            <NumberGrid
+              range={separateZone}
+              countMap={specialCountMap}
+              avg={specialAvg}
+              totalDraws={totalDraws}
+              hits={new Set()}
+              specialHits={new Set(specials)}
+              className={mainCols}
+            />
+          </div>
+        )}
+
         <div className="flex gap-x-4 gap-y-1 items-center flex-wrap text-xs text-gray-500 mt-3">
           <span className="inline-flex items-center gap-1">
-            <i className={`w-3 h-3 rounded-full ${GOLD_BALL}`} />
-            第 {Number(item.period.slice(-4))} 期開出
+            <i className={`w-3 h-3 rounded-full ${GOLD_BALL}`} />第 {periodNo} 期開出
           </span>
+          {specials.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <i className={`w-3 h-3 rounded-full ${RED_BALL}`} />
+              {specialLabel}
+            </span>
+          )}
           {totalDraws > 0 && (
             <>
               <span className="inline-flex items-center gap-1">
-                <i className="w-3 h-3 rounded-sm bg-primary-400" />熱（{hotThreshold} 次以上）
+                <i className="w-3 h-3 rounded-sm bg-primary-400" />熱{separateZone ? '' : `（${hotThreshold} 次以上）`}
               </span>
               <span className="inline-flex items-center gap-1">
                 <i className="w-3 h-3 rounded-sm bg-primary-100" />溫
